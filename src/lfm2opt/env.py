@@ -21,6 +21,8 @@ def _run(cmd: list[str]) -> str | None:
 
 def git_commit() -> str | None:
     commit = _run(["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"])
+    if commit is None and (REPO_ROOT / ".git_commit").exists():  # code shipped without .git (Colab, rsync)
+        return (REPO_ROOT / ".git_commit").read_text().strip()
     dirty = _run(["git", "-C", str(REPO_ROOT), "status", "--porcelain"])
     if commit and dirty:
         commit += "-dirty"

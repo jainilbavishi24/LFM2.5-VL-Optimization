@@ -23,6 +23,9 @@ remote() {  # remote "<shell command>" [timeout]
 
 push() {
     local tarball; tarball="$(mktemp --suffix=.tar.gz)"
+    # .git is not shipped; record the commit so results on the VM stay traceable
+    { git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown; } | tr -d '\n' > "$ROOT/.git_commit"
+    if [[ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]]; then echo -n "-dirty" >> "$ROOT/.git_commit"; fi
     tar -C "$ROOT" -czf "$tarball" \
         --exclude=./third_party --exclude=./models --exclude=./.git --exclude=./results/raw \
         --exclude=./profiling/reports --exclude='*.pdf' --exclude='__pycache__' --exclude=./.venv .

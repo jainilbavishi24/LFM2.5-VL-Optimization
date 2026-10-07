@@ -44,3 +44,4 @@ report/*.synctex.gz
 .DS_Store
 .vscode/
 .idea/
+.git_commit
