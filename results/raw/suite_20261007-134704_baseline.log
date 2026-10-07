@@ -1,0 +1,912 @@
+[suite 13:47:04] suite 20261007-134704_baseline variant=baseline steps: bench_full bench_batch numerics overhead torch_prof nsys ncu summarize
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+Tesla T4, 580.82.07, 70.00 W, 1590 MHz, 5001 MHz
+[suite 13:47:04] START bench_full: python benchmarks/bench.py --variants baseline --preset full --tag baseline_full
+[bench] run 20261007-134718_T4_baseline_full on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261007-134718_T4_baseline_full
+[bench] idle power 14.4 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 6.0s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     32.0 ms  E/run=   1.70 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=32   tiles=0  img_tok=0     wall=    694.9 ms  E/run=  50.64 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=   2571.0 ms  E/run= 183.53 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=512  tiles=0  img_tok=0     wall=  10990.2 ms  E/run= 720.59 J  mem=3.01 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    120.5 ms  E/run=   8.57 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=32   tiles=1  img_tok=234   wall=    744.2 ms  E/run=  54.31 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   2820.5 ms  E/run= 195.79 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=512  tiles=1  img_tok=234   wall=  11127.3 ms  E/run= 730.56 J  mem=3.03 GB
+[bench]   baseline    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    401.9 ms  E/run=  27.34 J  mem=3.23 GB
+[bench]   baseline    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=   1012.2 ms  E/run=  71.66 J  mem=3.23 GB
+[bench]   baseline    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   2950.1 ms  E/run= 207.87 J  mem=3.23 GB
+[bench]   baseline    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=  11448.0 ms  E/run= 755.10 J  mem=3.23 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1319.3 ms  E/run=  86.57 J  mem=4.68 GB
+[bench]   baseline   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=   1960.3 ms  E/run= 133.57 J  mem=4.68 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   3944.0 ms  E/run= 272.95 J  mem=4.68 GB
+[bench]   baseline   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=  12702.6 ms  E/run= 833.96 J  mem=4.68 GB
+[bench] done -> /content/PAA_Project/results/raw/20261007-134718_T4_baseline_full
+[suite 14:00:36] END   bench_full rc=0 (812 s)
+[suite 14:00:36] START bench_batch: python benchmarks/bench.py --variants baseline --preset batch --tag baseline_batch
+[bench] run 20261007-140043_T4_baseline_batch on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261007-140043_T4_baseline_batch
+[bench] idle power 15.9 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 4.9s
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    113.9 ms  E/run=   8.01 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   2690.2 ms  E/run= 189.86 J  mem=3.03 GB
+[bench]   baseline img_small bs=2   gen=1    tiles=1  img_tok=234   wall=    244.0 ms  E/run=  17.22 J  mem=3.07 GB
+[bench]   baseline img_small bs=2   gen=128  tiles=1  img_tok=234   wall=   3057.5 ms  E/run= 205.53 J  mem=3.07 GB
+[bench]   baseline img_small bs=4   gen=1    tiles=1  img_tok=234   wall=    490.5 ms  E/run=  31.84 J  mem=3.15 GB
+[bench]   baseline img_small bs=4   gen=128  tiles=1  img_tok=234   wall=   3163.7 ms  E/run= 221.42 J  mem=3.15 GB
+[bench]   baseline img_small bs=8   gen=1    tiles=1  img_tok=234   wall=    870.7 ms  E/run=  59.62 J  mem=3.31 GB
+[bench]   baseline img_small bs=8   gen=128  tiles=1  img_tok=234   wall=   3852.8 ms  E/run= 263.05 J  mem=3.31 GB
+[bench]   baseline img_small bs=16  gen=1    tiles=1  img_tok=234   wall=   1969.9 ms  E/run= 127.38 J  mem=3.63 GB
+[bench]   baseline img_small bs=16  gen=128  tiles=1  img_tok=234   wall=   5210.7 ms  E/run= 349.63 J  mem=3.63 GB
+[bench] done -> /content/PAA_Project/results/raw/20261007-140043_T4_baseline_batch
+[suite 14:03:32] END   bench_batch rc=0 (176 s)
+[suite 14:03:32] START numerics: python benchmarks/bench.py --variants baseline --workloads text,img_small --gen-lens 64 --warmup 1 --repeats 1 --dtype fp32 --tag baseline_fp32
+[bench] run 20261007-140340_T4_baseline_fp32 on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261007-140340_T4_baseline_fp32
+[bench] idle power 22.1 W
+[bench] variant=baseline dtype=fp32 attn=sdpa loaded in 7.0s
+[bench]   baseline      text bs=1   gen=64   tiles=0  img_tok=0     wall=   1428.3 ms  E/run=  94.66 J  mem=5.97 GB
+[bench]   baseline img_small bs=1   gen=64   tiles=1  img_tok=234   wall=   1936.2 ms  E/run= 127.68 J  mem=6.02 GB
+[bench] done -> /content/PAA_Project/results/raw/20261007-140340_T4_baseline_fp32
+[suite 14:04:01] END   numerics rc=0 (29 s)
+[suite 14:04:01] START numerics: python benchmarks/bench.py --variants baseline --workloads text,img_small --gen-lens 64 --warmup 1 --repeats 1 --tag baseline_dtype_default
+[bench] run 20261007-140410_T4_baseline_dtype_default on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261007-140410_T4_baseline_dtype_default
+[bench] idle power 22.3 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 4.5s
+[bench]   baseline      text bs=1   gen=64   tiles=0  img_tok=0     wall=   1310.5 ms  E/run=  88.94 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=64   tiles=1  img_tok=234   wall=   1809.7 ms  E/run= 121.00 J  mem=3.03 GB
+[bench] done -> /content/PAA_Project/results/raw/20261007-140410_T4_baseline_dtype_default
+[suite 14:04:28] END   numerics rc=0 (27 s)
+[suite 14:04:28] START overhead: python benchmarks/bench.py --variants baseline --workloads img_small --gen-lens 1,128 --repeats 10 --no-phases --tag baseline_nohooks
+[bench] run 20261007-140435_T4_baseline_nohooks on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261007-140435_T4_baseline_nohooks
+[bench] idle power 16.3 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 4.5s
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    113.9 ms  E/run=   8.61 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   2749.1 ms  E/run= 191.09 J  mem=3.03 GB
+[bench] done -> /content/PAA_Project/results/raw/20261007-140435_T4_baseline_nohooks
+[suite 14:05:23] END   overhead rc=0 (55 s)
+[suite 14:05:23] START overhead: python benchmarks/bench.py --variants baseline --workloads img_small --gen-lens 1,128 --repeats 10 --tag baseline_hooks
+[bench] run 20261007-140531_T4_baseline_hooks on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261007-140531_T4_baseline_hooks
+[bench] idle power 13.4 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 5.6s
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    111.8 ms  E/run=   8.03 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   2923.9 ms  E/run= 197.97 J  mem=3.03 GB
+[bench] done -> /content/PAA_Project/results/raw/20261007-140531_T4_baseline_hooks
+[suite 14:06:21] END   overhead rc=0 (58 s)
+[suite 14:06:21] START torch_prof: python profiling/torch_profile.py --variant baseline --gen-len 32 --tag baseline --workload text
+{
+  "n_kernels_total": 25305,
+  "n_decode_steps": 31,
+  "generate_wall_ms": 1126.3028530273436,
+  "decode_wall_ms_per_step": 34.28317603129725,
+  "decode_kernel_ms_per_step": 10.83818535483859,
+  "decode_kernels_per_step": 787.9032258064516,
+  "decode_gpu_busy_frac": 0.3161371439140984,
+  "kernel_ms_by_phase": {
+    "lm_decode": 300.5610989999998,
+    "lm_head": 32.356861,
+    "lm_head_prefill": 1.0415429999999999,
+    "lm_prefill": 12.799501,
+    "other": 3.201912000000002
+  },
+  "lm_decode_kernel_share_by_category": {
+    "gemm": 0.8709,
+    "elementwise": 0.0641,
+    "copy_index": 0.0421,
+    "norm_reduce": 0.019,
+    "conv": 0.0028,
+    "attention": 0.0011
+  },
+  "workload": "text",
+  "gen_len": 32,
+  "variant": "baseline",
+  "batch_size": 1,
+  "prompt_tokens": 18,
+  "image_tokens": 0,
+  "vision_tiles": 0,
+  "vision_patches": 0
+}
+[torch_profile] analysis 24.4s -> /content/PAA_Project/profiling/reports/20261007-140628_T4_torchprof_baseline_text_g32_baseline
+[suite 14:07:05] END   torch_prof rc=0 (44 s)
+[suite 14:07:05] START torch_prof: python profiling/torch_profile.py --variant baseline --gen-len 32 --tag baseline --workload img_small
+{
+  "n_kernels_total": 25795,
+  "n_decode_steps": 31,
+  "generate_wall_ms": 1156.5301610107422,
+  "decode_wall_ms_per_step": 33.71819538731729,
+  "decode_kernel_ms_per_step": 11.398794161290297,
+  "decode_kernels_per_step": 787.9032258064516,
+  "decode_gpu_busy_frac": 0.33806062365893474,
+  "kernel_ms_by_phase": {
+    "lm_decode": 317.5792030000015,
+    "lm_head": 32.589486,
+    "lm_head_prefill": 1.127558,
+    "lm_prefill": 39.885546999999995,
+    "other": 3.580930000000002,
+    "projector": 0.463573,
+    "vision_tower": 51.004614999999994
+  },
+  "lm_decode_kernel_share_by_category": {
+    "gemm": 0.849,
+    "elementwise": 0.0736,
+    "copy_index": 0.0525,
+    "norm_reduce": 0.0205,
+    "conv": 0.0028,
+    "attention": 0.0016
+  },
+  "workload": "img_small",
+  "gen_len": 32,
+  "variant": "baseline",
+  "batch_size": 1,
+  "prompt_tokens": 252,
+  "image_tokens": 234,
+  "vision_tiles": 1,
+  "vision_patches": 936,
+  "vision_patches_padded": 1024
+}
+[torch_profile] analysis 24.1s -> /content/PAA_Project/profiling/reports/20261007-140713_T4_torchprof_baseline_img_small_g32_baseline
+[suite 14:07:49] END   torch_prof rc=0 (44 s)
+[suite 14:07:49] START torch_prof: python profiling/torch_profile.py --variant baseline --gen-len 32 --tag baseline --workload img_fhd
+{
+  "n_kernels_total": 25858,
+  "n_decode_steps": 31,
+  "generate_wall_ms": 2673.7450399780273,
+  "decode_wall_ms_per_step": 44.15823070895287,
+  "decode_kernel_ms_per_step": 14.86197093548331,
+  "decode_kernels_per_step": 787.9032258064516,
+  "decode_gpu_busy_frac": 0.33656173938305267,
+  "kernel_ms_by_phase": {
+    "lm_decode": 424.9827949999958,
+    "lm_head": 32.294669,
+    "lm_head_prefill": 1.3426559999999998,
+    "lm_prefill": 629.377911,
+    "other": 4.569877999999994,
+    "projector": 3.7893879999999998,
+    "vision_tower": 649.709872
+  },
+  "lm_decode_kernel_share_by_category": {
+    "gemm": 0.6902,
+    "copy_index": 0.1643,
+    "elementwise": 0.1231,
+    "norm_reduce": 0.018,
+    "other": 0.0023,
+    "conv": 0.0022
+  },
+  "workload": "img_fhd",
+  "gen_len": 32,
+  "variant": "baseline",
+  "batch_size": 1,
+  "prompt_tokens": 2327,
+  "image_tokens": 2300,
+  "vision_tiles": 9,
+  "vision_patches": 9200,
+  "vision_patches_padded": 9216
+}
+[torch_profile] analysis 24.5s -> /content/PAA_Project/profiling/reports/20261007-140756_T4_torchprof_baseline_img_fhd_g32_baseline
+[suite 14:08:37] END   torch_prof rc=0 (48 s)
+[suite 14:08:37] START nsys: bash profiling/nsys/profile_nsys.sh img_small 32 --variant baseline
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-0b93.qdstrm'
+[1/1] [0%                          ] nsys_img_small_g32.nsys-repProcessing events...
+[1/1] [0%                          ] nsys_img_small_g32.nsys-rep[1/1] [=16%                        ] nsys_img_small_g32.nsys-rep[1/1] [=====32%                    ] nsys_img_small_g32.nsys-rep[1/1] [==============63%           ] nsys_img_small_g32.nsys-rep[1/1] [=======================94%  ] nsys_img_small_g32.nsys-rep[1/1] [=======================95%  ] nsys_img_small_g32.nsys-rep[1/1] [========================97% ] nsys_img_small_g32.nsys-rep[1/1] [0%                          ] nsys_img_small_g32.nsys-rep[1/1] [=17%                        ] nsys_img_small_g32.nsys-rep[1/1] [=======36%                  ] nsys_img_small_g32.nsys-rep[1/1] [============54%             ] nsys_img_small_g32.nsys-rep[1/1] [=================72%        ] nsys_img_small_g32.nsys-rep[1/1] [===================82%      ] nsys_img_small_g32.nsys-rep[1/1] [========================100%] nsys_img_small_g32.nsys-rep[1/1] [========================100%] nsys_img_small_g32.nsys-rep
+[run_once] done
+Generated:
+	/content/PAA_Project/profiling/reports/20261007-140837_T4_nsys_img_small_g32/nsys_img_small_g32.nsys-rep
+[nsys] -> /content/PAA_Project/profiling/reports/20261007-140837_T4_nsys_img_small_g32
+total 5924
+drwxr-xr-x 2 root root    4096 Oct  7 14:09 .
+drwxr-xr-x 6 root root    4096 Oct  7 14:08 ..
+-rw-r--r-- 1 root root     818 Oct  7 14:09 nsys_img_small_g32_cuda_api_sum.csv
+-rw-r--r-- 1 root root   26257 Oct  7 14:09 nsys_img_small_g32_cuda_gpu_kern_sum.csv
+-rw-rw-r-- 1 root root 1784417 Oct  7 14:09 nsys_img_small_g32.nsys-rep
+-rw-r--r-- 1 root root     724 Oct  7 14:09 nsys_img_small_g32_nvtx_sum.csv
+-rw-r--r-- 1 root root 4235264 Oct  7 14:09 nsys_img_small_g32.sqlite
+[suite 14:09:07] END   nsys rc=0 (30 s)
+[suite 14:09:07] START nsys: bash profiling/nsys/profile_nsys.sh img_fhd 32 --variant baseline
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-report-7bb3.qdstrm'
+[1/1] [0%                          ] nsys_img_fhd_g32.nsys-repProcessing events...
+[1/1] [0%                          ] nsys_img_fhd_g32.nsys-rep[1/1] [=16%                        ] nsys_img_fhd_g32.nsys-rep[1/1] [=====32%                    ] nsys_img_fhd_g32.nsys-rep[1/1] [==============61%           ] nsys_img_fhd_g32.nsys-rep[1/1] [======================90%   ] nsys_img_fhd_g32.nsys-rep[1/1] [======================92%   ] nsys_img_fhd_g32.nsys-rep[1/1] [=======================93%  ] nsys_img_fhd_g32.nsys-rep[1/1] [=======================94%  ] nsys_img_fhd_g32.nsys-rep[1/1] [=======================95%  ] nsys_img_fhd_g32.nsys-rep[1/1] [=======================96%  ] nsys_img_fhd_g32.nsys-rep[1/1] [========================97% ] nsys_img_fhd_g32.nsys-rep[1/1] [0%                          ] nsys_img_fhd_g32.nsys-rep[1/1] [=17%                        ] nsys_img_fhd_g32.nsys-rep[1/1] [=======36%                  ] nsys_img_fhd_g32.nsys-rep[1/1] [============54%             ] nsys_img_fhd_g32.nsys-rep[1/1] [=================72%        ] nsys_img_fhd_g32.nsys-rep[1/1] [===================82%      ] nsys_img_fhd_g32.nsys-rep[1/1] [========================100%] nsys_img_fhd_g32.nsys-rep[1/1] [========================100%] nsys_img_fhd_g32.nsys-rep
+[run_once] done
+Generated:
+	/content/PAA_Project/profiling/reports/20261007-140907_T4_nsys_img_fhd_g32/nsys_img_fhd_g32.nsys-rep
+[nsys] -> /content/PAA_Project/profiling/reports/20261007-140907_T4_nsys_img_fhd_g32
+total 6068
+drwxr-xr-x 2 root root    4096 Oct  7 14:09 .
+drwxr-xr-x 7 root root    4096 Oct  7 14:09 ..
+-rw-r--r-- 1 root root     834 Oct  7 14:09 nsys_img_fhd_g32_cuda_api_sum.csv
+-rw-r--r-- 1 root root   26437 Oct  7 14:09 nsys_img_fhd_g32_cuda_gpu_kern_sum.csv
+-rw-rw-r-- 1 root root 1817609 Oct  7 14:09 nsys_img_fhd_g32.nsys-rep
+-rw-r--r-- 1 root root     737 Oct  7 14:09 nsys_img_fhd_g32_nvtx_sum.csv
+-rw-r--r-- 1 root root 4349952 Oct  7 14:09 nsys_img_fhd_g32.sqlite
+[suite 14:09:37] END   nsys rc=0 (30 s)
+[suite 14:09:37] START ncu: env LAUNCHES=800 bash profiling/ncu/profile_ncu.sh decode img_small --variant baseline
+==PROF== Connected to process 7736 (/usr/bin/python3.13)
+==PROF== Profiling "unrolled_elementwise_kernel" - 0 (1/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 1 (2/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 2 (3/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 3 (4/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 4 (5/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 5 (6/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 6 (7/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 7 (8/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 8 (9/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 9 (10/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 10 (11/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 11 (12/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 12 (13/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 13 (14/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 14 (15/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 15 (16/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 16 (17/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 17 (18/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 18 (19/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 19 (20/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 20 (21/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 21 (22/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 22 (23/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 23 (24/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 24 (25/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 25 (26/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 26 (27/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 27 (28/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 28 (29/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 29 (30/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 30 (31/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 31 (32/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 32 (33/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 33 (34/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 34 (35/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 35 (36/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 36 (37/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 37 (38/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 38 (39/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 39 (40/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 40 (41/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 41 (42/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 42 (43/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 43 (44/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 44 (45/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 45 (46/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 46 (47/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 47 (48/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 48 (49/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 49 (50/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 50 (51/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 51 (52/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 52 (53/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 53 (54/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 54 (55/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 55 (56/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 56 (57/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 57 (58/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 58 (59/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 59 (60/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 60 (61/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 61 (62/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 62 (63/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 63 (64/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 64 (65/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 65 (66/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 66 (67/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 67 (68/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 68 (69/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 69 (70/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 70 (71/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 71 (72/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 72 (73/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 73 (74/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 74 (75/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 75 (76/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 76 (77/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 77 (78/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 78 (79/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 79 (80/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 80 (81/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 81 (82/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 82 (83/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 83 (84/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 84 (85/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 85 (86/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 86 (87/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 87 (88/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 88 (89/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 89 (90/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 90 (91/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 91 (92/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 92 (93/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 93 (94/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 94 (95/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 95 (96/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 96 (97/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 97 (98/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 98 (99/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 99 (100/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 100 (101/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 101 (102/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 102 (103/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 103 (104/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 104 (105/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 105 (106/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 106 (107/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 107 (108/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 108 (109/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 109 (110/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 110 (111/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 111 (112/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 112 (113/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 113 (114/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 114 (115/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "gemv2T_kernel_val" - 115 (116/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "softmax_warp_forward" - 116 (117/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 117 (118/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 118 (119/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 119 (120/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 120 (121/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 121 (122/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 122 (123/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 123 (124/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 124 (125/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 125 (126/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 126 (127/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 127 (128/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 128 (129/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 129 (130/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 130 (131/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 131 (132/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 132 (133/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 133 (134/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 134 (135/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 135 (136/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 136 (137/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 137 (138/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 138 (139/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 139 (140/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 140 (141/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 141 (142/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 142 (143/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 143 (144/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 144 (145/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 145 (146/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 146 (147/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 147 (148/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 148 (149/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 149 (150/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 150 (151/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 151 (152/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 152 (153/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 153 (154/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 154 (155/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 155 (156/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 156 (157/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 157 (158/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 158 (159/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 159 (160/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 160 (161/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 161 (162/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 162 (163/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 163 (164/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 164 (165/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 165 (166/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 166 (167/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 167 (168/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 168 (169/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 169 (170/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 170 (171/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 171 (172/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 172 (173/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 173 (174/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 174 (175/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 175 (176/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 176 (177/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 177 (178/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 178 (179/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 179 (180/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 180 (181/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 181 (182/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 182 (183/800): 0%....50%....100% - 32 passes
+==PROF== Profiling "elementwise_kernel" - 183 (184/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 184 (185/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 185 (186/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 186 (187/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 187 (188/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 188 (189/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 189 (190/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 190 (191/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 191 (192/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 192 (193/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 193 (194/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 194 (195/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 195 (196/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 196 (197/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 197 (198/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 198 (199/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 199 (200/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 200 (201/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 201 (202/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 202 (203/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 203 (204/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 204 (205/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 205 (206/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 206 (207/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 207 (208/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 208 (209/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 209 (210/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 210 (211/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 211 (212/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 212 (213/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 213 (214/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 214 (215/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 215 (216/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 216 (217/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 217 (218/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 218 (219/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 219 (220/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 220 (221/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 221 (222/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 222 (223/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 223 (224/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 224 (225/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 225 (226/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 226 (227/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 227 (228/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 228 (229/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 229 (230/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 230 (231/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 231 (232/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 232 (233/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 233 (234/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 234 (235/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 235 (236/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 236 (237/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 237 (238/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 238 (239/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 239 (240/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 240 (241/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 241 (242/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 242 (243/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 243 (244/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 244 (245/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 245 (246/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "gemv2T_kernel_val" - 246 (247/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "softmax_warp_forward" - 247 (248/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 248 (249/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 249 (250/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 250 (251/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 251 (252/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 252 (253/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 253 (254/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 254 (255/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 255 (256/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 256 (257/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 257 (258/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 258 (259/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 259 (260/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 260 (261/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 261 (262/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 262 (263/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 263 (264/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 264 (265/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 265 (266/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 266 (267/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 267 (268/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 268 (269/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 269 (270/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 270 (271/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 271 (272/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 272 (273/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 273 (274/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 274 (275/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 275 (276/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 276 (277/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 277 (278/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 278 (279/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 279 (280/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 280 (281/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 281 (282/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 282 (283/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 283 (284/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 284 (285/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 285 (286/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 286 (287/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 287 (288/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 288 (289/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 289 (290/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 290 (291/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 291 (292/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 292 (293/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 293 (294/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 294 (295/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 295 (296/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 296 (297/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 297 (298/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 298 (299/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 299 (300/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 300 (301/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 301 (302/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 302 (303/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 303 (304/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 304 (305/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 305 (306/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 306 (307/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 307 (308/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 308 (309/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 309 (310/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 310 (311/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 311 (312/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 312 (313/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 313 (314/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 314 (315/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 315 (316/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 316 (317/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 317 (318/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 318 (319/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 319 (320/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 320 (321/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 321 (322/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 322 (323/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 323 (324/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 324 (325/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 325 (326/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 326 (327/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 327 (328/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 328 (329/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 329 (330/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 330 (331/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 331 (332/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 332 (333/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 333 (334/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 334 (335/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 335 (336/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 336 (337/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 337 (338/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 338 (339/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 339 (340/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 340 (341/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 341 (342/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 342 (343/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 343 (344/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 344 (345/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 345 (346/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 346 (347/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 347 (348/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 348 (349/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 349 (350/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 350 (351/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 351 (352/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 352 (353/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 353 (354/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 354 (355/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 355 (356/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 356 (357/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 357 (358/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 358 (359/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 359 (360/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 360 (361/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 361 (362/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 362 (363/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 363 (364/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 364 (365/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 365 (366/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 366 (367/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 367 (368/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 368 (369/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 369 (370/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 370 (371/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 371 (372/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 372 (373/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 373 (374/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 374 (375/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 375 (376/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 376 (377/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "gemv2T_kernel_val" - 377 (378/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "softmax_warp_forward" - 378 (379/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 379 (380/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 380 (381/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 381 (382/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 382 (383/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 383 (384/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 384 (385/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 385 (386/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 386 (387/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 387 (388/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 388 (389/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 389 (390/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 390 (391/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 391 (392/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 392 (393/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 393 (394/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 394 (395/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 395 (396/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 396 (397/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 397 (398/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 398 (399/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 399 (400/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 400 (401/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 401 (402/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 402 (403/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 403 (404/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 404 (405/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 405 (406/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 406 (407/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 407 (408/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 408 (409/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 409 (410/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 410 (411/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 411 (412/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 412 (413/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 413 (414/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 414 (415/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 415 (416/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 416 (417/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 417 (418/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 418 (419/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 419 (420/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 420 (421/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 421 (422/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 422 (423/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 423 (424/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 424 (425/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 425 (426/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 426 (427/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 427 (428/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 428 (429/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 429 (430/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 430 (431/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 431 (432/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 432 (433/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 433 (434/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 434 (435/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 435 (436/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 436 (437/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 437 (438/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 438 (439/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 439 (440/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 440 (441/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 441 (442/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 442 (443/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 443 (444/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 444 (445/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 445 (446/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 446 (447/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 447 (448/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 448 (449/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 449 (450/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 450 (451/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 451 (452/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 452 (453/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 453 (454/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 454 (455/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 455 (456/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 456 (457/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 457 (458/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 458 (459/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 459 (460/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 460 (461/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 461 (462/800): 0%....50%....100% - 32 passes
+==PROF== Profiling "elementwise_kernel" - 462 (463/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 463 (464/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 464 (465/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 465 (466/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 466 (467/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 467 (468/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 468 (469/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 469 (470/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 470 (471/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 471 (472/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 472 (473/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 473 (474/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 474 (475/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 475 (476/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 476 (477/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 477 (478/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "gemv2T_kernel_val" - 478 (479/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "softmax_warp_forward" - 479 (480/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 480 (481/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 481 (482/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 482 (483/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 483 (484/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 484 (485/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 485 (486/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 486 (487/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 487 (488/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 488 (489/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 489 (490/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 490 (491/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 491 (492/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 492 (493/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 493 (494/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 494 (495/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 495 (496/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 496 (497/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 497 (498/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 498 (499/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 499 (500/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 500 (501/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 501 (502/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 502 (503/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 503 (504/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 504 (505/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 505 (506/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 506 (507/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 507 (508/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 508 (509/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 509 (510/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 510 (511/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 511 (512/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 512 (513/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 513 (514/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 514 (515/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 515 (516/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 516 (517/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 517 (518/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 518 (519/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 519 (520/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 520 (521/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 521 (522/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 522 (523/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 523 (524/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 524 (525/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 525 (526/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 526 (527/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 527 (528/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 528 (529/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 529 (530/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 530 (531/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 531 (532/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 532 (533/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 533 (534/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 534 (535/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 535 (536/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 536 (537/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 537 (538/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 538 (539/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 539 (540/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 540 (541/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 541 (542/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 542 (543/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 543 (544/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 544 (545/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 545 (546/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 546 (547/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 547 (548/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 548 (549/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 549 (550/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 550 (551/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 551 (552/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 552 (553/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 553 (554/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 554 (555/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 555 (556/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 556 (557/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 557 (558/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 558 (559/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 559 (560/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 560 (561/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 561 (562/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 562 (563/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 563 (564/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 564 (565/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 565 (566/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 566 (567/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy" - 567 (568/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 568 (569/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 569 (570/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 570 (571/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_vectorized" - 571 (572/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 572 (573/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 573 (574/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 574 (575/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 575 (576/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 576 (577/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 577 (578/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 578 (579/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "gemv2T_kernel_val" - 579 (580/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "softmax_warp_forward" - 580 (581/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 581 (582/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 582 (583/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 583 (584/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 584 (585/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 585 (586/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 586 (587/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 587 (588/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 588 (589/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 589 (590/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 590 (591/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 591 (592/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 592 (593/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 593 (594/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 594 (595/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 595 (596/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 596 (597/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 597 (598/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 598 (599/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 599 (600/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 600 (601/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 601 (602/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 602 (603/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 603 (604/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 604 (605/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 605 (606/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 606 (607/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 607 (608/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 608 (609/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 609 (610/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 610 (611/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 611 (612/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 612 (613/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 613 (614/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "CatArrayBatchedCopy_alignedK_..." - 614 (615/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 615 (616/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "conv2d_grouped_direct_kernel" - 616 (617/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 617 (618/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 618 (619/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 619 (620/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 620 (621/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 621 (622/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 622 (623/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 623 (624/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 624 (625/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 625 (626/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 626 (627/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 627 (628/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 628 (629/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 629 (630/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 630 (631/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 631 (632/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 632 (633/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 633 (634/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 634 (635/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 635 (636/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 636 (637/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 637 (638/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 638 (639/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 639 (640/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 640 (641/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 641 (642/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 642 (643/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 643 (644/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 644 (645/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 645 (646/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 646 (647/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 647 (648/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 648 (649/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 649 (650/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 650 (651/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "kernel" - 651 (652/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 652 (653/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 653 (654/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 654 (655/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 655 (656/800): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 656 (657/800): 0%....50%....Killed
+[run_once] done
+[suite 15:27:09] END   ncu rc=137 (4652 s)
+[suite 15:27:09] START ncu: env LAUNCHES=500 bash profiling/ncu/profile_ncu.sh vision img_small --variant baseline
+==PROF== Connected to process 49808 (/usr/bin/python3.13)
+==PROF== Profiling "vectorized_elementwise_kernel" - 0 (1/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "turing_fp16_s1688gemm_fp16_12..." - 1 (2/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 2 (3/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "upsample_gen2d_aa_out_frame" - 3 (4/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 4 (5/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel" - 5 (6/500): 0%....50%....100% - 32 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 6 (7/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "unrolled_elementwise_kernel" - 7 (8/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "reduce_kernel" - 8 (9/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel_with_index" - 9 (10/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel_with_index" - 10 (11/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel_with_index" - 11 (12/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 12 (13/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "elementwise_kernel_with_index" - 13 (14/500): 0%....50%....100% - 33 passes
+==PROF== Profiling "vectorized_elementwise_kernel" - 14 (15/500): 0%....50%==PROF== Trying to shutdown target application
+Terminated
+ - 19 passes
+==ERROR== Failed to profile "vectorized_elementwise_kernel" in process 49808
+==PROF== Trying to shutdown target application
+==ERROR== An error occurred while trying to profile.
+==PROF== Report: /content/PAA_Project/profiling/reports/20261007-152710_T4_ncu_vision_img_small/ncu_vision.ncu-rep

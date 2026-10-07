@@ -5,7 +5,7 @@
 **Model:** [LiquidAI/LFM2.5-VL-1.6B](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B)
 **Hardware:** NVIDIA RTX PRO 5000 Blackwell (single GPU)
 
-> _Last updated: 2026-10-07_
+> _Last updated: 2026-10-07 (T4 baseline results)_
 
 We profile the inference of the LFM2.5-VL-1.6B vision-language model on a Blackwell GPU, find where time and energy actually go, and remove those bottlenecks with **GPU/CUDA-level optimizations**: custom and fused kernels, CUDA graphs, and low-precision GEMV/GEMM. Every optimization is measured against a reproducible baseline for latency, throughput, energy per token, and output quality.
 
@@ -18,9 +18,10 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on a Blackw
 | Topic selection & proposal | 1–2 | ✅ Done (proposal submitted with Qwen2-VL) |
 | Model change: Qwen2-VL → LFM2.5-VL-1.6B | 2 | ✅ Done — see [docs/model_selection.md](docs/model_selection.md) |
 | Code reading: inference pipeline | 2–3 | ✅ Done — code map in [docs/inference_pipeline.md](docs/inference_pipeline.md); stage-by-stage explainer with shapes and team split in [docs/pipeline_explained.md](docs/pipeline_explained.md) |
-| Environment setup on the Blackwell GPU | 3 | ⏳ Next |
-| Baseline implementation & benchmarking | 3 | ⏳ Not started |
-| Profiling & bottleneck analysis | 4 | ⏳ Not started |
+| Benchmark + profiling harness (`benchmarks/`, `profiling/`, `scripts/run_suite.sh`) | 3 | ✅ Done, debugged on Colab T4 |
+| Baseline benchmarking + profiling on **T4** | 3 | ✅ Done — see Results and the 2026-10-07 log entry (Nsight Compute vision/prefill still running) |
+| Baseline benchmarking + profiling on **RTX PRO 5000** | 3–4 | ⏳ Next — waiting for access details |
+| Bottleneck analysis | 4 | 🟡 First picture from T4: decode is launch-overhead bound (see roadmap) |
 | **Evaluation 1:** baseline & problem understanding | 5 | — |
 | Main optimization work | 6 | — |
 | **Evaluation 2:** working prototype | 7 | — |
@@ -86,16 +87,17 @@ Baseline → Benchmark → Profile → Identify bottleneck → Optimize → Benc
 
 ---
 
-## Optimization roadmap (hypotheses to confirm by profiling)
+## Optimization roadmap (ordered by evidence so far)
 
 | # | Candidate | Targets | Expected effect |
 |---|---|---|---|
-| 1 | Fused gated short-conv CUDA kernel: `B·x → causal conv1d (k=3) → C·y` plus in-place conv-state update | 10 conv layers, decode & prefill | Fewer launches, no intermediate memory traffic |
-| 2 | Fused residual-add + RMSNorm; fused QK-RMSNorm + RoPE | All 16 layers | Fewer launches, lower memory traffic |
-| 3 | Merged QKV and gate/up projections | Linear layers | Fewer, larger GEMMs/GEMVs |
-| 4 | CUDA graphs / persistent decode kernel, with a static KV cache instead of the `torch.cat`-grown cache | Decode loop | Remove CPU and launch overhead |
-| 5 | Low-precision weights (INT8 / FP8 / NVFP4) GEMV for decode | Bandwidth-bound decode | Fewer bytes per token → speed and energy |
-| 6 | Unpadded (varlen) vision encoder attention, fused LayerNorm/GELU | SigLIP2 on multi-tile images | Faster TTFT for high-res images |
+| 1 | CUDA graphs / persistent decode kernel, with a static KV cache instead of the `torch.cat`-grown cache | Decode loop | Remove CPU and launch overhead (T4: GPU busy only ~33 % of a decode step) |
+| 2 | Fused residual-add + RMSNorm; fused QK-RMSNorm + RoPE | All 16 layers | RMSNorm alone is ~7 kernels × 45 calls ≈ 315 of 788 kernels per step |
+| 3 | Fused gated short-conv CUDA kernel: `B·x → causal conv1d (k=3) → C·y` plus in-place conv-state update | 10 conv layers, decode & prefill | Fewer launches, no intermediate memory traffic |
+| 4 | Attention without the SDPA FP32 math fallback (GQA-aware fused attention) | LM prefill & decode | T4 1080p prefill: ~230 of 634 ms is FP32 math-path attention; check whether it also happens on Blackwell |
+| 5 | Merged QKV and gate/up projections | Linear layers | Fewer, larger GEMVs (GEMVs already run at ~80 % of peak bandwidth) |
+| 6 | Low-precision weights (INT8 / FP8 / NVFP4) GEMV for decode | Decode once overhead is gone | Fewer bytes per token → speed and energy |
+| 7 | Unpadded (varlen) vision encoder attention, fused LayerNorm/GELU | SigLIP2 on multi-tile images | Faster TTFT for high-res images (~70 ms per tile on T4) |
 
 **Back-of-envelope decode bound:** about 2.34 GB of weights are read per token. At about 1.34 TB/s, that gives roughly 1.7 ms/token, or about 575 tokens/s at batch 1. The attention layers' KV cache is only about 12 KB per token, so KV-cache compression is **not** a priority for this model.
 
@@ -194,11 +196,22 @@ T4 caveats: no BF16 (runs in FP16), 70 W power cap with throttling, shared VM. T
 
 ## Results
 
-_No measurements yet. The baseline numbers will appear here after Week 3._
+### Baseline, Colab Tesla T4 (FP16, HF transformers 5.19.0 eager, SDPA, batch 1)
 
-| Configuration | TTFT (ms) | Decode (tok/s) | Energy (J/token) | Peak mem (GB) | Output matches baseline |
-|---|---|---|---|---|---|
-| HF transformers, eager, BF16 (baseline) | – | – | – | – | – |
+Medians of 10 repeats; TPOT and J/token from 128-token vs 1-token runs. Raw data and per-run configs: `results/raw/20261007-134718_T4_baseline_full/`. Analysis in the [2026-10-07 log entry](docs/experiment_log.md).
+
+| Workload | Image tokens | TTFT (ms) | of which vision / LM prefill (ms) | TPOT (ms) | Decode (tok/s) | Energy (J/token) | Peak mem (GB) |
+|---|---|---|---|---|---|---|---|
+| text | 0 | 32 | – / 20 | 20.0 | 50 | 1.43 | 3.0 |
+| img_small 640×480 (1 tile) | 234 | 121 | 54 / 44 | 21.3 | 47 | 1.47 | 3.0 |
+| img_hd 1280×720 (3 tiles) | 764 | 402 | 226 / 158 | 20.1 | 50 | 1.42 | 3.2 |
+| img_fhd 1920×1080 (9 tiles) | 2300 | 1319 | 663 / 634 | 20.7 | 48 | 1.47 | 4.7 |
+
+Batch 16 (img_small): 627 tok/s, 0.11 J/token. FP16 outputs are token-identical to FP32.
+
+### Baseline, RTX PRO 5000 Blackwell
+
+_Pending GPU access._
 
 ---
 

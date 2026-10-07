@@ -1,0 +1,12 @@
+{
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variant": "baseline",
+  "workload": "img_small",
+  "gen_len": 32,
+  "batch_size": 1,
+  "warmup": 2,
+  "tag": "baseline",
+  "out": "/content/PAA_Project/profiling/reports"
+}

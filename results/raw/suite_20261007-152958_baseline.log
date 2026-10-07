@@ -1,0 +1,4 @@
+[suite 15:29:58] suite 20261007-152958_baseline variant=baseline steps: ncu ncu_deep summarize
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+Tesla T4, 580.82.07, 70.00 W, 1590 MHz, 5001 MHz
+[suite 15:29:58] START ncu: env NCU_SET=basic LAUNCHES=800 bash profiling/ncu/profile_ncu.sh decode img_small --variant baseline
