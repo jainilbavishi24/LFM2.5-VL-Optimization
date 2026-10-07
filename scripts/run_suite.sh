@@ -66,7 +66,7 @@ run nsys bash profiling/nsys/profile_nsys.sh img_fhd 32 --variant "$VARIANT"
 run ncu env NCU_SET=basic LAUNCHES="${NCU_DECODE_LAUNCHES:-800}" bash profiling/ncu/profile_ncu.sh decode img_small --variant "$VARIANT"
 run ncu env NCU_SET=basic LAUNCHES="${NCU_VISION_LAUNCHES:-500}" bash profiling/ncu/profile_ncu.sh vision img_small --variant "$VARIANT"
 run ncu env NCU_SET=basic LAUNCHES="${NCU_PREFILL_LAUNCHES:-500}" bash profiling/ncu/profile_ncu.sh prefill img_small --variant "$VARIANT"
-run ncu_deep env NCU_SET=full LAUNCHES="${NCU_DEEP_LAUNCHES:-150}" OUT_DIR="profiling/reports/$(date +%Y%m%d-%H%M%S)_ncu_deep_decode_${TAG}" \
+run ncu_deep env NCU_SET=full LAUNCHES="${NCU_DEEP_LAUNCHES:-150}" NCU_LABEL=deep_ \
     bash profiling/ncu/profile_ncu.sh decode img_small --variant "$VARIANT"
 
 if [[ " $STEPS " == *" summarize "* ]]; then

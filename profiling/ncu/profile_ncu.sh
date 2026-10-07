@@ -7,7 +7,8 @@
 #   prefill : language-model prefill kernels
 #   vision  : SigLIP2 vision tower + projector kernels
 #
-# Env: NCU_SET (default "full"; "basic" is ~5x faster), LAUNCHES (max kernels to profile)
+# Env: NCU_SET (default "full"; "basic" is ~5x faster), LAUNCHES (max kernels to profile),
+#      NCU_LABEL (prefix for the phase in the output dir name, e.g. "deep_")
 # Needs GPU performance-counter access (root, or NVreg_RestrictProfilingToAdminUsers=0),
 # otherwise fails with ERR_NVGPUCTRPERM.
 # Writes profiling/reports/<run_id>/{ncu_<phase>.ncu-rep (git-ignored), ncu_<phase>_metrics.csv}
@@ -22,7 +23,7 @@ case "$PHASE" in
     *) echo "phase must be decode|prefill|vision"; exit 1 ;;
 esac
 GPU="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1 | sed 's/NVIDIA //; s/Tesla //; s/[^A-Za-z0-9]//g')"
-OUT="${OUT_DIR:-$ROOT/profiling/reports/$(date +%Y%m%d-%H%M%S)_${GPU}_ncu_${PHASE}_${WL}}"
+OUT="${OUT_DIR:-$ROOT/profiling/reports/$(date +%Y%m%d-%H%M%S)_${GPU}_ncu_${NCU_LABEL:-}${PHASE}_${WL}}"
 mkdir -p "$OUT"
 REP="$OUT/ncu_${PHASE}"
 # Always collected (also with NCU_SET=basic) and exported to the CSV: time, DRAM traffic / % of peak bandwidth,

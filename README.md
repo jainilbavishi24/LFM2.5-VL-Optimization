@@ -19,7 +19,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on a Blackw
 | Model change: Qwen2-VL → LFM2.5-VL-1.6B | 2 | ✅ Done — see [docs/model_selection.md](docs/model_selection.md) |
 | Code reading: inference pipeline | 2–3 | ✅ Done — code map in [docs/inference_pipeline.md](docs/inference_pipeline.md); stage-by-stage explainer with shapes and team split in [docs/pipeline_explained.md](docs/pipeline_explained.md) |
 | Benchmark + profiling harness (`benchmarks/`, `profiling/`, `scripts/run_suite.sh`) | 3 | ✅ Done, debugged on Colab T4 |
-| Baseline benchmarking + profiling on **T4** | 3 | ✅ Done — see Results and the 2026-10-07 log entry (Nsight Compute vision/prefill still running) |
+| Baseline benchmarking + profiling on **T4** | 3 | ✅ Done — see Results and the 2026-10-07 log entry |
 | Baseline benchmarking + profiling on **RTX PRO 5000** | 3–4 | ⏳ Next — waiting for access details |
 | Bottleneck analysis | 4 | 🟡 First picture from T4: decode is launch-overhead bound (see roadmap) |
 | **Evaluation 1:** baseline & problem understanding | 5 | — |
@@ -97,7 +97,7 @@ Baseline → Benchmark → Profile → Identify bottleneck → Optimize → Benc
 | 4 | Attention without the SDPA FP32 math fallback (GQA-aware fused attention) | LM prefill & decode | T4 1080p prefill: ~230 of 634 ms is FP32 math-path attention; check whether it also happens on Blackwell |
 | 5 | Merged QKV and gate/up projections | Linear layers | Fewer, larger GEMVs (GEMVs already run at ~80 % of peak bandwidth) |
 | 6 | Low-precision weights (INT8 / FP8 / NVFP4) GEMV for decode | Decode once overhead is gone | Fewer bytes per token → speed and energy |
-| 7 | Unpadded (varlen) vision encoder attention, fused LayerNorm/GELU | SigLIP2 on multi-tile images | Faster TTFT for high-res images (~70 ms per tile on T4) |
+| 7 | Better vision-encoder attention (head dim 72, unpadded/varlen tiles), fused LayerNorm/GELU | SigLIP2, every image | Vision attention is 43 % of vision time at 24 % occupancy (T4); ~70 ms per tile |
 
 **Back-of-envelope decode bound:** about 2.34 GB of weights are read per token. At about 1.34 TB/s, that gives roughly 1.7 ms/token, or about 575 tokens/s at batch 1. The attention layers' KV cache is only about 12 KB per token, so KV-cache compression is **not** a priority for this model.
 

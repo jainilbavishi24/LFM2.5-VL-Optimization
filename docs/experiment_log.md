@@ -48,6 +48,25 @@ Batch sweep (img_small, 128 tokens): TPOT 20.3 → 25.5 ms from bs 1 → 16, i.e
 7. **FP16 is numerically safe on T4:** greedy outputs identical to FP32 for 64 tokens (text and image).
 8. **Instrumentation overhead:** phase hooks cost ≤ ~7 % TPOT (20.75 vs 22.14 ms, within run-to-run noise); headline TPOT should come from `--no-phases` runs.
 
+**Nsight Compute (img_small; clocks locked to base, so times are inflated; use the ratios):**
+Reports: `profiling/reports/20261007-1*_T4_ncu_*` (`.ncu-rep` local only, `*_metrics.csv` in git).
+
+| Phase / kernel | Count | Share of phase time | DRAM % of peak | SM % of peak | Occupancy % | Grid |
+| --- | --- | --- | --- | --- | --- | --- |
+| Decode: cuBLAS GEMV (weights) | 105 | 67 % | 89 (median) | 55 | 56 | 1536 blocks |
+| Decode: lm_head GEMV | 1 | 8 % | 96 | – | – | – |
+| Decode: elementwise kernels | ~580 | ~20 % | 1–4 | 0.1 | 13 | **1 block** |
+| Decode: reduce (RMSNorm mean) | 54 | 3 % | 1.7 | 0.3 | 46 | **1 block** |
+| Vision: SigLIP2 attention (mem-efficient FMHA, sm75) | 27 | **43 %** | 5.5 | 21.6 | 24 | 512 blocks |
+| Vision: GEMMs (tensor cores) | 165 | 48 % | 17 | 69 | 25 | 36 blocks |
+| Vision: LayerNorm | 55 | 3 % | 31 | 52 | 86 | 1024 blocks |
+| LM prefill (252 tokens): GEMMs | 59 | 70 % | 31–39 | – | – | – |
+| LM prefill: elementwise/copy/reduce | ~400 | 22 % | 30–45 | – | – | – |
+
+- The decode elementwise/reduce kernels are launched with a **single thread block** (1 of 40 SMs): they are pure launch latency, which confirms the fusion + CUDA-graph direction.
+- **Vision attention is the biggest single vision cost and is badly utilized** (neither compute- nor memory-bound, 24 % occupancy). Head dim 72 (1152 / 16 heads) is an awkward size for attention kernels; each 512×512 tile is a 1024-token sequence (936 real + padding). A new optimization candidate for TTFT.
+- One decode step under ncu: 800 kernels, 3.7 GB DRAM traffic (≈ the 2.34 GB of weights + lm_head + activations/copies).
+
 **Tooling lessons:**
 
 - Nsight Compute `--set full` over a whole decode step (~800 kernels) needed >9 GB host RAM and >75 min on Colab and was OOM-killed (exit 137). Now: `basic` set + explicit DRAM/SM metrics over whole phases, `full` set only on the first ~150 decode kernels (`ncu_deep` step).
@@ -57,7 +76,7 @@ Batch sweep (img_small, 128 tokens): TPOT 20.3 → 25.5 ms from bs 1 → 16, i.e
 - `pkill -f 'ncu '` also killed the remote shell running it (its own command line matched). Kill by PID.
 - Colab runs vary: occasional repeats are 1.5× slower (shared VM); always report medians.
 
-**Next step:** finish Nsight Compute (vision, prefill, deep decode); then optimization #1 candidates by expected payoff: (a) remove launch overhead (CUDA graphs + static cache), (b) fused RMSNorm/residual and fused gated short-conv to cut kernel count, (c) fix the attention path (no FP32 math fallback). Prepare the RTX PRO 5000 session.
+**Next step:** optimization candidates by expected payoff: (a) remove launch overhead (CUDA graphs + static cache), (b) fused RMSNorm/residual and fused gated short-conv to cut kernel count, (c) fix the attention path (no FP32 math fallback), (d) vision attention (head dim 72, 24 % occupancy). Prepare the RTX PRO 5000 session.
 
 ---
 
