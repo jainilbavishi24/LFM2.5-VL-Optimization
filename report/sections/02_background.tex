@@ -1,0 +1,28 @@
+\section{Background: LFM2.5-VL}
+\label{sec:background}
+
+LFM2.5-VL-1.6B~\cite{lfm2} consists of three components.
+
+\paragraph{Vision encoder.} A SigLIP2 NaFlex so400m ViT~\cite{siglip2} (27 layers, hidden size 1152,
+16 heads, patch size 16, $\sim$400M parameters). Images up to $512\times512$ are processed at native
+aspect ratio. Larger images are split into 2--10 tiles of $512\times512$ plus a thumbnail.
+
+\paragraph{Projector.} A $2\times2$ pixel-unshuffle (reducing image tokens by $4\times$) followed by a
+two-layer MLP ($4608 \rightarrow 2048 \rightarrow 2048$, GELU), which gives 64--256 tokens per tile.
+
+\paragraph{Language model.} LFM2.5-1.2B: 16 layers, of which 10 are \emph{gated short-convolution}
+blocks and 6 are grouped-query attention blocks (32 query / 8 KV heads, head size 64, QK-RMSNorm, RoPE).
+Every layer is followed by a SwiGLU MLP (feed-forward width 8192), with pre-RMSNorm and residual
+connections throughout. The gated short-convolution block computes
+\begin{equation}
+  [B, C, x] = W_\text{in} h,\qquad
+  u = \operatorname{conv1d}_{k=3}(B \odot x),\qquad
+  y = W_\text{out}(C \odot u),
+\end{equation}
+where $\operatorname{conv1d}_{k=3}$ is a causal depthwise convolution. During decoding it only needs a
+constant-size state per layer. Because only 6 layers use attention, the KV cache is $\sim$12\,KB per token.
+
+\todo{Figure: architecture diagram (figures/architecture.pdf).}
+
+\paragraph{Target hardware.} NVIDIA RTX PRO 5000 Blackwell (compute capability 12.0).
+\todo{Confirm SM count, memory size/bandwidth, TDP, clocks from nvidia-smi / deviceQuery.}

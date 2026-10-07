@@ -1,0 +1,46 @@
+# Upstream reference code (pinned commits listed in README.md)
+third_party/
+
+# Model weights
+models/
+*.safetensors
+*.gguf
+*.bin
+
+# Profiler outputs (large; keep the scripts, not the reports)
+profiling/**/*.nsys-rep
+profiling/**/*.ncu-rep
+profiling/**/*.sqlite
+profiling/**/*.qdrep
+profiling/**/trace.json
+.pull.tar.gz
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# CUDA / C++ build artifacts
+build/
+*.o
+*.so
+*.ptx
+*.cubin
+
+# LaTeX build artifacts
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.bbl
+report/*.blg
+report/*.fls
+report/*.fdb_latexmk
+report/*.synctex.gz
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,41 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{siunitx}
+
+\graphicspath{{figures/}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+
+\title{Improving Inference Speed and Energy Efficiency of a Vision-Language Model:\\
+       Profiling and CUDA-Level Optimization of LFM2.5-VL-1.6B on NVIDIA Blackwell}
+\author{Jainil Bavishi (2023102045) \and Gautam Gandhi (2023102059) \and Bibek Singh Dhody (2023101054)\\[4pt]
+        \small CS3.406 Programming AI Accelerators, Monsoon 2026}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\todo{Write last: problem, approach, key results (speedup, J/token), quality impact.}
+\end{abstract}
+
+\input{sections/01_introduction}
+\input{sections/02_background}
+\input{sections/03_setup}
+\input{sections/04_baseline_profiling}
+\input{sections/05_optimizations}
+\input{sections/06_results}
+\input{sections/07_quality}
+\input{sections/08_discussion}
+\input{sections/09_conclusion}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

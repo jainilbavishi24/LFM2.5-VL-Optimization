@@ -1,0 +1,18 @@
+# PyTorch + torchvision are installed separately by scripts/setup_env.sh
+# (they need a CUDA 12.8+ build for Blackwell / sm_120).
+
+# Model + baseline
+transformers==5.19.0
+accelerate
+pillow
+huggingface_hub
+
+# Measurement & analysis
+nvidia-ml-py        # NVML: power / energy / clocks
+numpy
+pandas
+matplotlib
+
+# Building & testing our CUDA kernels
+ninja
+pytest

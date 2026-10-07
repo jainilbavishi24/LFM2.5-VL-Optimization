@@ -1,0 +1,12 @@
+\section{Baseline and Profiling}
+\label{sec:baseline}
+
+\todo{Baseline numbers table (HF transformers eager BF16; + torch.compile / causal-conv1d reference).}
+
+\todo{Nsight Systems timeline: GPU busy vs idle, launch gaps, kernels per decode step.}
+
+\todo{Kernel time breakdown (GEMV / elementwise / norm / conv / attention / lm\_head).}
+
+\todo{Roofline-style analysis: achieved DRAM bandwidth vs peak; decode floor $\approx$ 2.34\,GB/token.}
+
+\todo{Identified bottlenecks, with evidence.}
