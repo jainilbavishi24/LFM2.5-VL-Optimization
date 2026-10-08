@@ -4,6 +4,9 @@
 #   bash scripts/colab/colab.sh up                 # create session (T4) + push code + install deps + download model
 #   bash scripts/colab/colab.sh push               # re-upload code after local edits (keeps remote results/models)
 #   bash scripts/colab/colab.sh run "<command>"    # run a shell command in /content/PAA_Project on the VM
+#   bash scripts/colab/colab.sh bg <job> "<cmd>"   # same, but detached on the VM (survives CLI disconnects);
+#                                                  #   output in /content/jobs/<job>.out — use for anything > ~5 min
+#   bash scripts/colab/colab.sh log <job> [n]      # last n lines (default 20) of a detached job's output
 #   bash scripts/colab/colab.sh pull <dir>         # download a remote dir (relative to project) into the same local path
 #                                                  #   PULL_EXCLUDE='*.ncu-rep' skips matching files
 #   bash scripts/colab/colab.sh down               # stop the session (ALWAYS do this when finished)
@@ -42,6 +45,10 @@ case "${1:-}" in
         ;;
     push) push ;;
     run) remote "$2" ;;
+    bg)
+        remote "mkdir -p /content/jobs && setsid nohup bash -lc $(printf '%q' "$3; echo JOB_EXIT=\$?") > /content/jobs/$2.out 2>&1 < /dev/null & echo started job $2" 120
+        ;;
+    log) remote "tail -n ${3:-20} /content/jobs/$2.out" 120 ;;
     pull)
         rel="${2%/}"
         excl=""; if [[ -n "${PULL_EXCLUDE:-}" ]]; then excl="--exclude=$PULL_EXCLUDE"; fi

@@ -5,6 +5,9 @@ Warm-up runs happen first; the measured request is wrapped in cudaProfilerStart/
 Phases are NVTX push/pop ranges (vision_tower, projector, lm_prefill, lm_decode, lm_head), so e.g.
 `ncu --nvtx --nvtx-include "lm_decode/"` profiles only decode-step kernels.
 
+`--start-at-decode-step N` starts the capture only at the N-th decode step (context = prompt + N tokens),
+to profile late, long-context decode steps without capturing everything before them.
+
 Used by profiling/nsys/profile_nsys.sh and profiling/ncu/profile_ncu.sh.
 """
 
@@ -32,7 +35,11 @@ def main():
     ap.add_argument("--gen-len", type=int, default=16)
     ap.add_argument("--batch-size", type=int, default=1)
     ap.add_argument("--warmup", type=int, default=2)
+    ap.add_argument("--start-at-decode-step", type=int, default=0,
+                    help="start profiling at this decode step (0 = from the beginning of the request)")
     a = ap.parse_args()
+    if a.start_at_decode_step >= a.gen_len:
+        ap.error("--start-at-decode-step must be < --gen-len")
 
     net, processor = load(a.model, a.dtype, a.attn)
     net = apply_variant(a.variant, net, processor)
@@ -45,11 +52,27 @@ def main():
         for _ in range(a.warmup):
             net.generate(**inputs, **gen)
         torch.cuda.synchronize()
+        handle = None
+        if a.start_at_decode_step > 0:
+            # LM call 0 is the prefill, call k is decode step k. Registered before the NVTX hooks so the
+            # profiler is already running when that step's range is pushed.
+            calls = {"n": 0}
+
+            def start_late(module, args):
+                if calls["n"] == a.start_at_decode_step:
+                    torch.cuda.synchronize()
+                    torch.cuda.profiler.start()
+                calls["n"] += 1
+
+            handle = net.model.language_model.register_forward_pre_hook(start_late)
         with PhaseInstrumentor(net, modes=("nvtx",)).attached():
-            torch.cuda.profiler.start()
+            if handle is None:
+                torch.cuda.profiler.start()
             net.generate(**inputs, **gen)
             torch.cuda.synchronize()
             torch.cuda.profiler.stop()
+        if handle is not None:
+            handle.remove()
     print("[run_once] done")
 
 

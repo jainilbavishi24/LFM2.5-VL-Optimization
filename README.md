@@ -187,7 +187,8 @@ We have unlimited Colab T4 access, so all scripts are developed and debugged the
 
 ```bash
 bash scripts/colab/colab.sh up                       # T4 session + code + deps + model weights
-bash scripts/colab/colab.sh run "bash scripts/run_suite.sh"
+bash scripts/colab/colab.sh bg suite "bash scripts/run_suite.sh"   # long jobs: detached on the VM
+bash scripts/colab/colab.sh log suite                              # check progress
 bash scripts/colab/colab.sh pull results/raw         # copy results back (PULL_EXCLUDE='*.ncu-rep' for big files)
 bash scripts/colab/colab.sh down                     # always stop the session
 ```

@@ -8,7 +8,8 @@
 #   vision  : SigLIP2 vision tower + projector kernels
 #
 # Env: NCU_SET (default "full"; "basic" is ~5x faster), LAUNCHES (max kernels to profile),
-#      NCU_LABEL (prefix for the phase in the output dir name, e.g. "deep_")
+#      NCU_LABEL (prefix for the phase in the output dir name, e.g. "deep_"), GEN (new tokens to generate)
+# Late decode step:  GEN=520 NCU_LABEL=step512_ bash profiling/ncu/profile_ncu.sh decode img_small --start-at-decode-step 512
 # Needs GPU performance-counter access (root, or NVreg_RestrictProfilingToAdminUsers=0),
 # otherwise fails with ERR_NVGPUCTRPERM.
 # Writes profiling/reports/<run_id>/{ncu_<phase>.ncu-rep (git-ignored), ncu_<phase>_metrics.csv}
@@ -17,9 +18,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/setup_profil
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PHASE="${1:-decode}"; WL="${2:-img_small}"; shift $(( $# > 2 ? 2 : $# ))
 case "$PHASE" in
-    decode)  RANGES=(--nvtx-include "lm_decode/" --nvtx-include "lm_head/"); GEN=3 ;;
-    prefill) RANGES=(--nvtx-include "lm_prefill/" --nvtx-include "lm_head_prefill/"); GEN=1 ;;
-    vision)  RANGES=(--nvtx-include "vision_tower/" --nvtx-include "projector/"); GEN=1 ;;
+    decode)  RANGES=(--nvtx-include "lm_decode/" --nvtx-include "lm_head/"); GEN="${GEN:-3}" ;;
+    prefill) RANGES=(--nvtx-include "lm_prefill/" --nvtx-include "lm_head_prefill/"); GEN="${GEN:-1}" ;;
+    vision)  RANGES=(--nvtx-include "vision_tower/" --nvtx-include "projector/"); GEN="${GEN:-1}" ;;
     *) echo "phase must be decode|prefill|vision"; exit 1 ;;
 esac
 GPU="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1 | sed 's/NVIDIA //; s/Tesla //; s/[^A-Za-z0-9]//g')"
