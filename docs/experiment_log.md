@@ -15,6 +15,19 @@ Entry template:
 
 ---
 
+## 2026-10-08: Optimization plan written
+
+**What we did:** turned the T4 profiling into a step-by-step plan with exact code locations, evidence, design, checks and open questions: [notes/optimization_plan.md](notes/optimization_plan.md).
+
+**New details found while writing it:**
+
+- Per-op count of one decode step (791 kernels): 93 GEMV, ~360 RMSNorm pieces, ~130 attention non-GEMM (RoPE, KV `cat`, `repeat_kv`, math-path SDPA), ~70 short-conv non-GEMM, 32 SwiGLU, 32 residual adds, ~30 generate() glue.
+- Cause of the FP32 math attention path: with an attention mask present, transformers' `use_gqa_in_sdpa` (sdpa_attention.py L30-L37) returns False, so K/V are expanded to 32 heads with `repeat_kv` every step (the large per-step copies) and SDPA gets an explicit mask, which on the T4 lands on the math backend. Whether the mask can be dropped at batch 1 is open question Q5.2.
+
+**Next step:** O1 (static cache + CUDA graphs) and O2 (fused RMSNorm) on the T4; O0 reference baselines in the same Colab run.
+
+---
+
 ## 2026-10-07: Baseline characterization on Colab T4
 
 **Goal:** Build the benchmark/profiling harness, debug it on the free Colab T4, and get a first baseline + bottleneck picture before our limited RTX PRO 5000 hours.
@@ -41,7 +54,7 @@ Batch sweep (img_small, 128 tokens): TPOT 20.3 → 25.5 ms from bs 1 → 16, i.e
 
 1. **Decode is launch/CPU-overhead bound, not GPU bound.** 788 kernels per decode step; GPU kernel time ≈ 11 ms of a ~20 ms step (profiler: GPU busy 32–34 %). TPOT is the same (~20–22 ms) whether the SM clock is ~600 or ~1560 MHz, and batching 16× costs only +25 % step time.
 2. **The weight GEMVs are already efficient:** 92 GEMVs/step (exactly the 92 linear layers) are 85 % of decode kernel time and run at ~80 % of T4 peak DRAM bandwidth (lm_head 96 %, Nsight Compute). Not the place to win.
-3. **~680 small kernels per step use only 2–5 % of peak bandwidth.** Main sources: RMSNorm decomposed into ~7 kernels × 45 norms/step (fp32 cast, pow, mean, add, rsqrt, mul, cast), elementwise gates in the short-conv blocks, dtype copies, KV-cache `torch.cat`.
+3. **~690 small kernels per step use only 1–5 % of peak bandwidth.** Main sources: RMSNorm decomposed into 8 kernels × 45 norms/step = ~360 kernels (fp32 cast, pow, mean, add eps, rsqrt, mul, cast back, mul weight; corrected 2026-10-08 from the per-op counts, first estimate was ~315), elementwise gates in the short-conv blocks, dtype copies, KV-cache `torch.cat`.
 4. **SDPA falls back to the *math* backend for the LM attention** (GQA + mask, no flash on Turing): FP32 bmm + softmax + `isneginf/where/all` safe-softmax kernels. Cheap in decode for short contexts, but for the 1080p image it materializes 32×2327×2327 FP32 scores in prefill: ~230 ms of the 634 ms LM prefill (softmax 90 ms, mask add 50 ms, where 37 ms, isneginf 19 ms, casts ~30 ms), and copies the whole KV cache to FP32 every decode step. Likely T4-specific (flash backend supports GQA on sm_80+) → verify on RTX PRO 5000.
 5. **TTFT for high-res images is vision + prefill compute:** ~70 ms per tile in SigLIP2 (GEMMs 321 ms + mem-efficient attention 274 ms for 9 tiles) and LM prefill grows with image tokens.
 6. **Energy:** the T4 sits at its 70 W power cap (avg ~65 W) during inference and throttles (SM clock 465–1590 MHz). Decode ≈ 1.45 J/token (≈ 1.1 J/token above idle). Since time is overhead-bound, removing overhead should cut energy/token roughly proportionally.

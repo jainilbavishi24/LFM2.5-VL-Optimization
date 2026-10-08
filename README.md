@@ -5,7 +5,7 @@
 **Model:** [LiquidAI/LFM2.5-VL-1.6B](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B)
 **Hardware:** NVIDIA RTX PRO 5000 Blackwell (single GPU)
 
-> _Last updated: 2026-10-07 (T4 baseline results)_
+> _Last updated: 2026-10-08 (optimization plan)_
 
 We profile the inference of the LFM2.5-VL-1.6B vision-language model on a Blackwell GPU, find where time and energy actually go, and remove those bottlenecks with **GPU/CUDA-level optimizations**: custom and fused kernels, CUDA graphs, and low-precision GEMV/GEMM. Every optimization is measured against a reproducible baseline for latency, throughput, energy per token, and output quality.
 
@@ -21,7 +21,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on a Blackw
 | Benchmark + profiling harness (`benchmarks/`, `profiling/`, `scripts/run_suite.sh`) | 3 | ✅ Done, debugged on Colab T4 |
 | Baseline benchmarking + profiling on **T4** | 3 | ✅ Done — see Results and the 2026-10-07 log entry |
 | Baseline benchmarking + profiling on **RTX PRO 5000** | 3–4 | ⏳ Next — waiting for access details |
-| Bottleneck analysis | 4 | 🟡 First picture from T4: decode is launch-overhead bound (see roadmap) |
+| Bottleneck analysis | 4 | ✅ on T4: decode is launch-overhead bound; plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | — |
 | Main optimization work | 6 | — |
 | **Evaluation 2:** working prototype | 7 | — |
@@ -89,10 +89,12 @@ Baseline → Benchmark → Profile → Identify bottleneck → Optimize → Benc
 
 ## Optimization roadmap (ordered by evidence so far)
 
+The detailed plan (exact code locations, evidence, design, checks and open questions for every step, with TODO checkboxes) is in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md).
+
 | # | Candidate | Targets | Expected effect |
 |---|---|---|---|
 | 1 | CUDA graphs / persistent decode kernel, with a static KV cache instead of the `torch.cat`-grown cache | Decode loop | Remove CPU and launch overhead (T4: GPU busy only ~33 % of a decode step) |
-| 2 | Fused residual-add + RMSNorm; fused QK-RMSNorm + RoPE | All 16 layers | RMSNorm alone is ~7 kernels × 45 calls ≈ 315 of 788 kernels per step |
+| 2 | Fused residual-add + RMSNorm; fused QK-RMSNorm + RoPE | All 16 layers | RMSNorm alone is 8 kernels × 45 calls ≈ 360 of 791 kernels per step |
 | 3 | Fused gated short-conv CUDA kernel: `B·x → causal conv1d (k=3) → C·y` plus in-place conv-state update | 10 conv layers, decode & prefill | Fewer launches, no intermediate memory traffic |
 | 4 | Attention without the SDPA FP32 math fallback (GQA-aware fused attention) | LM prefill & decode | T4 1080p prefill: ~230 of 634 ms is FP32 math-path attention; check whether it also happens on Blackwell |
 | 5 | Merged QKV and gate/up projections | Linear layers | Fewer, larger GEMVs (GEMVs already run at ~80 % of peak bandwidth) |
@@ -115,7 +117,7 @@ PAA_Project/
 │   ├── inference_pipeline.md ← code walkthrough of the inference path, with file/line refs
 │   ├── pipeline_explained.md ← every stage explained with tensor shapes; who studies what
 │   ├── experiment_log.md     ← dated log of experiments, measurements, decisions
-│   └── notes/                ← scratch notes, reading notes
+│   └── notes/                ← working notes; optimization_plan.md = plan + TODO + open questions
 ├── src/lfm2opt/              ← our Python package: model loading, runners, metrics, kernel bindings
 ├── kernels/                  ← custom CUDA/C++ kernels (fused short-conv, RMSNorm, GEMV, ...)
 ├── benchmarks/               ← benchmark scripts (latency / throughput / energy)
