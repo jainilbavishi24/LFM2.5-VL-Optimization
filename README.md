@@ -19,7 +19,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Model change: Qwen2-VL → LFM2.5-VL-1.6B | 2 | ✅ Done — see [docs/model_selection.md](docs/model_selection.md) |
 | Code reading: inference pipeline | 2–3 | ✅ Done — code map in [docs/inference_pipeline.md](docs/inference_pipeline.md); stage-by-stage explainer with shapes and team split in [docs/pipeline_explained.md](docs/pipeline_explained.md) |
 | Benchmark + profiling harness (`benchmarks/`, `profiling/`, `scripts/run_suite.sh`) | 3 | ✅ Done, debugged on Colab T4 |
-| Baseline benchmarking + profiling on **T4** | 3 | ✅ Done — see Results and the 2026-10-07 log entry |
+| Baseline benchmarking + profiling on **T4** | 3 | ✅ Complete (incl. long-context and full-prefill Nsight Compute, 2026-10-11) — see Results and the log |
 | Baseline benchmarking + profiling on **L40** (6 h/week over SSH) | 4–5 | ⏳ Next — session plan in [docs/notes/l40_sessions.md](docs/notes/l40_sessions.md); waiting for access details |
 | Bottleneck analysis | 4 | ✅ on T4: decode is launch-overhead bound; plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | — |

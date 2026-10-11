@@ -32,9 +32,18 @@ Entry template:
 - Decode GPU time grows **+23 %** from 250 to 2330 tokens of context; the weight GEMVs stay flat, so all of the growth is attention-related.
 - DRAM traffic grows by **0.93 GB per step**, while the actual KV cache at 2330 tokens is only ~28 MB (12 KB/token): **~33× more traffic than the cache size**, from `repeat_kv` expanding K/V to 32 heads, FP16→FP32 casts of the math path, the FP32 score tensors and the `torch.cat` re-allocation. A GQA-aware attention over a static cache (O1 + O5) should remove almost all of it.
 - **Vision, 9 tiles:** same pattern as 1 tile, scaled ~linearly (8.5× time for 9 tiles): attention (mem-efficient FMHA) **43 % of vision time** at SM 23 %, DRAM 6 %, occupancy 25 %; GEMMs 49 % at SM 72 %.
-- **Prefill (first ~60 % of the kernels only, see lesson):** at 2327 tokens, the math-path attention (FP32 `sgemm` 15 %, FP32 softmax 11.5 %, plus mask elementwise work) is ~35–40 % of prefill time, GEMMs 42 %.
+- **Prefill, complete captures (796 kernels = all of prefill + lm_head; `20261011-1*_T4_ncu_full_prefill_*`):**
 
-**Lesson:** the `LAUNCHES` caps were too low for prefill: the PyTorch profiler counts 795–845 prefill kernels and 430–460 vision + 7–63 projector kernels, but prefill was capped at 500 (vision at 500 was enough for 1 tile, missed the last projector call for 9 tiles). Caps raised in `run_suite.sh` (prefill 1000, vision 600); complete prefill captures for img_small and img_fhd are being re-run.
+  | LM prefill | GEMMs (FP16 tensor cores) | FP32 math-path attention (softmax + FP32 bmm) | Elementwise / copy / reduce |
+  | --- | --- | --- | --- |
+  | img_small, 252 tokens | 67 % | ~4 % | ~23 % |
+  | img_fhd, 2327 tokens | 37 % | **30 %** (softmax 13 %, sgemm 17 %) | ~30 % (incl. mask add / where / isneginf) |
+
+  So at long prompts the attention math path is the second-largest prefill cost (O5); at short prompts prefill is GEMM-bound.
+
+**Lesson:** the `LAUNCHES` caps were too low for prefill: the PyTorch profiler counts 795–845 prefill kernels and 430–460 vision + 7–63 projector kernels, but prefill was capped at 500 (vision at 500 was enough for 1 tile, missed the last projector call for 9 tiles). Caps raised in `run_suite.sh` (prefill 1000, vision 600) and prefill re-captured completely for both inputs (the partial 500-kernel captures are kept but superseded).
+
+**Status:** T4 baseline profiling is complete.
 
 ---
 
