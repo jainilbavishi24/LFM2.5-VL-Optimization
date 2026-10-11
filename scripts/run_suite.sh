@@ -80,12 +80,13 @@ run torch_prof $P --workload img_fhd
 run nsys bash profiling/nsys/profile_nsys.sh img_small 32 --variant "$VARIANT"
 run nsys bash profiling/nsys/profile_nsys.sh img_fhd 32 --variant "$VARIANT"
 
-# ncu: "basic" set + our DRAM/SM metrics over whole phases (one decode step is ~800 kernels in the baseline).
+# ncu: "basic" set + our DRAM/SM metrics over whole phases. Baseline kernel counts (torch profiler): decode step ~790,
+# vision 430-460 + projector 7-63 (1-9 tiles), LM prefill 795-845. LAUNCHES must cover them.
 # The "full" set over 800 kernels needs >9 GB host RAM and >75 min on a T4 (OOM-killed on Colab), so the
 # full set is only used in ncu_deep, on the first decode kernels (= 2 conv layers + 1 attention layer).
 run ncu env NCU_SET=basic LAUNCHES="${NCU_DECODE_LAUNCHES:-800}" bash profiling/ncu/profile_ncu.sh decode img_small --variant "$VARIANT"
-run ncu env NCU_SET=basic LAUNCHES="${NCU_VISION_LAUNCHES:-500}" bash profiling/ncu/profile_ncu.sh vision img_small --variant "$VARIANT"
-run ncu env NCU_SET=basic LAUNCHES="${NCU_PREFILL_LAUNCHES:-500}" bash profiling/ncu/profile_ncu.sh prefill img_small --variant "$VARIANT"
+run ncu env NCU_SET=basic LAUNCHES="${NCU_VISION_LAUNCHES:-600}" bash profiling/ncu/profile_ncu.sh vision img_small --variant "$VARIANT"
+run ncu env NCU_SET=basic LAUNCHES="${NCU_PREFILL_LAUNCHES:-1000}" bash profiling/ncu/profile_ncu.sh prefill img_small --variant "$VARIANT"
 run ncu_deep env NCU_SET=full LAUNCHES="${NCU_DEEP_LAUNCHES:-150}" NCU_LABEL=deep_ \
     bash profiling/ncu/profile_ncu.sh decode img_small --variant "$VARIANT"
 
@@ -94,8 +95,8 @@ run ncu_deep env NCU_SET=full LAUNCHES="${NCU_DEEP_LAUNCHES:-150}" NCU_LABEL=dee
 run ncu_ctx env NCU_SET=basic LAUNCHES=800 GEN=520 NCU_LABEL=step512_ \
     bash profiling/ncu/profile_ncu.sh decode img_small --variant "$VARIANT" --start-at-decode-step 512 --warmup 1
 run ncu_ctx env NCU_SET=basic LAUNCHES=800 bash profiling/ncu/profile_ncu.sh decode img_fhd --variant "$VARIANT"
-run ncu_ctx env NCU_SET=basic LAUNCHES=500 bash profiling/ncu/profile_ncu.sh vision img_fhd --variant "$VARIANT"
-run ncu_ctx env NCU_SET=basic LAUNCHES=500 bash profiling/ncu/profile_ncu.sh prefill img_fhd --variant "$VARIANT"
+run ncu_ctx env NCU_SET=basic LAUNCHES=600 bash profiling/ncu/profile_ncu.sh vision img_fhd --variant "$VARIANT"
+run ncu_ctx env NCU_SET=basic LAUNCHES=1000 bash profiling/ncu/profile_ncu.sh prefill img_fhd --variant "$VARIANT"
 
 if [[ " $STEPS " == *" summarize "* ]]; then
     for d in results/raw/*_"${TAG}"_*/; do

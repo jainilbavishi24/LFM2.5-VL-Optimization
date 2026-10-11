@@ -15,8 +15,8 @@ Code links point into `third_party/transformers` (v5.19.0), the baseline we opti
 | T4 PyTorch profiler: every kernel → phase + launching op (text, img_small, img_fhd) | ✅ | `profiling/reports/20261007-14*_T4_torchprof_*/{kernels,breakdown}.csv`, `summary.json` |
 | T4 Nsight Systems timelines (img_small, img_fhd) | ✅ | `profiling/reports/20261007-14*_T4_nsys_*` |
 | T4 Nsight Compute: one decode step (800 kernels), vision (433), prefill (500), full-set on 150 decode kernels | ✅ | `profiling/reports/20261007-1*_T4_ncu_*/ *_metrics.csv` |
-| T4 Nsight Compute on a **late** decode step (long context) | ⬜ optional gap | attention / KV-copy cost grows with context |
-| T4 Nsight Compute on **img_fhd** (9 tiles) vision + prefill | ⬜ optional gap | other tools already cover img_fhd |
+| T4 Nsight Compute on a **late** decode step (step 512) and at long context (img_fhd) | ✅ 2026-10-11 | decode +23 % GPU time and +0.93 GB DRAM/step at 2330 context, all attention-related (O1/O5) |
+| T4 Nsight Compute on **img_fhd** (9 tiles) vision + prefill | ✅ vision; 🔄 prefill re-run with complete kernel coverage | `profiling/reports/20261011-*_T4_ncu_*` |
 | **L40: same suite** (`scripts/run_suite.sh`), session 1 of [l40_sessions.md](l40_sessions.md) | ⬜ waiting for access details | needed for Eval 1 |
 | Reference baselines: `torch.compile`, `causal-conv1d` package, vLLM, llama.cpp | ⬜ | see O0 |
 

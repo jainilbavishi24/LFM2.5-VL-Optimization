@@ -15,6 +15,29 @@ Entry template:
 
 ---
 
+## 2026-10-11: T4 Nsight Compute at long context (decode step 512, 1080p input)
+
+**Goal:** close the two profiling gaps of 2026-10-07: decode cost late in a generation / at long context, and vision + prefill on the 9-tile 1080p input.
+
+**Setup:** same as 2026-10-07 (T4, FP16, torch 2.11.0+cu130, transformers 5.19.0, baseline). New option `run_once.py --start-at-decode-step N`. Reports: `profiling/reports/20261011-*_T4_ncu_*` (CSVs in git, `.ncu-rep` local only).
+
+**Results (Nsight Compute; clocks locked to base, so use the ratios):**
+
+| Decode step | Context | GPU time / step | DRAM / step | GEMVs (105) | Elementwise (578) | Attention FP32 bmm (6) | KV `cat` copies |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1, img_small | ~250 | 17.3 ms | 3.70 GB | 11.5 ms (80 % BW) | 3.4 ms | 0.11 ms | 0.09 ms |
+| 512, img_small | ~760 | 18.2 ms | 3.92 GB | 11.5 ms | 4.0 ms | 0.27 ms | 0.12 ms |
+| 1, img_fhd | ~2330 | **21.2 ms** | **4.63 GB** | 11.9 ms | **6.0 ms** | 0.73 ms | 0.24 ms |
+
+- Decode GPU time grows **+23 %** from 250 to 2330 tokens of context; the weight GEMVs stay flat, so all of the growth is attention-related.
+- DRAM traffic grows by **0.93 GB per step**, while the actual KV cache at 2330 tokens is only ~28 MB (12 KB/token): **~33× more traffic than the cache size**, from `repeat_kv` expanding K/V to 32 heads, FP16→FP32 casts of the math path, the FP32 score tensors and the `torch.cat` re-allocation. A GQA-aware attention over a static cache (O1 + O5) should remove almost all of it.
+- **Vision, 9 tiles:** same pattern as 1 tile, scaled ~linearly (8.5× time for 9 tiles): attention (mem-efficient FMHA) **43 % of vision time** at SM 23 %, DRAM 6 %, occupancy 25 %; GEMMs 49 % at SM 72 %.
+- **Prefill (first ~60 % of the kernels only, see lesson):** at 2327 tokens, the math-path attention (FP32 `sgemm` 15 %, FP32 softmax 11.5 %, plus mask elementwise work) is ~35–40 % of prefill time, GEMMs 42 %.
+
+**Lesson:** the `LAUNCHES` caps were too low for prefill: the PyTorch profiler counts 795–845 prefill kernels and 430–460 vision + 7–63 projector kernels, but prefill was capped at 500 (vision at 500 was enough for 1 tile, missed the last projector call for 9 tiles). Caps raised in `run_suite.sh` (prefill 1000, vision 600); complete prefill captures for img_small and img_fhd are being re-run.
+
+---
+
 ## 2026-10-11: Measurement GPU changed to L40 (6 h/week over SSH)
 
 **Change:** we get an **NVIDIA L40 48 GB** (Ada, sm_89, 864 GB/s, 300 W), reached over SSH, **6 hours per team per week**, instead of the RTX PRO 5000 Blackwell (8 h/week) assumed so far. Earlier log entries mentioning the RTX PRO 5000 are kept as written.
