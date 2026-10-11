@@ -3,11 +3,11 @@
 **Course:** CS3.406 Programming AI Accelerators (Monsoon 2026)
 **Team:** Jainil Bavishi (2023102045) · Gautam Gandhi (2023102059) · Bibek Singh Dhody (2023101054)
 **Model:** [LiquidAI/LFM2.5-VL-1.6B](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B)
-**Hardware:** NVIDIA RTX PRO 5000 Blackwell (single GPU)
+**Hardware:** NVIDIA L40 48 GB (Ada, sm_89) over SSH, 6 h/week, for measurements · Google Colab T4 for development · Jetson Orin at the end
 
-> _Last updated: 2026-10-08 (optimization plan)_
+> _Last updated: 2026-10-11 (measurement GPU is now an L40)_
 
-We profile the inference of the LFM2.5-VL-1.6B vision-language model on a Blackwell GPU, find where time and energy actually go, and remove those bottlenecks with **GPU/CUDA-level optimizations**: custom and fused kernels, CUDA graphs, and low-precision GEMV/GEMM. Every optimization is measured against a reproducible baseline for latency, throughput, energy per token, and output quality.
+We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA GPUs (L40, T4, later Jetson), find where time and energy actually go, and remove those bottlenecks with **GPU/CUDA-level optimizations**: custom and fused kernels, CUDA graphs, and low-precision GEMV/GEMM. Every optimization is measured against a reproducible baseline for latency, throughput, energy per token, and output quality.
 
 ---
 
@@ -20,7 +20,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on a Blackw
 | Code reading: inference pipeline | 2–3 | ✅ Done — code map in [docs/inference_pipeline.md](docs/inference_pipeline.md); stage-by-stage explainer with shapes and team split in [docs/pipeline_explained.md](docs/pipeline_explained.md) |
 | Benchmark + profiling harness (`benchmarks/`, `profiling/`, `scripts/run_suite.sh`) | 3 | ✅ Done, debugged on Colab T4 |
 | Baseline benchmarking + profiling on **T4** | 3 | ✅ Done — see Results and the 2026-10-07 log entry |
-| Baseline benchmarking + profiling on **RTX PRO 5000** | 3–4 | ⏳ Next — waiting for access details |
+| Baseline benchmarking + profiling on **L40** (6 h/week over SSH) | 4–5 | ⏳ Next — session plan in [docs/notes/l40_sessions.md](docs/notes/l40_sessions.md); waiting for access details |
 | Bottleneck analysis | 4 | ✅ on T4: decode is launch-overhead bound; plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | — |
 | Main optimization work | 6 | — |
@@ -96,12 +96,12 @@ The detailed plan (exact code locations, evidence, design, checks and open quest
 | 1 | CUDA graphs / persistent decode kernel, with a static KV cache instead of the `torch.cat`-grown cache | Decode loop | Remove CPU and launch overhead (T4: GPU busy only ~33 % of a decode step) |
 | 2 | Fused residual-add + RMSNorm; fused QK-RMSNorm + RoPE | All 16 layers | RMSNorm alone is 8 kernels × 45 calls ≈ 360 of 791 kernels per step |
 | 3 | Fused gated short-conv CUDA kernel: `B·x → causal conv1d (k=3) → C·y` plus in-place conv-state update | 10 conv layers, decode & prefill | Fewer launches, no intermediate memory traffic |
-| 4 | Attention without the SDPA FP32 math fallback (GQA-aware fused attention) | LM prefill & decode | T4 1080p prefill: ~230 of 634 ms is FP32 math-path attention; check whether it also happens on Blackwell |
+| 4 | Attention without the SDPA FP32 math fallback (GQA-aware fused attention) | LM prefill & decode | T4 1080p prefill: ~230 of 634 ms is FP32 math-path attention; check whether it also happens on the L40 (`profiling/sdpa_probe.py`) |
 | 5 | Merged QKV and gate/up projections | Linear layers | Fewer, larger GEMVs (GEMVs already run at ~80 % of peak bandwidth) |
-| 6 | Low-precision weights (INT8 / FP8 / NVFP4) GEMV for decode | Decode once overhead is gone | Fewer bytes per token → speed and energy |
+| 6 | Low-precision weights (INT8 / INT4 / FP8 on the L40) GEMV for decode | Decode once overhead is gone | Fewer bytes per token → speed and energy |
 | 7 | Better vision-encoder attention (head dim 72, unpadded/varlen tiles), fused LayerNorm/GELU | SigLIP2, every image | Vision attention is 43 % of vision time at 24 % occupancy (T4); ~70 ms per tile |
 
-**Back-of-envelope decode bound:** about 2.34 GB of weights are read per token. At about 1.34 TB/s, that gives roughly 1.7 ms/token, or about 575 tokens/s at batch 1. The attention layers' KV cache is only about 12 KB per token, so KV-cache compression is **not** a priority for this model.
+**Back-of-envelope decode bound:** about 2.34 GB of weights are read per token. On the L40 (864 GB/s) that gives roughly 2.7 ms/token, or about 370 tokens/s at batch 1 (T4: 7.3 ms). The attention layers' KV cache is only about 12 KB per token, so KV-cache compression is **not** a priority for this model.
 
 ---
 
@@ -117,7 +117,7 @@ PAA_Project/
 │   ├── inference_pipeline.md ← code walkthrough of the inference path, with file/line refs
 │   ├── pipeline_explained.md ← every stage explained with tensor shapes; who studies what
 │   ├── experiment_log.md     ← dated log of experiments, measurements, decisions
-│   └── notes/                ← working notes; optimization_plan.md = plan + TODO + open questions
+│   └── notes/                ← optimization_plan.md (plan + TODO + open questions), l40_sessions.md (how we use the 6 h L40 slots)
 ├── src/lfm2opt/              ← our Python package: model loading, runners, metrics, kernel bindings
 ├── kernels/                  ← custom CUDA/C++ kernels (fused short-conv, RMSNorm, GEMV, ...)
 ├── benchmarks/               ← benchmark scripts (latency / throughput / energy)
@@ -130,7 +130,7 @@ PAA_Project/
 │   └── plots/                ← generated figures
 ├── report/                   ← LaTeX technical report (main.tex + sections/ + figures/)
 ├── presentations/            ← slides for Eval 1, Eval 2, Final
-├── scripts/                  ← environment setup, model download, utilities
+├── scripts/                  ← setup_env / download_model / preflight / run_suite; colab/ (T4 dev) and remote/ (L40 over SSH)
 ├── assets/images/            ← fixed test images used for all benchmarks
 ├── models/                   ← downloaded weights (git-ignored)
 └── third_party/              ← upstream repos for reading/reference (git-ignored)
@@ -151,7 +151,7 @@ These are cloned locally for reading and as reference implementations. They are 
 
 ## Setup
 
-> These steps are run on the GPU machine. The RTX PRO 5000 Blackwell is compute capability 12.0 (`sm_120`), so PyTorch must be a CUDA 12.8+ build.
+> These steps run on the GPU machine. For the L40 over SSH, `scripts/remote/remote.sh setup` does all of them from our own machine (see [docs/notes/l40_sessions.md](docs/notes/l40_sessions.md)). `setup_env.sh` picks the PyTorch CUDA build that matches the server's driver.
 
 ```bash
 # 1. Create the environment and install PyTorch + dependencies
@@ -166,7 +166,7 @@ nvidia-smi && nvcc --version && python -c "import torch; print(torch.cuda.get_de
 
 ## Running benchmarks and profiling
 
-Every script works the same on any NVIDIA GPU (T4, RTX PRO 5000, later Jetson), and writes self-describing results (GPU, versions, git commit, config) next to the numbers.
+Every script works the same on any NVIDIA GPU (T4, L40, later Jetson), and writes self-describing results (GPU, versions, git commit, config) next to the numbers.
 
 | What | Command | Output |
 |---|---|---|
@@ -183,7 +183,7 @@ Workloads (fixed inputs, defined in `src/lfm2opt/workloads.py`): `text` (no imag
 
 ### Developing on Google Colab (T4)
 
-We have unlimited Colab T4 access, so all scripts are developed and debugged there before using our limited RTX PRO 5000 hours. From a machine with the authenticated `colab` CLI:
+We have unlimited Colab T4 access, so all scripts are developed and debugged there before using our limited L40 hours (6 h/week). From a machine with the authenticated `colab` CLI:
 
 ```bash
 bash scripts/colab/colab.sh up                       # T4 session + code + deps + model weights
@@ -193,7 +193,7 @@ bash scripts/colab/colab.sh pull results/raw         # copy results back (PULL_E
 bash scripts/colab/colab.sh down                     # always stop the session
 ```
 
-T4 caveats: no BF16 (runs in FP16), 70 W power cap with throttling, shared VM. T4 numbers are a separate data point in our cross-GPU study, never a substitute for RTX PRO 5000 numbers.
+T4 caveats: no BF16 (runs in FP16), 70 W power cap with throttling, shared VM. T4 numbers are a separate data point in our cross-GPU study, never a substitute for L40 numbers.
 
 ---
 
@@ -212,7 +212,7 @@ Medians of 10 repeats; TPOT and J/token from 128-token vs 1-token runs. Raw data
 
 Batch 16 (img_small): 627 tok/s, 0.11 J/token. FP16 outputs are token-identical to FP32.
 
-### Baseline, RTX PRO 5000 Blackwell
+### Baseline, L40
 
 _Pending GPU access._
 

@@ -99,7 +99,7 @@ Even at 4k context the KV cache is under 50 MB, so **KV-cache compression is not
 | Vision tower (SigLIP2 so400m) | ~411M | Prefill only |
 | Projector | ~14M | Prefill only |
 
-**Decode (batch 1):** about 1.17B parameters, or **~2.34 GB read per token**. At about 1.34 TB/s that is a floor of about 1.7 ms/token (≈ 575 tokens/s). Any gap between this floor and what we measure is overhead to remove: kernel launches, Python, extra memory traffic from unfused elementwise ops, and cache reallocation.
+**Decode (batch 1):** about 1.17B parameters, or **~2.34 GB read per token**. On the L40 (864 GB/s) that is a floor of about 2.7 ms/token (≈ 370 tokens/s); on the T4 (320 GB/s) 7.3 ms. Any gap between this floor and what we measure is overhead to remove: kernel launches, Python, extra memory traffic from unfused elementwise ops, and cache reallocation.
 
 ## 4. Optimized reference implementations
 

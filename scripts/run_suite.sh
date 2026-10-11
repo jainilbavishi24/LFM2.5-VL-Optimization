@@ -2,6 +2,7 @@
 # Full measurement suite for one GPU: benchmarks + profiling, one command, resumable by step.
 #
 #   bash scripts/run_suite.sh                          # everything
+#   SUITE=timing bash scripts/run_suite.sh             # a preset block: all | timing | profile | ncu | variant
 #   STEPS="bench_full torch_prof" bash scripts/run_suite.sh   # only some steps
 #   VARIANT=fused_shortconv TAG=opt1 bash scripts/run_suite.sh  # same suite for an optimization
 #
@@ -23,7 +24,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 source scripts/setup_profilers.sh
 
-STEPS="${STEPS:-bench_full bench_batch numerics overhead torch_prof nsys ncu ncu_deep ncu_ctx summarize}"
+# Presets (used as blocks of an L40 slot, see docs/notes/l40_sessions.md); STEPS overrides SUITE.
+case "${SUITE:-all}" in
+    all)     DEFAULT_STEPS="bench_full bench_batch numerics overhead torch_prof nsys ncu ncu_deep ncu_ctx summarize" ;;
+    timing)  DEFAULT_STEPS="bench_full bench_batch numerics overhead summarize" ;;  # run alone: CPU load skews timing
+    profile) DEFAULT_STEPS="torch_prof nsys" ;;
+    ncu)     DEFAULT_STEPS="ncu ncu_deep ncu_ctx" ;;                                  # CPU-side work may run alongside
+    variant) DEFAULT_STEPS="bench_full torch_prof nsys summarize" ;;                   # per-optimization run
+    *) echo "unknown SUITE=$SUITE"; exit 1 ;;
+esac
+STEPS="${STEPS:-$DEFAULT_STEPS}"
 VARIANT="${VARIANT:-baseline}"
 TAG="${TAG:-$VARIANT}"
 SUITE_ID="$(date +%Y%m%d-%H%M%S)_${TAG}"
@@ -43,6 +53,15 @@ run() {  # run <step-name> <command...>
 }
 
 say "suite $SUITE_ID variant=$VARIANT steps: $STEPS"
+
+# Without GPU performance-counter access every ncu step fails; detect once and skip them instead.
+if [[ " $STEPS " == *" ncu"* ]] && command -v ncu >/dev/null; then
+    if ncu --launch-count 1 python -c "import torch; torch.ones(1, device='cuda').add_(1); torch.cuda.synchronize()" 2>&1 \
+            | grep -q ERR_NVGPUCTRPERM; then
+        say "WARNING: ncu has no counter access (ERR_NVGPUCTRPERM): skipping ncu, ncu_deep, ncu_ctx"
+        STEPS="$(echo " $STEPS " | sed 's/ ncu_ctx / /; s/ ncu_deep / /; s/ ncu / /')"
+    fi
+fi
 nvidia-smi --query-gpu=name,driver_version,power.limit,clocks.max.sm,clocks.max.mem --format=csv | tee -a "$LOG"
 
 B="python benchmarks/bench.py --variants $VARIANT"

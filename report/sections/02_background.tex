@@ -24,5 +24,7 @@ constant-size state per layer. Because only 6 layers use attention, the KV cache
 
 \todo{Figure: architecture diagram (figures/architecture.pdf).}
 
-\paragraph{Target hardware.} NVIDIA RTX PRO 5000 Blackwell (compute capability 12.0).
-\todo{Confirm SM count, memory size/bandwidth, TDP, clocks from nvidia-smi / deviceQuery.}
+\paragraph{Target hardware.} Measurements on an NVIDIA L40 (Ada Lovelace, compute capability 8.9,
+48\,GB GDDR6, 864\,GB/s, 142 SMs, 300\,W), development on a Tesla T4 (Turing, 320\,GB/s, 70\,W),
+edge validation on a Jetson Orin.
+\todo{Confirm L40 SM count, clocks, power limit from the preflight report.}

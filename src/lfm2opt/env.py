@@ -30,7 +30,7 @@ def git_commit() -> str | None:
 
 
 def gpu_short_name() -> str:
-    """Short, filename-safe GPU name, e.g. 'T4', 'RTXPRO5000'."""
+    """Short, filename-safe GPU name, e.g. 'T4', 'L40'."""
     if not torch.cuda.is_available():
         return "cpu"
     name = torch.cuda.get_device_name()

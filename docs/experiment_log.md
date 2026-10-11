@@ -15,6 +15,24 @@ Entry template:
 
 ---
 
+## 2026-10-11: Measurement GPU changed to L40 (6 h/week over SSH)
+
+**Change:** we get an **NVIDIA L40 48 GB** (Ada, sm_89, 864 GB/s, 300 W), reached over SSH, **6 hours per team per week**, instead of the RTX PRO 5000 Blackwell (8 h/week) assumed so far. Earlier log entries mentioning the RTX PRO 5000 are kept as written.
+
+**Consequences:**
+
+- Decode floor 2.7 ms/token (was 1.7 ms assumed); baseline precision BF16.
+- FP8 weights still possible (Ada FP8 tensor cores); NVFP4 dropped (Blackwell-only).
+- The SDPA flash backend exists on sm_89, so whether the T4's FP32 math attention path also happens there is an explicit session-1 question (`profiling/sdpa_probe.py`).
+- 6 h is tight, so slots are planned to the minute with priorities, and nothing is debugged on the L40: [notes/l40_sessions.md](notes/l40_sessions.md).
+
+**Tooling added:** `scripts/remote/remote.sh` (push / setup / tmux `bg` / log / incremental `sync`), `scripts/preflight.sh` (GPU, other users, driver, nvcc, sudo, ncu counter access, internet, disk), driver-aware and idempotent `setup_env.sh` (uses `uv` if present, pins torch 2.11.0), `run_suite.sh` presets (`SUITE=timing|profile|ncu|variant`) and automatic ncu skip without counter access, `profiling/sdpa_probe.py`.
+None of the new L40 tooling has run against the real server yet (no access details); `sdpa_probe.py` will be rehearsed on Colab first.
+
+**Lesson (Colab):** the `colab.sh bg` launcher used `mkdir … && setsid … &`, which backgrounds the whole `&&` list in a subshell that holds the output pipe, so the launching call never returned and blocked the Colab kernel for the job's whole run. Fixed with `;`. A kernel restart freed it without killing the `setsid` job. The VM of 2026-10-08 expired before its `ncu_ctx` reports were pulled; they are being re-run.
+
+---
+
 ## 2026-10-08: Optimization plan written
 
 **What we did:** turned the T4 profiling into a step-by-step plan with exact code locations, evidence, design, checks and open questions: [notes/optimization_plan.md](notes/optimization_plan.md).
