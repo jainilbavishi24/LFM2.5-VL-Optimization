@@ -17,6 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SESSION="${SESSION:-paa-t4}"
 GPU="${GPU:-T4}"
 REMOTE_DIR=/content/PAA_Project
+export PATH="$HOME/.local/bin:$PATH"  # colab CLI is a uv tool; not on PATH in every shell
 C=(colab --auth=oauth2)
 
 remote() {  # remote "<shell command>" [timeout]
@@ -45,8 +46,8 @@ case "${1:-}" in
         ;;
     push) push ;;
     run) remote "$2" ;;
-    bg)
-        remote "mkdir -p /content/jobs && setsid nohup bash -lc $(printf '%q' "$3; echo JOB_EXIT=\$?") > /content/jobs/$2.out 2>&1 < /dev/null & echo started job $2" 120
+    bg)  # ';' (not '&&') before setsid: with '&&' the '&' backgrounds the whole list and the exec never returns
+        remote "mkdir -p /content/jobs; setsid nohup bash -lc $(printf '%q' "$3; echo JOB_EXIT=\$?") > /content/jobs/$2.out 2>&1 < /dev/null & echo started job $2" 120
         ;;
     log) remote "tail -n ${3:-20} /content/jobs/$2.out" 120 ;;
     pull)
