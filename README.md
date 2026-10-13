@@ -20,8 +20,9 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Code reading: inference pipeline | 2–3 | ✅ Done — code map in [docs/inference_pipeline.md](docs/inference_pipeline.md); stage-by-stage explainer with shapes and team split in [docs/pipeline_explained.md](docs/pipeline_explained.md) |
 | Benchmark + profiling harness (`benchmarks/`, `profiling/`, `scripts/run_suite.sh`) | 3 | ✅ Done, debugged on Colab T4 |
 | Baseline benchmarking + profiling on **T4** | 3 | ✅ Complete (incl. long-context and full-prefill Nsight Compute, 2026-10-11) — see Results and the log |
-| Baseline benchmarking + profiling on the **course RTX 5000 server** (3 × 2 h/week, SSH) | 4–5 | ⏳ Next — slot plan in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md); waiting for the server address |
-| Bottleneck analysis | 4 | ✅ on T4: decode is launch-overhead bound; plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
+| Baseline benchmarking + profiling on the **course server, RTX PRO 5000 Blackwell** (3 × 2 h/week, SSH) | 4–5 | ✅ Done in slot 1 (2026-10-13): full grid, batch sweep, torch profiler, nsys, 9 Nsight Compute runs — see Results |
+| Reference baselines O0a–O0d (`causal-conv1d`, `torch.compile`, vLLM, llama.cpp) | 5 | ⏳ Running on the server (`scripts/remote/plan_refs.sh`) |
+| Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
 | Main optimization work | 6 | — |
 | **Evaluation 2:** working prototype | 7 | — |
@@ -212,9 +213,18 @@ Medians of 10 repeats; TPOT and J/token from 128-token vs 1-token runs. Raw data
 
 Batch 16 (img_small): 627 tok/s, 0.11 J/token. FP16 outputs are token-identical to FP32.
 
-### Baseline, RTX PRO 5000 Blackwell (course server)
+### Baseline, RTX PRO 5000 Blackwell (course server; BF16, HF transformers 5.19.0 eager, SDPA, batch 1)
 
-_Pending GPU access._
+Medians of 10 repeats, `results/raw/20261013-224658_RTXPRO5000Blackwell_baseline_full/`; analysis in the [2026-10-13 slot-1 log entry](docs/experiment_log.md).
+
+| Workload | Image tokens | TTFT (ms) | of which vision / LM prefill (ms) | TPOT (ms) | Decode (tok/s) | Energy (J/token) | Peak mem (GB) |
+|---|---|---|---|---|---|---|---|
+| text | 0 | 6.9 | – / 4.0 | 3.83 | 261 | 0.74 | 3.0 |
+| img_small 640×480 (1 tile) | 234 | 20.2 | 11.9 / 5.2 | 3.83 | 261 | 0.77 | 3.0 |
+| img_hd 1280×720 (3 tiles) | 764 | 39.8 | 24.4 / 12.1 | 3.84 | 260 | 0.83 | 3.1 |
+| img_fhd 1920×1080 (9 tiles) | 2300 | 116 | 73.5 / 33.9 | 3.81 | 262 | 0.89 | 3.3 |
+
+Batch 16 (img_small): 3947 tok/s at TPOT 4.05 ms, 0.06 J/token. TPOT is flat in context length (3.86 ms at 1024 tokens). Weight-read floor ≈ 2.34 GB / 1.34 TB/s ≈ 1.7 ms.
 
 ---
 

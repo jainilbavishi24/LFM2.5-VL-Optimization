@@ -15,6 +15,38 @@ Entry template:
 
 ---
 
+## 2026-10-13: Slot 1 on the server: RTX PRO 5000 Blackwell baseline + full profiling  (Jainil + Claude)
+
+**Setup:** commit 98f6b98 → e707a4c, RTX PRO 5000 Blackwell 48 GB (sm_120, 110 SMs, 96 MB L2, 300 W), driver 595.84 (CUDA 13.2), torch 2.11.0+cu130, transformers 5.19.0, BF16 (native), Ubuntu 24.04, Core Ultra 9 285K. LFM2.5-VL-1.6B @ 919fde3 (sha256 verified), no `causal-conv1d` (PyTorch fallback, same as T4).
+
+**What happened in the slot (lessons for the next ones):**
+- Setup took 47 min instead of 20: the server's internet is capped at ~4.5 MB/s in total and **~300 KB/s per connection**, so uv timed out on big CUDA wheels (default 30 s timeout) and a single-stream model download would have taken 2.5 h. Fix: `UV_HTTP_TIMEOUT=900`, and the weights fetched with 24 parallel HTTP range requests (`pget.sh`, ~4.5 MB/s → 3 GB in 13 min). Our laptop → server LAN is even slower (~0.2 MB/s): never push big files.
+- The laptop changed network mid-slot and the SSH master died, but **processes on the server survived** (only the slot end kills them). The duplicate setup job we launched then fought over uv's cache lock.
+- **ncu works without root** (`RmProfilingAdminOnly=0`, counters OK as uid 1022), thanks to the TA. System Nsight Systems 2026.1 / Compute 2026.2 support sm_120.
+- The system Python has no headers (`Python.h`), so anything that compiles C at runtime (Triton / `torch.compile`, `causal-conv1d`) fails in `.venv`. Fix: `.venv-ref` on uv's standalone Python 3.12.15 (same torch/transformers).
+- Everything is 3–6× faster than the T4 estimates: the whole slot-1 preset + backlog (22 steps incl. 9 ncu runs) took **44 min**.
+
+**Result (baseline, batch 1, `results/raw/20261013-2246*_RTXPRO5000Blackwell_*`):**
+
+| Input | TTFT | vision | LM prefill | TPOT | J/token |
+| --- | --- | --- | --- | --- | --- |
+| text | 6.9 ms | – | 4.0 ms | 3.83 ms | 0.74 |
+| img_small (1 tile) | 20.2 ms | 11.9 | 5.2 | 3.83 ms | 0.77 |
+| img_hd (3 tiles) | 39.8 ms | 24.4 | 12.1 | 3.84 ms | 0.83 |
+| img_fhd (9 tiles) | 116 ms | 73.5 | 33.9 | 3.81 ms | 0.89 |
+
+- **Decode is overhead-bound, even more clearly than on the T4:** TPOT is 3.8 ms for every input and stays 3.86 ms at 1024 tokens; batch 1 → 16 only moves TPOT 3.85 → 4.05 ms (260 → 3947 tok/s, J/token 0.85 → 0.06). The weights-read floor is ~1.7 ms. Under the PyTorch profiler: 703 kernels/step, kernel time 2.98 ms/step (72 % GEMV), GPU busy 45 %.
+- The GPU draws ~200–250 W at batch 1 even though it waits on the CPU most of the time, so overhead costs energy too.
+- **Attention:** on Blackwell, SDPA picks the flash kernel with native GQA in the model (no mask), unlike the T4's FP32 math path. `sdpa_repeat_kv` is therefore no help here (TPOT 3.95 → 4.21 ms, slightly worse): O5 was a T4-specific problem.
+- ncu (decode step, img_small): GEMVs reach ~70 % of peak DRAM bandwidth, `lm_head` 94 %; the ~600 small elementwise/reduce/cat kernels are <2 % of peak each. (The DRAM-bytes metric we collect reads 0 on sm_120: fix the metric name in `profile_ncu.sh`.)
+- Reproducibility: `bench_repeat` 40 min after `bench_full` matches within ~1 %.
+
+**First reference baseline (O0b, `torch.compile` + static cache, smoke test):** compiles to one CUDA graph without graph breaks once our hooks are fully detached (`--no-phases` used to leave them attached; fixed). TPOT 3.76 → ~2.75 ms. The remaining gap to the ~1.7 ms floor is `generate()`'s own per-token Python work (logits processors, stopping check with a host sync, `cat` of `input_ids`): the case for O1 (our own static decode loop + CUDA graph) is now measured.
+
+**Takeaway / next step:** Eval-1 baseline and profiling on the real GPU are done. Overnight (extra slots): O0a `causal-conv1d`, O0b/O0a+b in full, vLLM and llama.cpp references, 3B generalization run. Then O1.
+
+---
+
 ## 2026-10-13: Dress rehearsals for the first server slot (Colab T4) + backlog results
 
 **Goal:** run everything tonight's slot will run, end to end, before touching the server.
