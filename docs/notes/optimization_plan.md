@@ -67,10 +67,10 @@ Common rules for every step:
 **Why:** our gains must be shown against "what you get by turning on existing switches", not only against eager HF.
 **How:** run the suite with (a) `causal-conv1d` installed (real CUDA conv kernel instead of the PyTorch fallback), (b) HF static cache + `torch.compile(mode="reduce-overhead")` (CUDA graphs via the compiler), (c) vLLM, (d) llama.cpp CUDA (GGUF F16 and Q8_0).
 
-- [ ] O0a: suite with `causal-conv1d` (`INSTALL_CAUSAL_CONV1D=1`)
-- [ ] O0b: `torch.compile` + static cache variant (check it even works for the LFM2 hybrid cache)
-- [ ] O0c: vLLM offline benchmark, same prompts/images, batch 1
-- [ ] O0d: llama.cpp `llama-mtmd-cli` with the GGUF, same inputs
+- [x] O0a: suite with `causal-conv1d` (built into `.venv-ref`, PYTHONPATH-only): TPOT −1–3 %, 2026-10-14
+- [x] O0b: `compile_static` variant: works (one CUDA graph, no graph breaks once hooks are detached); TPOT 2.72 ms text, 3.26 ms at 1080p
+- [x] O0c: vLLM 0.31 (`benchmarks/ref_vllm.py`, caches off): TPOT 2.36 ms, TTFT 1080p 128 ms
+- [x] O0d: llama.cpp b9acf13 (`benchmarks/ref_llamacpp.sh`): BF16 2.26 ms/token, Q8_0 1.45 ms/token (llama-bench); per-image timings still to parse
 
 **Open questions**
 - Q0.1 Does `cache_implementation="static"` work for LFM2's conv + attention hybrid cache in transformers 5.19, and does `generate()` then auto-compile? (`_valid_auto_compile_criteria`, generation/utils.py L2418)
@@ -98,8 +98,8 @@ Common rules for every step:
 **Check:** token-identical to baseline (greedy); TPOT, GPU-busy % ≈ 100 % inside the step (nsys), J/token.
 **Expected:** T4 TPOT 20 → ~11–12 ms; bigger relative gain on the server GPU.
 
-- [ ] O1a: static KV + conv-state cache, in-place updates, token-identical eager run
-- [ ] O1b: graph capture of decode step, replay loop
+- [x] O1a: static KV + conv-state cache, in-place updates (`src/lfm2opt/runtime.py`); teacher-forced check vs HF
+- [x] O1b: graph capture of decode step, replay loop: TPOT 3.83 → 2.91 ms
 - [ ] O1c: benchmark + nsys timeline (before/after picture for the report)
 - [ ] O1d: measure graph capture cost and memory; decide max context per graph
 
@@ -126,7 +126,7 @@ Common rules for every step:
 **Check:** max error vs PyTorch reference (FP32 math) < 1e-3 relative; token-identical generation; kernels/step drops by ~315.
 **Expected:** −~1 ms GPU time/step on T4 without graphs, plus fewer nodes inside the graph with O1.
 
-- [ ] O2a: kernel + binding + unit test (shapes 1×2048, 252×2048, 2327×2048; head-norm 32×64 and 8×64)
+- [x] O2a: `add_rmsnorm` kernel + binding + unit test (decode shapes; bit-exact). Prefill shapes still open
 - [ ] O2b: patch modules via a variant (`fused_rmsnorm`), verify outputs
 - [ ] O2c: ncu: achieved bandwidth of the fused kernel for prefill-size rows
 
@@ -153,7 +153,7 @@ Common rules for every step:
 **Check:** vs PyTorch reference incl. state continuity (prefill then N decode steps == full-sequence conv); token-identical generation.
 **Expected:** −~60 launches/step, −prefill memory traffic; compare against O0a (`causal-conv1d` package) as the "existing best" kernel.
 
-- [ ] O3a: decode kernel + test (state roll correctness)
+- [x] O3a: `shortconv_step` decode kernel + test (bit-exact incl. state)
 - [ ] O3b: prefill kernel + test (halo handling, padding mask)
 - [ ] O3c: variant `fused_shortconv`; ablation vs `causal-conv1d`
 
@@ -172,9 +172,9 @@ Common rules for every step:
 
 **How:** concatenate weights once at load (`Wqkv` 2048→3072, `W13` 2048→16384); one kernel per attention layer does per-head RMSNorm on q and k + RoPE (cos/sin table precomputed once) + writes k, v directly into the static KV cache slot (with O1). SwiGLU `silu(a)*b` fused as one elementwise kernel (or GEMV epilogue later).
 
-- [ ] O4a: merged weights (pure PyTorch first; measure GEMV efficiency of bigger GEMVs)
-- [ ] O4b: fused qk-norm + RoPE + cache-write kernel + test
-- [ ] O4c: fused SiLU-mul
+- [x] O4a: merged q|k|v and w1|w3 weights in the fused runtime
+- [x] O4b: `qk_norm_rope_kv` kernel + test (bit-exact)
+- [x] O4c: `silu_mul` kernel + test (bit-exact)
 
 **Open questions**
 - Q4.1 RoPE convention: HF `rotate_half` (split halves, not interleaved), θ = 1e6, head_dim 64. Verify against llama.cpp's `rope_type` for LFM2.
@@ -194,8 +194,8 @@ Common rules for every step:
 
 - [x] O5a (T4): `enable_gqa` → math path; `repeat_kv` + mem-efficient is 3.6–23× faster (decode 2304: 0.63 → 0.18 ms; prefill 2327: 45.6 → 1.9 ms)
 - [x] Quick-win variant `sdpa_repeat_kv` (variants.py): T4 img_fhd LM prefill 512 → 293 ms (−43 %), TTFT −19 %, outputs token-identical
-- [ ] O5a (server): probe + `sdpa_rkv` backlog step in slot 1
-- [ ] O5b: decode attention kernel + test vs reference at context 16 … 4096
+- [x] O5a (server): Blackwell already uses flash with native GQA in the model; `sdpa_repeat_kv` is no help there
+- [x] O5b: decode attention kernels (single-block and split-K flash-decoding) + tests at len 1 and 2301
 - [ ] O5c: prefill path (own kernel on T4, or mask-free flash SDPA where available)
 
 **Open questions**
@@ -216,9 +216,9 @@ Common rules for every step:
 - FP8 (E4M3) and NVFP4 on the RTX PRO 5000 Blackwell (native Blackwell tensor-core formats).
 Own GEMV kernel (vectorized loads, warp-per-row reduction), compared against cuBLAS FP16 and against existing kernels (e.g. torchao / llama.cpp `mmvq`).
 
-- [ ] O6a: INT8 weight-only GEMV kernel + test + bandwidth (ncu)
+- [x] O6a: INT8 weight-only GEMV kernel + test + microbenchmark (`profiling/bench_gemv.py`): TPOT 1.33 ms
 - [ ] O6b: quality: greedy-token agreement + a small VQA/OCR set (needs eval set, see G3)
-- [ ] O6c: INT4 group-wise
+- [x] O6c: INT4 group-wise GEMV (RTN, clip search, mixed INT8): 0.99 ms but 86–93 % argmax agreement → needs calibration (AWQ/GPTQ)
 - [ ] O6d: FP8 and NVFP4 weights on the RTX PRO 5000 Blackwell
 
 **Open questions**
@@ -259,10 +259,10 @@ All layers of one decode step in one kernel launch with grid-wide sync, weights 
 
 ### G1. GPU-server slots (3 × 2 h/week over SSH)
 Full plan, rules, timings and failure playbook: [gpu_sessions.md](gpu_sessions.md).
-- [ ] Get the server address (questions in gpu_sessions.md §8), add the `gpu` SSH alias, `ssh-copy-id`, `remote.sh check`
+- [x] Server address, `gpu` SSH alias, key login, `remote.sh check`
 - [x] Deadline-aware slot presets (`SUITE=slot1|slot2`, `SLOT_MINUTES`), `remote.sh slot` / `watch` / `stop`
 - [x] Tooling: `scripts/remote/remote.sh` (push / setup / bg in tmux / log / sync), `scripts/preflight.sh`, driver-aware `setup_env.sh`, suite presets (`SUITE=timing|profile|ncu|variant`), ncu auto-skip without counter access
-- [ ] Session 1: baseline suite (BF16), `sdpa_probe.py` (Q5.1/O5a), O0 reference baselines
+- [x] Session 1 (+ two extra night slots): baseline suite (BF16), `sdpa_probe.py`, O0 reference baselines, O1–O6 first versions
 - [ ] Sessions 2–5: optimization variants, ablation stack, FP8 (O6d), 3B, final numbers
 
 ### G2. Jetson (final weeks)
