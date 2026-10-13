@@ -47,7 +47,7 @@ Nsight Compute: GEMVs run at **~89 % of peak DRAM bandwidth** (lm_head 96 %), so
 
 **Bounds for decode on the T4:** weights 2.34 GB/token ÷ 320 GB/s = **7.3 ms** floor. Current GEMVs ≈ 8.6–9.6 ms; total 20 ms. So:
 remove overhead (O1–O4) → ~9–10 ms/token (≈2×); then fewer bytes (O6, INT8 weights) → ~5 ms/token (≈4× total).
-Server GPU: floor 1.7–5.2 ms/token depending on the card (gpu_sessions.md §1); the overhead share is larger than on the T4 in every case, so O1 matters even more.
+Server GPU (RTX PRO 5000 Blackwell, ~1.34 TB/s): floor ≈ 1.7 ms/token, so the overhead share is far larger than on the T4 and O1 matters even more.
 
 ---
 
@@ -212,13 +212,13 @@ Common rules for every step:
 
 **How:** weight-only quantization, activations stay FP16/BF16:
 - INT8 per-channel (2× fewer bytes), INT4 group-wise (g=64/128, ~3.6× fewer bytes) with dequant in the GEMV inner loop (T4, Jetson);
-- FP8 (E4M3) if the server card is Ada or Blackwell; NVFP4 only if it is the RTX PRO 5000 Blackwell (decided after the first preflight).
+- FP8 (E4M3) and NVFP4 on the RTX PRO 5000 Blackwell (native Blackwell tensor-core formats).
 Own GEMV kernel (vectorized loads, warp-per-row reduction), compared against cuBLAS FP16 and against existing kernels (e.g. torchao / llama.cpp `mmvq`).
 
 - [ ] O6a: INT8 weight-only GEMV kernel + test + bandwidth (ncu)
 - [ ] O6b: quality: greedy-token agreement + a small VQA/OCR set (needs eval set, see G3)
 - [ ] O6c: INT4 group-wise
-- [ ] O6d: FP8 (and NVFP4 if Blackwell) weights on the server GPU
+- [ ] O6d: FP8 and NVFP4 weights on the RTX PRO 5000 Blackwell
 
 **Open questions**
 - Q6.1 Which layers tolerate quantization? (lm_head and the vision tower often hurt quality most; keep FP16 first)
@@ -289,6 +289,6 @@ Full plan, rules, timings and failure playbook: [gpu_sessions.md](gpu_sessions.m
 1. GPU-server access: see G1 and gpu_sessions.md §8.
 2. Is a custom decode runtime (O1) that reuses HF weights acceptable as "our system", with HF transformers as the baseline? (Course CO6 is about building exactly such a runtime.)
 3. Batch size focus: batch 1 (edge, interactive) as the main metric, batch sweep as a secondary result. Agree?
-4. Precision for the headline numbers: BF16 on the server (if the card supports it) and Jetson, FP16 on the T4. Agree?
+4. Precision for the headline numbers: BF16 on the RTX PRO 5000 and Jetson, FP16 on the T4. Agree?
 5. Which input is the "headline" workload for the report: 1 tile (fast camera frames) or 9 tiles (documents/high-res)?
 6. Team split proposal: (A) runtime + CUDA graphs: O1, O4; (B) custom kernels: O2, O3; (C) attention + vision + quantization: O5, O6, O7. Who takes which?

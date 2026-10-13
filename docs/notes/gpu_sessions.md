@@ -32,7 +32,7 @@ Book the three slots as early in these windows as possible, so a failed slot can
 
 ## 1. Which GPU is it?
 
-"RTX 5000" can mean three quite different cards. `scripts/preflight.sh` tells us on the first login; the plan works for all three, only the numbers change.
+**Confirmed (13 Oct): NVIDIA RTX PRO 5000 Blackwell, 48 GB** (last column). The preflight report will add exact clocks, power limit and SM count. The other two columns are kept for comparison only.
 
 | | Quadro RTX 5000 | RTX 5000 Ada | **RTX PRO 5000 Blackwell** |
 | --- | --- | --- | --- |
@@ -127,8 +127,8 @@ bash $R disconnect                # at the very end only
 
 ## 8. Open questions
 
-1. Which card exactly (Quadro RTX 5000, RTX 5000 Ada, RTX PRO 5000 Blackwell)? (preflight will tell)
+1. ✅ RTX PRO 5000 Blackwell 48 GB. Open: is the server's Nsight Compute recent enough for sm_120 (2025.1+)? Preflight prints the version; `setup_profilers.sh` installs a newer one via apt if needed (requires sudo).
 2. Do we need the campus network / VPN to reach 10.4.25.63 from our laptops?
-3. Is the GPU exclusive to our team during our slot?
+3. ✅ The GPU is exclusive to our team during our slot.
 4. sudo? (Nsight Compute counters, clock locking.) Internet access from the server? Quota of `/data/cs3406/team21`?
 5. Booked slot dates and times.

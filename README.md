@@ -3,11 +3,11 @@
 **Course:** CS3.406 Programming AI Accelerators (Monsoon 2026)
 **Team:** Jainil Bavishi (2023102045) · Gautam Gandhi (2023102059) · Bibek Singh Dhody (2023101054)
 **Model:** [LiquidAI/LFM2.5-VL-1.6B](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B)
-**Hardware:** course "RTX 5000" GPU server over SSH, 3 × 2 h slots/week, for measurements (exact card confirmed at first login) · Google Colab T4 for development · Jetson Orin at the end
+**Hardware:** course GPU server with an **NVIDIA RTX PRO 5000 Blackwell 48 GB** (sm_120) over SSH, 3 × 2 h slots/week, for measurements · Google Colab T4 for development · Jetson Orin at the end
 
 > _Last updated: 2026-10-13 (measurement GPU: course RTX 5000 server, 2-hour slots)_
 
-We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA GPUs (course RTX 5000 server, T4, later Jetson), find where time and energy actually go, and remove those bottlenecks with **GPU/CUDA-level optimizations**: custom and fused kernels, CUDA graphs, and low-precision GEMV/GEMM. Every optimization is measured against a reproducible baseline for latency, throughput, energy per token, and output quality.
+We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA GPUs (RTX PRO 5000 Blackwell, T4, later Jetson), find where time and energy actually go, and remove those bottlenecks with **GPU/CUDA-level optimizations**: custom and fused kernels, CUDA graphs, and low-precision GEMV/GEMM. Every optimization is measured against a reproducible baseline for latency, throughput, energy per token, and output quality.
 
 ---
 
@@ -98,10 +98,10 @@ The detailed plan (exact code locations, evidence, design, checks and open quest
 | 3 | Fused gated short-conv CUDA kernel: `B·x → causal conv1d (k=3) → C·y` plus in-place conv-state update | 10 conv layers, decode & prefill | Fewer launches, no intermediate memory traffic |
 | 4 | Attention without the SDPA FP32 math fallback (GQA-aware fused attention) | LM prefill & decode | T4 1080p prefill: ~230 of 634 ms is FP32 math-path attention; check whether it also happens on the server GPU (`profiling/sdpa_probe.py`) |
 | 5 | Merged QKV and gate/up projections | Linear layers | Fewer, larger GEMVs (GEMVs already run at ~80 % of peak bandwidth) |
-| 6 | Low-precision weights (INT8 / INT4; FP8 if the server card supports it) GEMV for decode | Decode once overhead is gone | Fewer bytes per token → speed and energy |
+| 6 | Low-precision weights (INT8 / INT4; FP8 and NVFP4 on Blackwell) GEMV for decode | Decode once overhead is gone | Fewer bytes per token → speed and energy |
 | 7 | Better vision-encoder attention (head dim 72, unpadded/varlen tiles), fused LayerNorm/GELU | SigLIP2, every image | Vision attention is 43 % of vision time at 24 % occupancy (T4); ~70 ms per tile |
 
-**Back-of-envelope decode bound:** about 2.34 GB of weights are read per token. That gives a floor of 7.3 ms/token on the T4 (320 GB/s) and 1.7–5.2 ms/token on the server, depending on which "RTX 5000" it is (table in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md)). The attention layers' KV cache is only about 12 KB per token, so KV-cache compression is **not** a priority for this model.
+**Back-of-envelope decode bound:** about 2.34 GB of weights are read per token. That gives a floor of ~1.7 ms/token on the RTX PRO 5000 Blackwell (~1.34 TB/s) and 7.3 ms/token on the T4 (320 GB/s). The attention layers' KV cache is only about 12 KB per token, so KV-cache compression is **not** a priority for this model.
 
 ---
 
@@ -212,7 +212,7 @@ Medians of 10 repeats; TPOT and J/token from 128-token vs 1-token runs. Raw data
 
 Batch 16 (img_small): 627 tok/s, 0.11 J/token. FP16 outputs are token-identical to FP32.
 
-### Baseline, course GPU server (RTX 5000)
+### Baseline, RTX PRO 5000 Blackwell (course server)
 
 _Pending GPU access._
 

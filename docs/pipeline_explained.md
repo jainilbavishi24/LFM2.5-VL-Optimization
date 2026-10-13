@@ -398,7 +398,7 @@ loop:
 | Weights read | 3.2 GB (all, once) | ≈ 2.34 GB (language model incl. lm_head, every token) |
 | Metric | time to first token (TTFT) | time per output token (TPOT), tokens/s |
 
-**The decode floor:** reading 2.34 GB per token takes 7.3 ms on the T4 (320 GB/s) and 1.7–5.2 ms on our course "RTX 5000" server depending on the exact card, so at most ≈ 190–575 tokens/s at batch 1. Eager PyTorch launches about 300+ kernels per token from Python. If each launch costs a few µs of CPU time, overhead alone can exceed the floor. **Measuring this gap is the first job of profiling.**
+**The decode floor:** reading 2.34 GB per token takes 7.3 ms on the T4 (320 GB/s) and ≈ 1.7 ms on our RTX PRO 5000 Blackwell (~1.34 TB/s), so at most ≈ 575 tokens/s at batch 1. Eager PyTorch launches about 300+ kernels per token from Python. If each launch costs a few µs of CPU time, overhead alone can exceed the floor. **Measuring this gap is the first job of profiling.**
 
 ---
 
