@@ -11,7 +11,8 @@ void launch_qk_norm_rope_kv(const void* qkv, const void* qw, const void* kw, con
 void launch_decode_attention(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out,
                              int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st);
 void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st);
-void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, cudaStream_t st);
+void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, cudaStream_t st);
+void launch_gemv_w4(const void* Wp, const float* S, const void* x, void* y, int N, int K, int group, int rows, cudaStream_t st);
 void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
                                    int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st);
 
@@ -59,7 +60,7 @@ void decode_attention_split(torch::Tensor q, torch::Tensor kc, torch::Tensor vc,
 }
 
 // y [1, N] = x [1, K] @ W^T, W [N, K] BF16 or INT8 (then scale [N] fp32 is required)
-void gemv(torch::Tensor W, c10::optional<torch::Tensor> scale, torch::Tensor x, torch::Tensor y) {
+void gemv(torch::Tensor W, c10::optional<torch::Tensor> scale, torch::Tensor x, torch::Tensor y, int64_t rows) {
     CHECK_BF16(x); CHECK_BF16(y);
     TORCH_CHECK(W.is_cuda() && W.is_contiguous() && W.dim() == 2, "W must be a contiguous CUDA matrix");
     const bool int8 = W.scalar_type() == at::kChar;
@@ -68,7 +69,20 @@ void gemv(torch::Tensor W, c10::optional<torch::Tensor> scale, torch::Tensor x, 
     const int N = W.size(0), K = W.size(1);
     TORCH_CHECK(x.numel() == K && y.numel() == N, "batch 1 only");
     TORCH_CHECK(K % (32 * (int8 ? 16 : 8)) == 0, "K must be a multiple of 256 (bf16) / 512 (int8)");
-    launch_gemv(W.data_ptr(), int8, scale.has_value() ? scale->data_ptr<float>() : nullptr, x.data_ptr(), y.data_ptr(), N, K, stream());
+    launch_gemv(W.data_ptr(), int8, scale.has_value() ? scale->data_ptr<float>() : nullptr, x.data_ptr(), y.data_ptr(), N, K, (int)rows, stream());
+}
+
+// y [1, N] = x [1, K] @ dequant(Wp)^T; Wp [N, K/2] uint8 (two int4 + 8 per byte), S [N, K/group] fp32
+void gemv_w4(torch::Tensor Wp, torch::Tensor S, torch::Tensor x, torch::Tensor y, int64_t rows) {
+    CHECK_BF16(x); CHECK_BF16(y);
+    TORCH_CHECK(Wp.is_cuda() && Wp.is_contiguous() && Wp.scalar_type() == at::kByte && Wp.dim() == 2, "Wp: contiguous uint8 [N, K/2]");
+    TORCH_CHECK(S.is_cuda() && S.is_contiguous() && S.scalar_type() == at::kFloat, "S: contiguous fp32 [N, K/128]");
+    const int N = Wp.size(0), K = Wp.size(1) * 2;
+    TORCH_CHECK(S.size(0) == N && K % S.size(1) == 0, "S must be [N, K / group]");
+    const int group = K / S.size(1);
+    TORCH_CHECK(group % 32 == 0, "group size must be a multiple of 32");
+    TORCH_CHECK(x.numel() == K && y.numel() == N, "batch 1 only");
+    launch_gemv_w4(Wp.data_ptr(), S.data_ptr<float>(), x.data_ptr(), y.data_ptr(), N, K, group, (int)rows, stream());
 }
 
 void silu_mul(torch::Tensor g, torch::Tensor y) {
@@ -82,6 +96,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("qk_norm_rope_kv", &qk_norm_rope_kv, "q/k head RMSNorm + RoPE, k/v into the static cache at pos");
     m.def("decode_attention", &decode_attention, "GQA decode attention over cache[0..pos]");
     m.def("decode_attention_split", &decode_attention_split, "GQA decode attention, split over positions (flash-decoding)");
-    m.def("gemv", &gemv, "batch-1 GEMV, BF16 or INT8 weights");
+    m.def("gemv", &gemv, "batch-1 GEMV, BF16 or INT8 weights", py::arg("W"), py::arg("scale"), py::arg("x"), py::arg("y"), py::arg("rows") = 0);
+    m.def("gemv_w4", &gemv_w4, "batch-1 GEMV, INT4 weights (group 128)", py::arg("Wp"), py::arg("S"), py::arg("x"), py::arg("y"), py::arg("rows") = 0);
     m.def("silu_mul", &silu_mul, "silu(a) * b on [a | b]");
 }

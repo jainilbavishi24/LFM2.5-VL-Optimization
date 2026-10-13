@@ -44,8 +44,11 @@ def main():
     print(f"[vllm] {run_id}: vllm {vllm.__version__}, torch {torch.__version__}, {gpu}")
 
     t0 = time.perf_counter()
+    # Prefix caching and the multimodal-input cache would serve our repeated identical requests from cache
+    # (TTFT ~6 ms even at 1080p in the first run): both off, so every request really runs vision + prefill.
     llm = LLM(model=args.model, dtype="bfloat16", max_model_len=8192, gpu_memory_utilization=0.6,
-              limit_mm_per_prompt={"image": 1}, enforce_eager=args.eager, seed=0)
+              limit_mm_per_prompt={"image": 1}, enforce_eager=args.eager, seed=0,
+              enable_prefix_caching=False, mm_processor_cache_gb=0)
     load_s = time.perf_counter() - t0
     print(f"[vllm] loaded in {load_s:.1f}s")
 

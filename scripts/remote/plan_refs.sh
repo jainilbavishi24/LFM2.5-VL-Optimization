@@ -32,7 +32,7 @@ cc1d_ok() { ref_ok && PYTHONPATH="$CC1D" .venv-ref/bin/python -c "import causal_
 ready() {
     case "$1" in
         carry)           [[ -n "${CARRY:-}" ]] ;;
-        o0a_ctrl|o2|o6|o6_3b|o2_batch) ref_ok ;;
+        o0a_ctrl|o2|o6|o6b|o6_3b|o2_batch) ref_ok ;;
         o0a_cc1d|o0ab)   cc1d_ok ;;
         vllm|vllm_eager) [[ -x .venv-vllm/bin/python ]] && .venv-vllm/bin/python -c "import vllm" 2>/dev/null ;;
         llamacpp)        [[ -f "$LLAMA/CMakeLists.txt" && -f "$GGUF/LFM2.5-VL-1.6B-BF16.gguf" && -f "$GGUF/mmproj-LFM2.5-VL-1.6b-BF16.gguf" ]] \
@@ -53,6 +53,7 @@ run_item() {
         o1)       use .venv; suite VARIANT=cudagraph TAG=o1_cudagraph STEPS="bench_nohooks summarize" ;;
         o2)       use .venv-ref; suite VARIANT=fused TAG=o2_fused STEPS="bench_nohooks summarize" ;;
         o6)       use .venv-ref; suite VARIANT=fused_w8 TAG=o6_w8 STEPS="bench_nohooks summarize" ;;
+        o6b)      use .venv-ref; suite VARIANT=fused_w4 TAG=o6b_w4 STEPS="bench_nohooks summarize" ;;
         o6_3b)    use .venv-ref; timeout --signal=INT "$(( $(left) < 25 ? $(left) : 25 ))m" python benchmarks/bench.py \
                       --model LiquidAI/LFM2.5-VL-3B --variants baseline,fused,fused_w8 --workloads text,img_small,img_fhd \
                       --gen-lens 1,128 --warmup 2 --repeats 5 --no-phases --tag 3b_fused ;;
@@ -71,12 +72,15 @@ run_item() {
     esac
 }
 
-ITEMS="${ITEMS:-carry o0a_ctrl o0a_cc1d o0b o0ab o1 vllm o2 o6 o6_3b o2_batch llamacpp vllm_eager bl_night}"
+ITEMS="${ITEMS:-carry o0a_ctrl o0a_cc1d o0b o0ab o1 vllm o2 o6 o6b o6_3b o2_batch llamacpp vllm_eager bl_night}"
+# results/raw/plan_done/PAUSE: someone is using the GPU interactively -> do nothing (the launcher retries later)
+if [[ -f "$MARK/PAUSE" ]]; then say "paused (remove $MARK/PAUSE to resume)"; exit 0; fi
 say "deadline $(date -d @"$DEADLINE" +%H:%M) ($(left) min); items: $ITEMS"
 for pass in 1 2 3; do
     pending=0
     for it in $ITEMS; do
         [[ -f "$MARK/$it" ]] && continue
+        [[ -f "$MARK/PAUSE" ]] && { say "paused before $it"; break 2; }
         (( $(left) >= 4 )) || break 2
         if ! ready "$it"; then say "not ready: $it (pass $pass)"; pending=1; continue; fi
         say "START $it"; t0=$SECONDS

@@ -136,6 +136,11 @@ def test_gemv():
         K.gemv(Wq, scale, x, y)
         ref = F.linear(x.float(), Wq.float() * scale[:, None]).to(bf)
         report(f"gemv int8 [{N}x{Kd}]", y, ref)
+        from lfm2opt.quant import dequantize_int4, quantize_int4
+
+        Wp, S4 = quantize_int4(W)
+        K.gemv_w4(Wp, S4, x, y)
+        report(f"gemv int4 [{N}x{Kd}]", y, F.linear(x.float(), dequantize_int4(Wp, S4)).to(bf))
 
 
 if __name__ == "__main__":

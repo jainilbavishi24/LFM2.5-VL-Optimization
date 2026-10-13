@@ -30,11 +30,16 @@ def main():
     ap.add_argument("--gen", type=int, default=128)
     ap.add_argument("--out", default=None)
     ap.add_argument("--fused", action="store_true", help="check the fused-kernel runtime (O2-O4)")
-    ap.add_argument("--gemv", default="cublas", choices=["cublas", "bf16", "int8"], help="fused path GEMV (O6: int8)")
+    ap.add_argument("--gemv", default="cublas", choices=["cublas", "bf16", "int8", "int4"], help="fused path GEMV (O6: int8)")
+    ap.add_argument("--w4-group", type=int, default=128)
+    ap.add_argument("--w4-clip", action="store_true", help="int4: per-group clipping search")
+    ap.add_argument("--w4-int8", default="", help="int4: weight kinds kept in INT8 (qkv,o,in,out,w13,w2,head)")
     args = ap.parse_args()
 
     net, processor = load()
-    dec = StaticDecoder(net, keep_logits=True, fused=args.fused or args.gemv != "cublas", gemv=args.gemv)
+    dec = StaticDecoder(net, keep_logits=True, fused=args.fused or args.gemv != "cublas", gemv=args.gemv,
+                        w4_group=args.w4_group, w4_clip=args.w4_clip,
+                        w4_keep_int8=tuple(k for k in args.w4_int8.split(",") if k))
     report = {}
     for name in args.workloads.split(","):
         wl = WORKLOADS[name]

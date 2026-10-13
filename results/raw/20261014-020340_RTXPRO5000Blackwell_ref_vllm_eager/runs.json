@@ -1,0 +1,225 @@
+{
+  "vllm": "0.31.0",
+  "torch": "2.13.0+cu130",
+  "gpu": "NVIDIA RTX PRO 5000 Blackwell",
+  "load_s": 9.566137340851128,
+  "args": {
+    "model": "/data/cs3406/team21/PAA_Project/models/LFM2.5-VL-1.6B",
+    "workloads": "text,img_small,img_hd,img_fhd",
+    "gen_lens": "1,128",
+    "warmup": 2,
+    "repeats": 5,
+    "eager": true,
+    "tag": "ref_vllm_eager"
+  },
+  "rows": [
+    {
+      "engine": "vllm",
+      "workload": "text",
+      "gen": 1,
+      "prompt_tokens": 18,
+      "out_tokens": 1,
+      "wall_ms_median": 5.853107199072838,
+      "wall_ms_all": [
+        7.665430661290884,
+        5.853107199072838,
+        5.731478799134493,
+        5.667461082339287,
+        5.990316160023212
+      ],
+      "energy": {
+        "duration_s": 0.09669183706864715,
+        "n_power_samples": 10,
+        "energy_j": 6.837,
+        "power_avg_w": 67.98,
+        "power_max_w": 67.98,
+        "sm_clock_min_mhz": 2602,
+        "sm_clock_avg_mhz": 2602.0,
+        "temp_max_c": 58
+      },
+      "text": "A"
+    },
+    {
+      "engine": "vllm",
+      "workload": "text",
+      "gen": 128,
+      "prompt_tokens": 18,
+      "out_tokens": 128,
+      "wall_ms_median": 479.8296061344445,
+      "wall_ms_all": [
+        480.8986452408135,
+        479.8296061344445,
+        479.1655419394374,
+        478.91227528452873,
+        480.96102476119995
+      ],
+      "energy": {
+        "duration_s": 2.40012947563082,
+        "n_power_samples": 237,
+        "energy_j": 507.426,
+        "power_avg_w": 207.56648101265824,
+        "power_max_w": 212.561,
+        "sm_clock_min_mhz": 2550,
+        "sm_clock_avg_mhz": 2550.0,
+        "temp_max_c": 62
+      },
+      "text": "A bicycle is a two-wheeled vehicle that is powered by the rider's pedaling. The basic components of a bicycle include the frame, wheels, handlebars, seat, pedals, and chain.\n\nThe frame is the main structure of the bicycle and provides support for the other components. It is typically made of metal o"
+    },
+    {
+      "engine": "vllm",
+      "workload": "img_small",
+      "gen": 1,
+      "prompt_tokens": 252,
+      "out_tokens": 1,
+      "wall_ms_median": 6.277736276388168,
+      "wall_ms_all": [
+        6.342214997857809,
+        6.3070813193917274,
+        6.016611121594906,
+        6.277736276388168,
+        6.187239196151495
+      ],
+      "energy": {
+        "duration_s": 0.03143151290714741,
+        "n_power_samples": 4,
+        "energy_j": 0.0,
+        "power_avg_w": 209.591,
+        "power_max_w": 209.591,
+        "sm_clock_min_mhz": 2550,
+        "sm_clock_avg_mhz": 2550.0,
+        "temp_max_c": 61
+      },
+      "text": "Two"
+    },
+    {
+      "engine": "vllm",
+      "workload": "img_small",
+      "gen": 128,
+      "prompt_tokens": 252,
+      "out_tokens": 128,
+      "wall_ms_median": 490.167667157948,
+      "wall_ms_all": [
+        488.2411980070174,
+        490.167667157948,
+        493.8231357373297,
+        490.75703881680965,
+        489.35991479083896
+      ],
+      "energy": {
+        "duration_s": 2.4526195768266916,
+        "n_power_samples": 242,
+        "energy_j": 524.472,
+        "power_avg_w": 208.31152479338843,
+        "power_max_w": 210.887,
+        "sm_clock_min_mhz": 2550,
+        "sm_clock_avg_mhz": 2550.0,
+        "temp_max_c": 63
+      },
+      "text": "Two cats are sleeping on a pink blanket on a red couch. One cat is lying on its side, while the other is lying on its back. There are two remote controls on the couch, one near each cat. The cats appear to be relaxed and comfortable in their cozy environment. The image conveys a sense of tranquility"
+    },
+    {
+      "engine": "vllm",
+      "workload": "img_hd",
+      "gen": 1,
+      "prompt_tokens": 785,
+      "out_tokens": 1,
+      "wall_ms_median": 7.01879383996129,
+      "wall_ms_all": [
+        7.279996294528246,
+        7.065866142511368,
+        6.9656940177083015,
+        7.01879383996129,
+        6.9755990989506245
+      ],
+      "energy": {
+        "duration_s": 0.03562121884897351,
+        "n_power_samples": 4,
+        "energy_j": 0.0,
+        "power_avg_w": 210.887,
+        "power_max_w": 210.887,
+        "sm_clock_min_mhz": 2550,
+        "sm_clock_avg_mhz": 2550.0,
+        "temp_max_c": 63
+      },
+      "text": "Two"
+    },
+    {
+      "engine": "vllm",
+      "workload": "img_hd",
+      "gen": 128,
+      "prompt_tokens": 785,
+      "out_tokens": 128,
+      "wall_ms_median": 489.7405030205846,
+      "wall_ms_all": [
+        489.6725183352828,
+        488.3670639246702,
+        499.3491661734879,
+        503.19916708394885,
+        489.7405030205846
+      ],
+      "energy": {
+        "duration_s": 2.4706318862736225,
+        "n_power_samples": 245,
+        "energy_j": 525.863,
+        "power_avg_w": 210.7339224489796,
+        "power_max_w": 212.644,
+        "sm_clock_min_mhz": 2542,
+        "sm_clock_avg_mhz": 2549.5755102040816,
+        "temp_max_c": 64
+      },
+      "text": "Two cats are sleeping on a pink blanket on a red couch, with a remote control between them. The cat on the left is smaller and has a green collar, while the cat on the right is larger and has a black collar. The couch is red and the blanket is pink. The remote control is white with blue and red butt"
+    },
+    {
+      "engine": "vllm",
+      "workload": "img_fhd",
+      "gen": 1,
+      "prompt_tokens": 2327,
+      "out_tokens": 1,
+      "wall_ms_median": 9.845680091530085,
+      "wall_ms_all": [
+        10.170403867959976,
+        9.712123777717352,
+        9.351682849228382,
+        9.851017035543919,
+        9.845680091530085
+      ],
+      "energy": {
+        "duration_s": 0.049245493952184916,
+        "n_power_samples": 5,
+        "energy_j": 30.395,
+        "power_avg_w": 209.981,
+        "power_max_w": 209.981,
+        "sm_clock_min_mhz": 2542,
+        "sm_clock_avg_mhz": 2542.0,
+        "temp_max_c": 64
+      },
+      "text": "Two"
+    },
+    {
+      "engine": "vllm",
+      "workload": "img_fhd",
+      "gen": 128,
+      "prompt_tokens": 2327,
+      "out_tokens": 128,
+      "wall_ms_median": 495.30404806137085,
+      "wall_ms_all": [
+        494.8027660138905,
+        493.66032192483544,
+        495.30404806137085,
+        498.1637238524854,
+        497.9771440848708
+      ],
+      "energy": {
+        "duration_s": 2.48012561397627,
+        "n_power_samples": 246,
+        "energy_j": 529.39,
+        "power_avg_w": 212.17289430894309,
+        "power_max_w": 212.964,
+        "sm_clock_min_mhz": 2542,
+        "sm_clock_avg_mhz": 2542.0,
+        "temp_max_c": 65
+      },
+      "text": "Two cats are sleeping on a pink blanket on a red couch, with two remote controls nearby. One cat is lying on its side, while the other is lying on its back. The cats have striped fur. The image is a close-up of the cats and the couch. The cats are the main focus of the image. The image is a photogra"
+    }
+  ]
+}

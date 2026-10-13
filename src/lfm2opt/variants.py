@@ -113,6 +113,12 @@ def _fused_w8(net, processor):
     return _fused_variant(net, "int8")
 
 
+@register("fused_w4")
+def _fused_w4(net, processor):
+    """O1-O4 + O6b: INT4 weight-only (group-128 scales) GEMV for every decode projection incl. lm_head (batch 1)."""
+    return _fused_variant(net, "int4")
+
+
 def apply_variant(name: str, net, processor):
     if name not in VARIANTS:
         raise KeyError(f"unknown variant {name!r}; available: {sorted(VARIANTS)}")

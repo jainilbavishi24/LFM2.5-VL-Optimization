@@ -316,55 +316,146 @@ __device__ __forceinline__ uint4 ld_stream(const uint4* p) {
 template <typename WT> struct WTraits;
 template <> struct WTraits<bf16> {
     static constexpr int PER = 8;  // weights per 16-byte chunk
-    __device__ static float dot(const uint4& c, const float* xs) {
+    __device__ static float dot(const uint4& c, const float* xs, int stride) {
         const __nv_bfloat162* w = reinterpret_cast<const __nv_bfloat162*>(&c);
         float a = 0.f;
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(w[j]); a += f.x * xs[2 * j] + f.y * xs[2 * j + 1]; }
+        for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(w[j]); a += f.x * xs[(2 * j) * stride] + f.y * xs[(2 * j + 1) * stride]; }
         return a;
     }
 };
 template <> struct WTraits<int8_t> {
     static constexpr int PER = 16;
-    __device__ static float dot(const uint4& c, const float* xs) {
+    __device__ static float dot(const uint4& c, const float* xs, int stride) {
         const int8_t* w = reinterpret_cast<const int8_t*>(&c);
         float a = 0.f;
 #pragma unroll
-        for (int j = 0; j < 16; ++j) a += (float)w[j] * xs[j];
+        for (int j = 0; j < 16; ++j) a += (float)w[j] * xs[j * stride];
         return a;
     }
 };
-template <typename WT, int UNROLL>
+template <typename WT, int ROWS, int UNROLL>
 __global__ void gemv_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
                             bf16* __restrict__ y, int N, int K) {
     extern __shared__ float xs[];
+    constexpr int PER = WTraits<WT>::PER;
+    const int chunks = K / PER;                             // K is a multiple of 32 * PER (checked on the host)
+    // natural layout (a transposed, bank-conflict-free layout measured ~5 % slower here: profiling/bench_gemv.py)
     for (int k = threadIdx.x; k < K; k += blockDim.x) xs[k] = B2F(x[k]);
     __syncthreads();
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
-    const int n = blockIdx.x * GEMV_WARPS + warp;
-    if (n >= N) return;
-    constexpr int PER = WTraits<WT>::PER;
-    const int chunks = K / PER;                             // K is a multiple of 32 * PER for all LFM2 matrices
-    const uint4* row = reinterpret_cast<const uint4*>(W + (size_t)n * K);
-    float acc = 0.f;
+    const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS;  // this warp's ROWS consecutive output rows
+    if (n0 >= N) return;
+    const uint4* rows[ROWS];
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) rows[r] = reinterpret_cast<const uint4*>(W + (size_t)min(n0 + r, N - 1) * K);
+    float acc[ROWS];
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) acc[r] = 0.f;
     int c = lane;
     for (; c + 32 * (UNROLL - 1) < chunks; c += 32 * UNROLL) {
-        uint4 buf[UNROLL];
+        uint4 buf[ROWS][UNROLL];
 #pragma unroll
-        for (int u = 0; u < UNROLL; ++u) buf[u] = ld_stream(row + c + 32 * u);
+        for (int u = 0; u < UNROLL; ++u)
 #pragma unroll
-        for (int u = 0; u < UNROLL; ++u) acc += WTraits<WT>::dot(buf[u], xs + (c + 32 * u) * PER);
+            for (int r = 0; r < ROWS; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+#pragma unroll
+        for (int u = 0; u < UNROLL; ++u) {
+            const float* xp = xs + (c + 32 * u) * PER;      // x slice loaded once, reused by all ROWS rows
+#pragma unroll
+            for (int r = 0; r < ROWS; ++r) acc[r] += WTraits<WT>::dot(buf[r][u], xp, 1);
+        }
     }
-    for (; c < chunks; c += 32) acc += WTraits<WT>::dot(ld_stream(row + c), xs + c * PER);
-    acc = warp_sum(acc);
-    if (lane == 0) y[n] = F2B(scale ? acc * scale[n] : acc);
+    for (; c < chunks; c += 32) {
+#pragma unroll
+        for (int r = 0; r < ROWS; ++r) acc[r] += WTraits<WT>::dot(ld_stream(rows[r] + c), xs + c * PER, 1);
+    }
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) {
+        const float a = warp_sum(acc[r]);
+        if (lane == 0 && n0 + r < N) y[n0 + r] = F2B(scale ? a * scale[n0 + r] : a);
+    }
 }
 
-void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, cudaStream_t st) {
-    const dim3 grid((N + GEMV_WARPS - 1) / GEMV_WARPS);
+// rows per warp (0 = auto): more rows reuse each x slice and keep more loads in flight
+template <typename WT>
+static void gemv_dispatch(const WT* W, const float* scale, const bf16* x, bf16* y, int N, int K, int rows, cudaStream_t st) {
+    if (rows <= 0) rows = N >= 32768 ? 4 : 2;  // measured (profiling/bench_gemv.py): 2 rows/warp best up to w1|w3, 4 for lm_head
     const size_t sm = (size_t)K * sizeof(float);
-    if (int8) gemv_kernel<int8_t, 4><<<grid, GEMV_WARPS * 32, sm, st>>>((const int8_t*)W, scale, (const bf16*)x, (bf16*)y, N, K);
-    else gemv_kernel<bf16, 4><<<grid, GEMV_WARPS * 32, sm, st>>>((const bf16*)W, scale, (const bf16*)x, (bf16*)y, N, K);
+    const int per_block = GEMV_WARPS * rows;
+    const dim3 grid((N + per_block - 1) / per_block);
+    if (rows == 4) gemv_kernel<WT, 4, 2><<<grid, GEMV_WARPS * 32, sm, st>>>(W, scale, x, y, N, K);
+    else if (rows == 2) gemv_kernel<WT, 2, 2><<<grid, GEMV_WARPS * 32, sm, st>>>(W, scale, x, y, N, K);
+    else gemv_kernel<WT, 1, 4><<<grid, GEMV_WARPS * 32, sm, st>>>(W, scale, x, y, N, K);
+}
+
+void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, cudaStream_t st) {
+    if (int8) gemv_dispatch<int8_t>((const int8_t*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, st);
+    else gemv_dispatch<bf16>((const bf16*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, st);
+}
+
+// ------------------------------------------------------------------------------------------------ gemv_w4 (O6b)
+// INT4 weight-only GEMV, symmetric scale per group of `group` (multiple of 32, default 128) along K. Wp [N, K/2] bytes: element 2j in the low
+// nibble, 2j+1 in the high nibble, stored as q + 8 (q in [-8, 7]); S [N, K/128] fp32 scales. Each lane streams
+// 16-byte chunks (32 weights); a group of 128 = 4 chunks, so one scale per chunk.
+template <int ROWS>
+__global__ void gemv_w4_kernel(const uint8_t* __restrict__ Wp, const float* __restrict__ S, const bf16* __restrict__ x,
+                               bf16* __restrict__ y, int N, int K, int group) {
+    extern __shared__ float xs[];
+    const int chunks = K / 32, groups = K / group, chunks_per_group = group / 32;
+    for (int k = threadIdx.x; k < K; k += blockDim.x) xs[(k % 32) * chunks + k / 32] = B2F(x[k]);  // transposed, see gemv
+    __syncthreads();
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS;
+    if (n0 >= N) return;
+    const uint4* rows[ROWS];
+    const float* srow[ROWS];
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) {
+        const int n = min(n0 + r, N - 1);
+        rows[r] = reinterpret_cast<const uint4*>(Wp + (size_t)n * (K / 2));
+        srow[r] = S + (size_t)n * groups;
+    }
+    float acc[ROWS];
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) acc[r] = 0.f;
+    for (int c = lane; c < chunks; c += 32) {
+        uint4 buf[ROWS];
+        float sc[ROWS];
+#pragma unroll
+        for (int r = 0; r < ROWS; ++r) { buf[r] = ld_stream(rows[r] + c); sc[r] = __ldg(srow[r] + c / chunks_per_group); }
+        const float* xp = xs + c;                            // element e of this chunk at xp[e * chunks]
+#pragma unroll
+        for (int r = 0; r < ROWS; ++r) {
+            const uint32_t* w = reinterpret_cast<const uint32_t*>(&buf[r]);
+            float a = 0.f;
+#pragma unroll
+            for (int j = 0; j < 4; ++j) {
+                const uint32_t v = w[j];
+#pragma unroll
+                for (int b = 0; b < 4; ++b) {
+                    const uint32_t byte = (v >> (8 * b)) & 0xFF;
+                    a += (float)((int)(byte & 0xF) - 8) * xp[(8 * j + 2 * b) * chunks]
+                       + (float)((int)(byte >> 4) - 8) * xp[(8 * j + 2 * b + 1) * chunks];
+                }
+            }
+            acc[r] += a * sc[r];
+        }
+    }
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) {
+        const float a = warp_sum(acc[r]);
+        if (lane == 0 && n0 + r < N) y[n0 + r] = F2B(a);
+    }
+}
+
+void launch_gemv_w4(const void* Wp, const float* S, const void* x, void* y, int N, int K, int group, int rows, cudaStream_t st) {
+    if (rows <= 0) rows = N >= 32768 ? 4 : 2;
+    const size_t sm = (size_t)K * sizeof(float);
+    const dim3 grid((N + GEMV_WARPS * rows - 1) / (GEMV_WARPS * rows));
+    if (rows == 4) gemv_w4_kernel<4><<<grid, GEMV_WARPS * 32, sm, st>>>((const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
+    else if (rows == 2) gemv_w4_kernel<2><<<grid, GEMV_WARPS * 32, sm, st>>>((const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
+    else gemv_w4_kernel<1><<<grid, GEMV_WARPS * 32, sm, st>>>((const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
 }
 
 // ------------------------------------------------------------------------------------------------ silu_mul

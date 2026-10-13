@@ -20,7 +20,7 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 
 class StaticDecoder:
     def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16,
-                 gemv: str = "cublas"):
+                 gemv: str = "cublas", w4_group: int = 128, w4_clip: bool = False, w4_keep_int8: tuple = ()):
         self.net = net
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
@@ -43,7 +43,8 @@ class StaticDecoder:
         self.eos = torch.tensor(eos, dtype=torch.long, device=self.device)
         self.fused = fused
         self.attn_splits = attn_splits  # fused path: flash-decoding splits over positions (0 = one block per head)
-        self.gemv = gemv  # fused path, batch 1: "cublas" (F.linear), "bf16" (our GEMV) or "int8" (O6: W8A16 GEMV)
+        self.w4_group, self.w4_clip, self.w4_keep_int8 = w4_group, w4_clip, set(w4_keep_int8)  # int4 options
+        self.gemv = gemv  # fused path, batch 1: "cublas" (F.linear), "bf16" (our GEMV), "int8" / "int4" (O6: weight-only)
         if fused:
             self._prepare_fused()
 
@@ -152,23 +153,33 @@ class StaticDecoder:
             self.lin[("w2", i)] = layer.feed_forward.w2.weight
         self.lin[("head", 0)] = self.lm_head.weight
         self.lin_scale = {}
-        if self.gemv == "int8":
-            for key, w in self.lin.items():
-                scale = (w.float().abs().amax(1) / 127).clamp_min(1e-12)
-                self.lin[key] = torch.round(w.float() / scale[:, None]).clamp(-127, 127).to(torch.int8).contiguous()
-                self.lin_scale[key] = scale.contiguous()
+        if self.gemv in ("int8", "int4"):
+            from .quant import quantize_int4, quantize_int8
+
+            for key in list(self.lin):
+                if self.gemv == "int8" or key[0] in self.w4_keep_int8:     # mixed precision: sensitive ones in INT8
+                    self.lin[key], self.lin_scale[key] = quantize_int8(self.lin[key])
+                else:
+                    self.lin[key], self.lin_scale[key] = quantize_int4(self.lin[key], self.w4_group, self.w4_clip)
             self.w_qkv, self.w_13 = {}, {}  # merged BF16 copies no longer needed (prefill uses the HF weights)
             torch.cuda.empty_cache()
 
     def _linear(self, x, key, bias=None):
         """Decode GEMV for weight `key`: cuBLAS (F.linear) or our BF16 / INT8 kernel (batch 1 only)."""
+        w = self.lin[key]
         if self.gemv == "cublas" or x.shape[0] != 1:
-            w = self.lin[key]
             if w.dtype == torch.int8:  # batch > 1 with quantized weights: dequantize (slow path, correctness only)
                 w = (w.float() * self.lin_scale[key][:, None]).to(x.dtype)
+            elif w.dtype == torch.uint8:
+                from .quant import dequantize_int4
+
+                w = dequantize_int4(w, self.lin_scale[key]).to(x.dtype)
             return F.linear(x, w, bias)
-        y = torch.empty(1, self.lin[key].shape[0], device=x.device, dtype=x.dtype)
-        self.K.gemv(self.lin[key], self.lin_scale.get(key), x, y)
+        y = torch.empty(1, w.shape[0], device=x.device, dtype=x.dtype)
+        if w.dtype == torch.uint8:
+            self.K.gemv_w4(w, self.lin_scale[key], x, y)
+        else:
+            self.K.gemv(w, self.lin_scale.get(key), x, y)
         return y if bias is None else y + bias
 
     @torch.no_grad()
