@@ -243,7 +243,7 @@ Full grids from the night of 13–14 Oct; details, correctness checks and pitfal
 | **O1–O6** `fused_w8` | + INT8 weight-only GEMV | **1.11 / 1.19** | **3.45×** | **0.32–0.35** | 98.7 % |
 | O1–O6b `fused_w4` | + INT4 group-128 GEMV (round-to-nearest) | 0.76 / 0.84 | 5.0× | 0.22–0.26 | 86 % (too lossy without calibration) |
 
-Prefill/vision: cuDNN attention for SigLIP2 (`vision_cudnn`, O7a) cuts 1080p TTFT 116 → 102 ms (vision 73.5 → 62.9 ms). Generalization: on LFM2.5-VL-3B, TPOT 6.50 → 2.50 ms with `fused_w8`. Batch 16: 5878 tok/s (HF 3972).
+Prefill/vision: cuDNN attention for SigLIP2 (`vision_cudnn`, O7a) cuts 1080p TTFT 116 → 102 ms (vision 73.5 → 62.9 ms). Generalization: on LFM2.5-VL-3B, TPOT 6.50 → 2.50 ms with `fused_w8`. Batched decode (img_small): batch 4 2929 tok/s (HF 1039), batch 16 ~5900 tok/s (HF 3987).
 
 ---|---|---|---|---|
 | HF transformers eager (baseline) | — | 3.83 / 3.81 ms | 1.0× | — |

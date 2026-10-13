@@ -440,9 +440,10 @@ __device__ __forceinline__ void load_x(const bf16* __restrict__ x, int chunk, fl
         for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(h[j]); xv[8 * q + 2 * j] = f.x; xv[8 * q + 2 * j + 1] = f.y; }
     }
 }
-template <typename WT, int ROWS, int UNROLL>
+template <typename WT, int ROWS, int UNROLL, int BATCH>
 __global__ void gemv_direct_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
                                    bf16* __restrict__ y, int N, int K) {
+    // x [BATCH, K], y [BATCH, N]: each weight chunk is read once and used for all BATCH rows of x
     pdl_trigger();
     constexpr int PER = WTraits<WT>::PER;
     const int chunks = K / PER;
@@ -452,9 +453,11 @@ __global__ void gemv_direct_kernel(const WT* __restrict__ W, const float* __rest
     const uint4* rows[ROWS];
 #pragma unroll
     for (int r = 0; r < ROWS; ++r) rows[r] = reinterpret_cast<const uint4*>(W + (size_t)min(n0 + r, N - 1) * K);
-    float acc[ROWS];
+    float acc[ROWS][BATCH];
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) acc[r] = 0.f;
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int b = 0; b < BATCH; ++b) acc[r][b] = 0.f;
     int c = lane;
     uint4 buf[ROWS][UNROLL];
     bool more = c + 32 * (UNROLL - 1) < chunks;
@@ -468,10 +471,13 @@ __global__ void gemv_direct_kernel(const WT* __restrict__ W, const float* __rest
     while (more) {
 #pragma unroll
         for (int u = 0; u < UNROLL; ++u) {
-            float xv[PER];
-            load_x<PER>(x, c + 32 * u, xv);
 #pragma unroll
-            for (int r = 0; r < ROWS; ++r) acc[r] += WTraits<WT>::dot(buf[r][u], xv, 1);
+            for (int b = 0; b < BATCH; ++b) {
+                float xv[PER];
+                load_x<PER>(x + (size_t)b * K, c + 32 * u, xv);
+#pragma unroll
+                for (int r = 0; r < ROWS; ++r) acc[r][b] += WTraits<WT>::dot(buf[r][u], xv, 1);
+            }
         }
         c += 32 * UNROLL;
         more = c + 32 * (UNROLL - 1) < chunks;
@@ -483,16 +489,24 @@ __global__ void gemv_direct_kernel(const WT* __restrict__ W, const float* __rest
         }
     }
     for (; c < chunks; c += 32) {
-        float xv[PER];
-        load_x<PER>(x, c, xv);
+        uint4 w[ROWS];
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) acc[r] += WTraits<WT>::dot(ld_stream(rows[r] + c), xv, 1);
+        for (int r = 0; r < ROWS; ++r) w[r] = ld_stream(rows[r] + c);
+#pragma unroll
+        for (int b = 0; b < BATCH; ++b) {
+            float xv[PER];
+            load_x<PER>(x + (size_t)b * K, c, xv);
+#pragma unroll
+            for (int r = 0; r < ROWS; ++r) acc[r][b] += WTraits<WT>::dot(w[r], xv, 1);
+        }
     }
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) {
-        const float a = warp_sum(acc[r]);
-        if (lane == 0 && n0 + r < N) y[n0 + r] = F2B(scale ? a * scale[n0 + r] : a);
-    }
+    for (int r = 0; r < ROWS; ++r)
+#pragma unroll
+        for (int b = 0; b < BATCH; ++b) {
+            const float a = warp_sum(acc[r][b]);
+            if (lane == 0 && n0 + r < N) y[(size_t)b * N + n0 + r] = F2B(scale ? a * scale[n0 + r] : a);
+        }
 }
 static int g_gemv_impl = 1;  // 1: direct x loads (default: 1.1-1.23 TB/s on every decode shape), 0: x staged in shared memory
 void set_gemv_impl(int impl) { g_gemv_impl = impl; }
@@ -500,16 +514,26 @@ void set_gemv_impl(int impl) { g_gemv_impl = impl; }
 
 // rows per warp (0 = auto): more rows reuse each x slice and keep more loads in flight
 template <typename WT>
-static void gemv_dispatch(const WT* W, const float* scale, const bf16* x, bf16* y, int N, int K, int rows, cudaStream_t st) {
+static void gemv_dispatch(const WT* W, const float* scale, const bf16* x, bf16* y, int N, int K, int rows, int B, cudaStream_t st) {
     // measured (profiling/bench_gemv.py): direct loads -> 1 row/warp with 4 chunks in flight is best on every shape;
     // staged-x kernel -> 2 rows/warp, 4 for lm_head
     if (rows <= 0) rows = g_gemv_impl == 1 ? 1 : (N >= 32768 ? 4 : 2);
     const int per_block = GEMV_WARPS * rows;
     const dim3 grid((N + per_block - 1) / per_block);
-    if (g_gemv_impl == 1) {
-        if (rows == 4) launch_k(gemv_direct_kernel<WT, 4, 2>, grid, GEMV_WARPS * 32, 0, st, W, scale, x, y, N, K);
-        else if (rows == 2) launch_k(gemv_direct_kernel<WT, 2, 2>, grid, GEMV_WARPS * 32, 0, st, W, scale, x, y, N, K);
-        else launch_k(gemv_direct_kernel<WT, 1, 4>, grid, GEMV_WARPS * 32, 0, st, W, scale, x, y, N, K);
+    if (g_gemv_impl == 1 || B > 1) {
+        // batch: chunks of up to 8 sequences per launch (each chunk reads the weights once)
+        for (int b0 = 0; b0 < B;) {
+            const int left = B - b0, bs = left >= 8 ? 8 : (left >= 4 ? 4 : (left >= 2 ? 2 : 1));
+            const bf16* xb = x + (size_t)b0 * K;
+            bf16* yb = y + (size_t)b0 * N;
+            if (bs == 8) launch_k(gemv_direct_kernel<WT, 1, 2, 8>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (bs == 4) launch_k(gemv_direct_kernel<WT, 1, 2, 4>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (bs == 2) launch_k(gemv_direct_kernel<WT, 1, 4, 2>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (rows == 4) launch_k(gemv_direct_kernel<WT, 4, 2, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (rows == 2) launch_k(gemv_direct_kernel<WT, 2, 2, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else launch_k(gemv_direct_kernel<WT, 1, 4, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            b0 += bs;
+        }
         return;
     }
     const size_t sm = (size_t)K * sizeof(float);
@@ -518,9 +542,9 @@ static void gemv_dispatch(const WT* W, const float* scale, const bf16* x, bf16* 
     else launch_k(gemv_kernel<WT, 1, 4>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
 }
 
-void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, cudaStream_t st) {
-    if (int8) gemv_dispatch<int8_t>((const int8_t*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, st);
-    else gemv_dispatch<bf16>((const bf16*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, st);
+void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, int B, cudaStream_t st) {
+    if (int8) gemv_dispatch<int8_t>((const int8_t*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, B, st);
+    else gemv_dispatch<bf16>((const bf16*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, B, st);
 }
 
 // ------------------------------------------------------------------------------------------------ gemv_w4 (O6b)

@@ -13,7 +13,7 @@ void launch_decode_attention(const void* q, const void* kc, const void* vc, cons
 void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st);
 void set_pdl(bool on);
 void set_gemv_impl(int impl);
-void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, cudaStream_t st);
+void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, int B, cudaStream_t st);
 void launch_gemv_w4(const void* Wp, const float* S, const void* x, void* y, int N, int K, int group, int rows, cudaStream_t st);
 void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
                                    int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st);
@@ -61,7 +61,7 @@ void decode_attention_split(torch::Tensor q, torch::Tensor kc, torch::Tensor vc,
                                   ws.data_ptr<float>(), q.size(0), q.size(1), kc.size(1), kc.size(2), ws.size(2), (float)scale, stream());
 }
 
-// y [1, N] = x [1, K] @ W^T, W [N, K] BF16 or INT8 (then scale [N] fp32 is required)
+// y [B, N] = x [B, K] @ W^T, W [N, K] BF16 or INT8 (then scale [N] fp32 is required); B >= 1 (chunks of 4)
 void gemv(torch::Tensor W, c10::optional<torch::Tensor> scale, torch::Tensor x, torch::Tensor y, int64_t rows) {
     CHECK_BF16(x); CHECK_BF16(y);
     TORCH_CHECK(W.is_cuda() && W.is_contiguous() && W.dim() == 2, "W must be a contiguous CUDA matrix");
@@ -69,9 +69,10 @@ void gemv(torch::Tensor W, c10::optional<torch::Tensor> scale, torch::Tensor x, 
     TORCH_CHECK(int8 || W.scalar_type() == at::kBFloat16, "W must be bf16 or int8");
     TORCH_CHECK(!int8 || (scale.has_value() && scale->scalar_type() == at::kFloat), "int8 W needs fp32 scale");
     const int N = W.size(0), K = W.size(1);
-    TORCH_CHECK(x.numel() == K && y.numel() == N, "batch 1 only");
+    const int B = x.numel() / K;
+    TORCH_CHECK(x.numel() == (int64_t)B * K && y.numel() == (int64_t)B * N && B >= 1, "x [B, K], y [B, N]");
     TORCH_CHECK(K % (32 * (int8 ? 16 : 8)) == 0, "K must be a multiple of 256 (bf16) / 512 (int8)");
-    launch_gemv(W.data_ptr(), int8, scale.has_value() ? scale->data_ptr<float>() : nullptr, x.data_ptr(), y.data_ptr(), N, K, (int)rows, stream());
+    launch_gemv(W.data_ptr(), int8, scale.has_value() ? scale->data_ptr<float>() : nullptr, x.data_ptr(), y.data_ptr(), N, K, (int)rows, B, stream());
 }
 
 // y [1, N] = x [1, K] @ dequant(Wp)^T; Wp [N, K/2] uint8 (two int4 + 8 per byte), S [N, K/group] fp32

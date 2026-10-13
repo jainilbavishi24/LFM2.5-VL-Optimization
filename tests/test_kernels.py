@@ -138,6 +138,13 @@ def test_gemv():
         report(f"gemv int8 [{N}x{Kd}]", y, ref)
         from lfm2opt.quant import dequantize_int4, quantize_int4
 
+        for Bt in (2, 3, 4, 7, 8, 13):  # batched decode: chunks of 8 / 4 / 2 / 1 rows
+            xb = torch.randn(Bt, Kd, device=dev, dtype=bf)
+            yb = torch.empty(Bt, N, device=dev, dtype=bf)
+            K.gemv(Wq, scale, xb, yb)
+            report(f"gemv int8 B={Bt} [{N}x{Kd}]", yb, F.linear(xb.float(), Wq.float() * scale[:, None]).to(bf))
+            K.gemv(W, None, xb, yb)
+            report(f"gemv bf16 B={Bt} [{N}x{Kd}]", yb, F.linear(xb, W))
         Wp, S4 = quantize_int4(W)
         K.gemv_w4(Wp, S4, x, y)
         report(f"gemv int4 [{N}x{Kd}]", y, F.linear(x.float(), dequantize_int4(Wp, S4)).to(bf))

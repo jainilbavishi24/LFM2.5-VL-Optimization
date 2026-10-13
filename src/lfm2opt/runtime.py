@@ -156,26 +156,26 @@ class StaticDecoder:
         if self.gemv in ("int8", "int4"):
             from .quant import quantize_int4, quantize_int8
 
+            self.lin_bf16 = dict(self.lin)  # kept for large batches, where cuBLAS' tensor-core GEMM beats our GEMV
             for key in list(self.lin):
                 if self.gemv == "int8" or key[0] in self.w4_keep_int8:     # mixed precision: sensitive ones in INT8
                     self.lin[key], self.lin_scale[key] = quantize_int8(self.lin[key])
                 else:
                     self.lin[key], self.lin_scale[key] = quantize_int4(self.lin[key], self.w4_group, self.w4_clip)
-            self.w_qkv, self.w_13 = {}, {}  # merged BF16 copies no longer needed (prefill uses the HF weights)
             torch.cuda.empty_cache()
 
     def _linear(self, x, key, bias=None):
         """Decode GEMV for weight `key`: cuBLAS (F.linear) or our BF16 / INT8 kernel (batch 1 only)."""
         w = self.lin[key]
-        if self.gemv == "cublas" or x.shape[0] != 1:
-            if w.dtype == torch.int8:  # batch > 1 with quantized weights: dequantize (slow path, correctness only)
-                w = (w.float() * self.lin_scale[key][:, None]).to(x.dtype)
-            elif w.dtype == torch.uint8:
-                from .quant import dequantize_int4
-
-                w = dequantize_int4(w, self.lin_scale[key]).to(x.dtype)
+        B = x.shape[0]
+        # our GEMV (measured, bench tag "batch_sweep_final"): BF16 up to batch 4 (cuBLAS' tensor-core GEMM wins
+        # from 8 on), INT8 up to 8 (chunks of 8 rows share each weight read), INT4 batch 1 only; else BF16 cuBLAS
+        if (self.gemv == "cublas" or B > 8 or (B > 1 and w.dtype == torch.uint8)
+                or (B > 4 and w.dtype == torch.bfloat16)):
+            if w.dtype != torch.bfloat16:  # quantized decode weights: large batches use the kept BF16 copy
+                w = self.lin_bf16[key]
             return F.linear(x, w, bias)
-        y = torch.empty(1, w.shape[0], device=x.device, dtype=x.dtype)
+        y = torch.empty(B, w.shape[0], device=x.device, dtype=x.dtype)
         if w.dtype == torch.uint8:
             self.K.gemv_w4(w, self.lin_scale[key], x, y)
         else:

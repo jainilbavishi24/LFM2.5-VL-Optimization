@@ -33,6 +33,17 @@ Entry template:
 - **Batching (`fused_batch`, img_small):** the fused runtime also runs batched through the cuBLAS path: batch 4: 2.60 ms, 1538 tok/s (HF 1021); batch 16: 2.72 ms, **5878 tok/s** (HF 3972).
 - **FP8 vision GEMMs (O7b, `vision_fp8`): rejected.** W8A8 E4M3 (per-channel weights, dynamic per-token activations, `torch._scaled_mm`) made the vision tower *slower* (1080p TTFT 97 → 136 ms: the eager activation-quantization kernels cost more than the FP8 GEMMs save) and inaccurate (image-feature cosine as low as 0.50, outputs diverge at token 7). Would need fused quantization and finer (per-block) activation scales.
 
+**Batched decode with our GEMV (02:40, tag `batch_sweep_final`, img_small, tok/s at 128 tokens):** the direct GEMV now takes x [B, K] and reads each weight chunk once for up to 8 sequences (105/105 tests incl. B = 2, 3, 4, 7, 8, 13).
+
+| batch | HF eager | `fused_gemv` (BF16) | `fused_w8` (INT8) |
+| --- | --- | --- | --- |
+| 1 | 272 | 480 | **895** |
+| 4 | 1039 | 1819 | **2929** |
+| 8 | 2051 | 3066 | **3696** |
+| 16 | 3987 | **5937** | 3835 → 5900 with the hybrid rule |
+
+From batch 8–16 the GEMV becomes compute-bound (INT8→FP32 conversion and FMA per weight per sequence) while cuBLAS uses tensor cores. Dispatch rule now: our GEMV for BF16 up to batch 4 and INT8 up to batch 8, otherwise cuBLAS on BF16 weights (the INT8 runtime keeps the merged BF16 copies, +1.1 GB). A W8A8 tensor-core GEMM would be the proper large-batch INT8 path.
+
 **Night summary:** batch-1 decode on the Blackwell went from 3.83 ms (HF eager) to 2.08 ms in BF16 (1.84×, beats vLLM 2.36 and llama.cpp BF16 2.26), and to 1.11 ms with INT8 weights (3.45×, beats llama.cpp Q8_0 1.45; 98.7 % teacher-forced agreement). 1080p TTFT 116 → 102 ms. All of it is CUDA graphs plus our own kernels (fused elementwise/norm/conv/RoPE/attention, BF16/INT8/INT4 GEMV, PDL).
 
 ---
