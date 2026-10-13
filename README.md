@@ -21,7 +21,8 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Benchmark + profiling harness (`benchmarks/`, `profiling/`, `scripts/run_suite.sh`) | 3 | ✅ Done, debugged on Colab T4 |
 | Baseline benchmarking + profiling on **T4** | 3 | ✅ Complete (incl. long-context and full-prefill Nsight Compute, 2026-10-11) — see Results and the log |
 | Baseline benchmarking + profiling on the **course server, RTX PRO 5000 Blackwell** (3 × 2 h/week, SSH) | 4–5 | ✅ Done in slot 1 (2026-10-13): full grid, batch sweep, torch profiler, nsys, 9 Nsight Compute runs — see Results |
-| Reference baselines O0a–O0d (`causal-conv1d`, `torch.compile`, vLLM, llama.cpp) | 5 | ⏳ Running on the server (`scripts/remote/plan_refs.sh`) |
+| Reference baselines O0a–O0d (`causal-conv1d`, `torch.compile`, vLLM, llama.cpp) | 5 | ✅ Done (night of 13–14 Oct) — see Results |
+| O1 CUDA graph runtime, O2–O4 fused CUDA kernels, O6 INT8/INT4 weight-only GEMV | 5–6 | ✅ First versions working: decode 3.83 → 2.23 ms (BF16) / 1.33 ms (INT8) — see Results |
 | Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
 | Main optimization work | 6 | — |
@@ -225,6 +226,24 @@ Medians of 10 repeats, `results/raw/20261013-224658_RTXPRO5000Blackwell_baseline
 | img_fhd 1920×1080 (9 tiles) | 2300 | 116 | 73.5 / 33.9 | 3.81 | 262 | 0.89 | 3.3 |
 
 Batch 16 (img_small): 3947 tok/s at TPOT 4.05 ms, 0.06 J/token. TPOT is flat in context length (3.86 ms at 1024 tokens). Weight-read floor ≈ 2.34 GB / 1.34 TB/s ≈ 1.7 ms.
+
+### Decode optimizations so far (RTX PRO 5000 Blackwell, batch 1, TPOT at 128 new tokens)
+
+Details, correctness checks and pitfalls in the [experiment log](docs/experiment_log.md) (entries of 13–14 Oct). All variants are greedy-equivalent to HF except where noted (teacher-forced argmax agreement vs HF BF16).
+
+| Variant | What it is | TPOT text / 1080p | vs HF | argmax agreement |
+|---|---|---|---|---|
+| HF transformers eager (baseline) | — | 3.83 / 3.81 ms | 1.0× | — |
+| `causal-conv1d` installed (O0a) | NVIDIA-style conv kernels, no code change | 3.73 / 3.70 | 1.03× | — |
+| HF static cache + `torch.compile` (O0b) | PyTorch's compiler + CUDA graphs | 2.72 / 3.26 | 1.4× / 1.2× | — |
+| vLLM 0.31 (O0c) | CUDA graphs, own kernels | 2.38 / 2.38 | 1.6× | — |
+| llama.cpp BF16 / Q8_0 (O0d) | GGUF, CUDA backend | 2.26 / – ; 1.45 / – | 1.7× ; 2.6× | — |
+| **O1** `cudagraph` | our static decode loop, one CUDA graph per token | 2.91 / 2.94 | 1.3× | 99 % (near-ties) |
+| **O1–O4** `fused` | + 5 fused CUDA kernels, merged projections, split-K attention (149 kernels/step instead of ~700) | **2.23 / 2.27** | **1.7×** | 99 % (near-ties) |
+| **O1–O6** `fused_w8` | + INT8 weight-only GEMV kernel (per-row scales) | **1.33 / 1.36** | **2.9×** | 98.7 % (flips at margins ≤ 0.125) |
+| O1–O6b `fused_w4` | + INT4 group-128 GEMV (RTN) | 0.99 / 1.02 | 3.8× | 86 % — too lossy without calibration |
+
+The fused BF16 step is 94 % GEMV at ~90 % of the measured DRAM read roof (1.23 TB/s), so BF16 is close to its floor (~1.9 ms); the remaining wins come from fewer weight bytes (INT8/INT4) and from prefill/vision (TTFT is still HF's: 116 ms at 1080p).
 
 ---
 
