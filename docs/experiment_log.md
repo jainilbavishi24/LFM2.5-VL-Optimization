@@ -15,6 +15,32 @@ Entry template:
 
 ---
 
+## 2026-10-13/14: O1 first cut: static decode runtime + CUDA graph  (Claude, overnight slots)
+
+**Goal:** remove the host/launch overhead that bounds decode (703 kernels/step, GPU busy 45 %).
+
+**Setup:** e707a4c+, Blackwell server, `.venv` (system Python 3.12.3), torch 2.11.0+cu130, BF16, variant `cudagraph` = [src/lfm2opt/runtime.py](../src/lfm2opt/runtime.py).
+
+**What we did:** prefill stays in Hugging Face; its KV cache (6 attention layers) and conv states (10 short-conv layers) are copied into static buffers (`[B, 8, max_len, 64]` per attention layer, `max_len` rounded up to 256; `[B, 2048, 3]` per conv layer). One decode step is our own function over those buffers: K/V written in place with `index_copy_` at a device-side position, attention = matmul → softmax (FP32) → matmul over all `max_len` slots with a length mask, conv state shifted in place, greedy argmax and the output-token write inside the step. The step is captured once per (batch, max_len) as a `torch.cuda.CUDAGraph` and replayed per token; the host only reads the tokens at the end. EOS logits are masked like HF's `min_new_tokens` (first attempt didn't, and diverged by picking EOS).
+
+**Result (`results/raw/20261013-235*_o1_cudagraph_full`, batch 1, 10 repeats):**
+
+| Input | TPOT baseline → O1 | tok/s | TTFT |
+| --- | --- | --- | --- |
+| text | 3.83 → 2.91 ms | 261 → 344 | 6.9 → 4.5 ms |
+| img_small | 3.83 → 2.92 ms | 261 → 343 | 20.2 → 17.8 ms |
+| img_hd | 3.84 → 2.93 ms | 260 → 341 | 39.8 → 38.1 ms |
+| img_fhd | 3.81 → 2.93 ms | 262 → 342 | 116 → 116 ms |
+
+(TTFT for text/img_small drops because the first token no longer goes through `generate()`'s setup.)
+- **Correctness** ([tests/check_runtime_numerics.py](../tests/check_runtime_numerics.py), teacher-forced against HF, 128 tokens × 3 inputs): argmax agrees on 377/381 steps; max |Δlogit| 0.35 (median 0.13); every disagreement is at an HF top-1/top-2 margin of 0.0–0.06, i.e. a BF16 near-tie. Free-running greedy outputs are identical for 4/6 configs, the other two branch at such a tie into equally fluent text.
+- For comparison, `torch.compile(mode="reduce-overhead")` + HF static cache gives ~2.75 ms (smoke test): Inductor also fuses the elementwise ops, which our eager-op graph doesn't.
+- What is left: the graph removes launch gaps, so TPOT ≈ GPU kernel time (~2.9 ms, matching the profiler's 2.98 ms/step). Against the ~1.7 ms weight-read floor, the remaining ~1.2 ms are the ~600 small elementwise/norm/cat kernels and GEMVs at ~70 % of peak bandwidth.
+
+**Takeaway / next step:** O1 works (+31 % decode throughput, numerically equivalent). Next: O2–O4 fusions inside the graph (residual+RMSNorm, gated short-conv, QK-norm+RoPE, merged projections), then a GEMV kernel tuned for the decode shapes. Also: energy per token falls less than time, because the GPU stays at ~240 W; to investigate with clocks/power traces.
+
+---
+
 ## 2026-10-13: Slot 1 on the server: RTX PRO 5000 Blackwell baseline + full profiling  (Jainil + Claude)
 
 **Setup:** commit 98f6b98 → e707a4c, RTX PRO 5000 Blackwell 48 GB (sm_120, 110 SMs, 96 MB L2, 300 W), driver 595.84 (CUDA 13.2), torch 2.11.0+cu130, transformers 5.19.0, BF16 (native), Ubuntu 24.04, Core Ultra 9 285K. LFM2.5-VL-1.6B @ 919fde3 (sha256 verified), no `causal-conv1d` (PyTorch fallback, same as T4).
