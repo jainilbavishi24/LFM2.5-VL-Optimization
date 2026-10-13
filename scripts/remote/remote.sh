@@ -15,6 +15,7 @@
 #   bash scripts/remote/remote.sh check              # GPU model, memory, other users
 #   bash scripts/remote/remote.sh push               # rsync code (no .git/models/results/third_party)
 #   bash scripts/remote/remote.sh setup              # preflight + Python env + model weights + profilers (idempotent)
+#   bash scripts/remote/remote.sh pushmodel|pushtools # no-internet fallbacks: weights / Nsight .debs from this machine
 #   bash scripts/remote/remote.sh slot <preset> <HH:MM slot end>   # run_suite.sh SUITE=<preset>, stops 12 min before slot end
 #   bash scripts/remote/remote.sh watch <job>        # sync results every 5 min + show progress until the job ends
 #   bash scripts/remote/remote.sh bg <job> "<cmd>"   # any command detached; log in $RDIR/jobs/<job>.out
@@ -68,6 +69,11 @@ case "$cmd" in
         need_master
         rsync -az --info=progress2 "$ROOT/models/" "$REMOTE:$RDIR/models/"
         ;;
+    pushtools)  # fallback when the server has no internet: Nsight .debs downloaded here into third_party/nsight/
+        need_master
+        "${SSH[@]}" "mkdir -p $RDIR/third_party/nsight"
+        rsync -az --info=progress2 "$ROOT/third_party/nsight/" "$REMOTE:$RDIR/third_party/nsight/"
+        ;;
     setup)
         need_master
         # preflight twice: the second run (inside the venv) also tests Nsight Compute counter access
@@ -80,9 +86,15 @@ case "$cmd" in
         "${SSH[@]}" "mkdir -p $RDIR/jobs && setsid nohup bash -lc $(printf '%q' "$script") > /dev/null 2>&1 < /dev/null & echo started job $job"
         ;;
     slot)
-        preset="$2"; slot_end="$3"   # HH:MM when the server logs us out
+        preset="$2"; slot_end="$3"   # HH:MM (our local time, IST) when the server logs us out
         job="${preset}_$(date +%H%M)"
-        "$0" bg "$job" "SUITE=$preset SLOT_END=$slot_end SLOT_MARGIN_MIN=${SLOT_MARGIN_MIN:-12} EST_SCALE=${EST_SCALE:-1.0} ${STEPS:+STEPS='$STEPS'} bash scripts/run_suite.sh"
+        # Deadline computed HERE as a Unix epoch: independent of the server's time zone (it may run on UTC).
+        now=$(date +%s); end=$(date -d "$slot_end" +%s)
+        if (( end <= now )); then end=$(( end + 86400 )); fi       # e.g. a slot ending at 00:00
+        deadline=$(( end - ${SLOT_MARGIN_MIN:-12} * 60 ))
+        echo "slot ends $(date -d @"$end" '+%a %H:%M'); job stops scheduling at $(date -d @"$deadline" '+%H:%M') (local time)"
+        echo "server clock: $("${SSH[@]}" 'date -u +%H:%M:%S') UTC   local: $(date -u +%H:%M:%S) UTC  (should match within seconds)"
+        "$0" bg "$job" "SUITE=$preset DEADLINE=$deadline EST_SCALE=${EST_SCALE:-1.0} ${STEPS:+STEPS='$STEPS'} bash scripts/run_suite.sh"
         echo "next: bash $0 watch $job"
         ;;
     watch)

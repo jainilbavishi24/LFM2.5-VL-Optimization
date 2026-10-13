@@ -28,19 +28,27 @@
 #   ncu_step512 33 ncu: decode step 512 (context ~760)
 #   ncu_fhd_decode 30 / ncu_fhd_vision 19 / ncu_fhd_prefill 30   ncu on the 9-tile 1080p input
 #   summarize 1    summary.md for each benchmark run
+# Backlog (slot presets append it so the GPU never idles; order = value):
+#   bench_nohooks 14  full grid with hooks off (headline TPOT)    bench_long 10   1024-token generations (context growth)
+#   sdpa_rkv 6        baseline vs sdpa_repeat_kv variant (O5)    bench_batch_big 8  batch 1/16/32/64
+#   bench_repeat 14   full grid again (reproducibility)          model_3b 25     LFM2.5-VL-3B baseline (generalization)
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 source scripts/setup_profilers.sh
 
+BACKLOG="ncu_prefill bench_nohooks bench_long sdpa_rkv summarize ncu_fhd_prefill ncu_fhd_vision ncu_fhd_decode ncu_step512 ncu_deep bench_batch_big bench_repeat model_3b summarize"
 case "${SUITE:-all}" in
-    all)     DEFAULT_STEPS="bench_full bench_batch numerics overhead torch_prof nsys sdpa ncu_decode ncu_vision ncu_prefill ncu_deep ncu_step512 ncu_fhd_decode ncu_fhd_vision ncu_fhd_prefill summarize" ;;
+    all)     DEFAULT_STEPS="bench_full bench_batch numerics overhead torch_prof nsys sdpa ncu_decode ncu_vision $BACKLOG" ;;
+    backlog) DEFAULT_STEPS="$BACKLOG" ;;
     timing)  DEFAULT_STEPS="bench_full bench_batch numerics overhead summarize" ;;
     profile) DEFAULT_STEPS="torch_prof nsys sdpa" ;;
     variant) DEFAULT_STEPS="bench_full torch_prof nsys summarize" ;;
     # GPU-slot presets: priority order; whatever does not fit is skipped and carried to the next slot
-    slot1)   DEFAULT_STEPS="bench_full bench_batch numerics overhead summarize torch_prof nsys sdpa ncu_decode ncu_vision ncu_prefill" ;;
-    slot2)   DEFAULT_STEPS="ncu_prefill ncu_fhd_prefill ncu_fhd_vision ncu_deep ncu_fhd_decode ncu_step512" ;;
+    # slot1 = Eval-1 essentials, then a BACKLOG so the GPU is never idle if the essentials finish early
+    # (or if ncu is unavailable and its steps are skipped). Order = value; whatever doesn't fit is skipped.
+    slot1)   DEFAULT_STEPS="bench_full bench_batch numerics overhead summarize torch_prof nsys sdpa ncu_decode ncu_vision $BACKLOG" ;;
+    slot2)   DEFAULT_STEPS="$BACKLOG" ;;   # whatever slot 1 did not reach; already-done steps can be removed via STEPS=
     *) echo "unknown SUITE=$SUITE"; exit 1 ;;
 esac
 STEPS="${STEPS:-$DEFAULT_STEPS}"
@@ -63,7 +71,8 @@ if [[ -z "$DEADLINE" && -n "${SLOT_MINUTES:-}" ]]; then DEADLINE=$(( START_EPOCH
 
 declare -A EST=([bench_full]=14 [bench_batch]=4 [numerics]=2 [overhead]=3 [torch_prof]=3 [nsys]=2 [sdpa]=4
                 [ncu_decode]=28 [ncu_vision]=16 [ncu_prefill]=28 [ncu_deep]=18 [ncu_step512]=33
-                [ncu_fhd_decode]=30 [ncu_fhd_vision]=19 [ncu_fhd_prefill]=30 [summarize]=1)
+                [ncu_fhd_decode]=30 [ncu_fhd_vision]=19 [ncu_fhd_prefill]=30 [summarize]=1
+                [bench_nohooks]=14 [bench_long]=10 [sdpa_rkv]=6 [bench_batch_big]=8 [bench_repeat]=14 [model_3b]=25)
 DONE=(); FAILED=(); SKIPPED=()
 
 say() { echo "[suite $(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
@@ -98,6 +107,15 @@ step_body() {
         ncu_fhd_decode)  x env NCU_SET=basic LAUNCHES=800 $NCU decode img_fhd --variant "$VARIANT" ;;
         ncu_fhd_vision)  x env NCU_SET=basic LAUNCHES=600 $NCU vision img_fhd --variant "$VARIANT" ;;
         ncu_fhd_prefill) x env NCU_SET=basic LAUNCHES=1000 NCU_LABEL=full_ $NCU prefill img_fhd --variant "$VARIANT" ;;
+        # ---- backlog (runs only if the essentials finished early) ----
+        bench_nohooks)   x $B --preset full --no-phases --tag "${TAG}_nohooks_full" ;;          # headline TPOT without hooks
+        bench_long)      x $B --workloads text,img_small --gen-lens 1,1024 --repeats 5 --tag "${TAG}_long" ;;  # TPOT growth with context
+        sdpa_rkv)        x python benchmarks/bench.py --variants baseline,sdpa_repeat_kv --workloads img_small,img_fhd \
+                             --gen-lens 1,128 --repeats 5 --tag "${TAG}_sdpa_rkv" ;;           # O5 quick win vs baseline, same process
+        bench_batch_big) x $B --workloads img_small --gen-lens 1,128 --batch-sizes 1,16,32,64 --repeats 3 --tag "${TAG}_batch_big" ;;
+        bench_repeat)    x $B --preset full --tag "${TAG}_repeat" ;;                             # reproducibility across the slot
+        model_3b)        x python benchmarks/bench.py --model LiquidAI/LFM2.5-VL-3B --variants "$VARIANT" --preset full \
+                             --repeats 5 --tag "${TAG}_3b" ;;                                   # generalization (downloads 6.2 GB once)
         summarize)
             for d in results/raw/*_"${TAG}"_*/; do
                 if [[ -f "$d/runs.jsonl" && ! -f "$d/summary.md" ]]; then x python benchmarks/summarize.py "$d"; fi

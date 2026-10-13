@@ -61,9 +61,9 @@ Same conclusion in all three cases: decode is launch-overhead bound on the T4 al
 - [x] `~/.ssh/config` entry `gpu` → `team21@10.4.25.63` with ControlMaster/ControlPersist and keep-alives (on Jainil's machine).
 - [x] `scripts/remote/remote.sh` adapted to the rules above (team folder, caches, master connection checks, `slot <preset> <end>`).
 - [ ] Dress rehearsal of `slot1` on Colab (running 2026-10-13).
-- [ ] Confirm we can reach `10.4.25.63` from this machine (campus network / VPN? WSL2 + VPN sometimes needs extra setup). A TCP check (`nc -zv 10.4.25.63 22`) does not log in.
-- [ ] Optional fallback against "no internet on the server": download the model weights to this machine (`bash scripts/download_model.sh`, 3.2 GB, ~12 min) so `remote.sh pushmodel` can copy them.
-- [ ] Book slots; write the slot end times here.
+- [x] `10.4.25.63:22` reachable from this machine on the campus LAN (TCP check only, no login). Off campus: VPN.
+- [x] No-internet fallbacks on this machine: model weights (`models/`, sha256 verified) and Nsight 2026.3 .debs (`third_party/nsight/`), pushed with `remote.sh pushmodel` / `pushtools`.
+- [x] First slots booked (times kept out of git).
 
 ## 4. Slot 1: what we do in the first 2 hours
 
@@ -76,8 +76,8 @@ Times relative to the slot start S; slot end E = S + 2:00. Setup must happen ins
 | S+0:03 | Claude | Send code | `remote.sh push` | rsync summary |
 | S+0:04 | Claude | Preflight + venv + torch + model weights + profilers | `remote.sh setup` | 2 preflight reports, `matmul ok`, weights present |
 | S+0:22 | Claude | Smoke test | `remote.sh run "python benchmarks/bench.py --workloads img_small --gen-lens 1,16 --repeats 2 --idle-seconds 2 --tag smoke"` | sensible caption |
-| S+0:25 | Claude | **Start the slot job** | `remote.sh slot slot1 <E as HH:MM>` | `started job slot1_HHMM` |
-| S+0:25 → E−0:12 | (automatic) | Priority order: benchmark grid → batch sweep → BF16-vs-FP32 → hook overhead → summaries → PyTorch-profiler breakdowns (3) → Nsight Systems (2) → attention probe → Nsight Compute decode → vision → prefill | `remote.sh watch slot1_HHMM` (syncs every 5 min) | log ends with `DONE / FAILED / SKIPPED` |
+| S+0:25 | Claude | **Start the slot job** | `remote.sh slot slot1 <E as HH:MM>` (prints the local stop time and both clocks) | `started job slot1_HHMM` |
+| S+0:25 → E−0:12 | (automatic) | Essentials: benchmark grid → batch sweep → BF16-vs-FP32 → hook overhead → summaries → PyTorch-profiler breakdowns (3) → Nsight Systems (2) → attention probe → Nsight Compute decode → vision. **Then the backlog (§5.1) until the deadline**, so the GPU never idles | `remote.sh watch slot1_HHMM` (syncs every 5 min) | log ends with `DONE / FAILED / SKIPPED` |
 | E−0:12 → E−0:05 | Claude | Final sync + check summaries locally | `remote.sh sync` | `results/raw/*_baseline_full/summary.md` here |
 | E−0:05 | Claude | Leave clean; then the slot ends | `remote.sh jobs` (none), `remote.sh disconnect` | — |
 | after | team | Commit results, experiment-log entry, calibrate `EST_SCALE` from step times | — | — |
@@ -87,6 +87,23 @@ Budget: setup ≈ 20 min (torch ≈ 2.5 GB + weights 3.2 GB; depends on the serv
 If setup is slow (no internet, old Python): the deadline logic still protects the slot; whatever doesn't fit moves to slot 2, where setup takes ~1 min.
 
 ## 5. Following slots
+
+### 5.1 Backlog: the GPU is never idle
+
+Every slot preset ends with the same **backlog**, in order of value. If the essentials finish early, or Nsight Compute is unavailable and its steps are skipped, the job simply continues down this list until 12 minutes before the slot ends. Every item uses code that has already run on Colab.
+
+| # | Step | T4 estimate | What it adds |
+| --- | --- | --- | --- |
+| 1 | `ncu_prefill` | 28 min | Nsight Compute of the LM prefill (completes the Eval 1 profiling) |
+| 2 | `bench_nohooks` | 14 min | the full grid with timing hooks off → clean headline TPOT |
+| 3 | `bench_long` | 10 min | 1024-token answers → how decode slows as the context grows |
+| 4 | `sdpa_rkv` | 6 min | baseline vs the `sdpa_repeat_kv` variant (O5 quick win), same process |
+| 5 | `ncu_fhd_prefill`, `ncu_fhd_vision`, `ncu_fhd_decode`, `ncu_step512`, `ncu_deep` | 18–33 min each | long-context / 9-tile / full-section Nsight Compute |
+| 6 | `bench_batch_big` | 8 min | batch 16 / 32 / 64 (the 48 GB card allows it) → throughput ceiling |
+| 7 | `bench_repeat` | 14 min | the full grid again → run-to-run reproducibility |
+| 8 | `model_3b` | 25 min | LFM2.5-VL-3B baseline (downloads 6.2 GB once) → generalization |
+
+Slot 2 starts with this backlog minus whatever slot 1 already finished (`STEPS="..."`), so nothing is ever repeated by accident.
 
 | Slot | Content | Command | Needs beforehand (rehearsed on Colab) |
 | --- | --- | --- | --- |
@@ -125,7 +142,25 @@ bash $R sync                      # results back to this machine (repeat freely)
 bash $R disconnect                # at the very end only
 ```
 
-## 8. Open questions
+## 8. Readiness checklist for the RTX PRO 5000 Blackwell (status 13 Oct)
+
+| Risk | Status / safeguard |
+| --- | --- |
+| Can we reach the server? | ✅ TCP 22 reachable from the campus LAN (no login attempted). Off campus → VPN |
+| Server time zone ≠ IST (deadline at the wrong time) | ✅ fixed: `remote.sh slot` computes the deadline locally as a Unix epoch and prints both clocks |
+| Logout / slot end kills processes | ✅ master connection; 12-min margin; 5-min sync; skipped steps carried over |
+| GPU idle if the essentials finish early | ✅ backlog (§5.1) appended to every slot preset |
+| PyTorch for sm_120 | ✅ `setup_env.sh` picks cu130/cu128 from the driver; torch 2.11 supports sm_120; fresh install tested on Colab (1.5 min) |
+| System Python < 3.10 | ✅ `setup_env.sh` installs uv + Python 3.12 into the team folder |
+| No internet on the server | ✅ weights (3.2 GB, checksum-verified) and Nsight .debs are on this laptop: `remote.sh pushmodel`, `remote.sh pushtools` · ❌ PyTorch wheels have no offline fallback (ask staff if the server has no internet) |
+| Nsight Compute/Systems too old for Blackwell (needs ≥ 2025.1), no sudo | ✅ `setup_profilers.sh` checks versions and installs 2026.3 into the team folder with `dpkg -x` (no root); tested on Colab |
+| No permission for GPU counters (`ERR_NVGPUCTRPERM`) | ✅ ncu steps auto-skipped, backlog fills the time · ❌ ncu then needs staff action (enable profiling for users) |
+| SDPA backends on sm_120 unknown | ✅ that is exactly what the `sdpa` step measures; unsupported backends are recorded, not fatal |
+| Disk use in `/data/cs3406/team21` | ~25 GB worst case (venv ~7, uv/pip cache ~3, weights 3.2 + 6.2 for the 3B, Nsight ~2.5, reports ~2). Preflight prints free space; `uv cache clean` frees ~3 GB |
+| Our own result syncing perturbs timing | rsync every 5 min is ~1 s of light CPU work; negligible vs a 14-min benchmark, noted in the log |
+| A step hangs | per-step timeout (2× estimate, capped by time left) |
+
+## 9. Open questions
 
 1. ✅ RTX PRO 5000 Blackwell 48 GB. Open: is the server's Nsight Compute recent enough for sm_120 (2025.1+)? Preflight prints the version; `setup_profilers.sh` installs a newer one via apt if needed (requires sudo).
 2. Do we need the campus network / VPN to reach 10.4.25.63 from our laptops?
