@@ -29,10 +29,11 @@ def main():
     ap.add_argument("--workloads", default="text,img_small,img_fhd")
     ap.add_argument("--gen", type=int, default=128)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--fused", action="store_true", help="check the fused-kernel runtime (O2-O4)")
     args = ap.parse_args()
 
     net, processor = load()
-    dec = StaticDecoder(net, keep_logits=True)
+    dec = StaticDecoder(net, keep_logits=True, fused=args.fused)
     report = {}
     for name in args.workloads.split(","):
         wl = WORKLOADS[name]

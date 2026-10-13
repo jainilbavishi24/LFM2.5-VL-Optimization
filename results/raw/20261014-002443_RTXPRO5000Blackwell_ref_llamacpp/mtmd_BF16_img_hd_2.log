@@ -1,0 +1,21 @@
+0.00.511.923 I cmn          init: llama threadpool init, n_threads = 4
+0.00.692.474 I mtmd_cli_context: chat template example:
+<|im_start|>system
+You are a helpful assistant<|im_end|>
+<|im_start|>user
+Hello<|im_end|>
+<|im_start|>assistant
+Hi there<|im_end|>
+<|im_start|>user
+How are you?<|im_end|>
+<|im_start|>assistant
+
+0.00.692.477 I main: loading model: /data/cs3406/team21/ext/gguf/LFM2.5-VL-1.6B-BF16.gguf
+0.00.692.535 W WARN: This is an experimental CLI for testing multimodal capability.
+0.00.692.535 W       For normal use cases, please use the standard llama-cli
+0.00.717.573 I encoding mtmd batch, n_chunks = 1 (done = 1, total = 7)
+0.00.808.295 I mtmd batch encoding done in 91 ms
+0.00.819.831 I encoding mtmd batch, n_chunks = 1 (done = 3, total = 7)
+0.00.842.627 I mtmd batch encoding done in 23 ms
+0.00.849.140 I encoding mtmd batch, n_chunks = 1 (done = 5, total = 7)
+0.00.868.319 I mtmd batch encoding done in 19 ms

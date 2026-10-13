@@ -1,0 +1,16 @@
+{
+  "preset": "full",
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variants": "compile_static",
+  "workloads": "text,img_small,img_hd,img_fhd",
+  "gen_lens": "1,32,128,512",
+  "batch_sizes": "1",
+  "warmup": 2,
+  "repeats": 10,
+  "idle_seconds": 5.0,
+  "no_phases": true,
+  "tag": "o0ab_compile_cc1d_nohooks_full",
+  "out": "/data/cs3406/team21/PAA_Project/results/raw"
+}

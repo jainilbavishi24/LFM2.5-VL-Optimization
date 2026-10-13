@@ -1,0 +1,211 @@
+// O2-O4: fused CUDA kernels for one LFM2 decode step (batch B, one token per sequence), BF16 in/out,
+// FP32 accumulation. Each kernel replaces a chain of small PyTorch ops in transformers' modeling_lfm2.py and
+// keeps its rounding points (BF16 after every op HF does in BF16), so results match the eager model closely.
+// Host wrappers + bindings: lfm2_decode.cpp (kept out of this file: nvcc 13 cannot parse some ATen headers).
+// All kernels launch on PyTorch's current stream and read the decode position from device memory, so the
+// whole step stays capturable in one CUDA graph (src/lfm2opt/runtime.py, fused=True).
+//
+//   add_rmsnorm      h += y (optional); x = w * rmsnorm(h)                 [Lfm2RMSNorm + residual add]
+//   shortconv_step   y = C * conv3(shift(state, B*x))                       [Lfm2ShortConv decode path]
+//   qk_norm_rope_kv  q,k: per-head RMSNorm + RoPE; k,v -> cache[pos]       [Lfm2Attention before SDPA]
+//   decode_attention softmax(q K^T * scale) V over cache[0..pos], GQA      [SDPA, q_len = 1]
+//   silu_mul         silu(a) * b on the merged w1|w3 projection            [Lfm2MLP]
+#include <cstdint>
+#include <cuda_runtime.h>
+#include <cuda_bf16.h>
+
+using bf16 = __nv_bfloat16;
+#define B2F(x) __bfloat162float(x)
+#define F2B(x) __float2bfloat16(x)
+__device__ __forceinline__ float rbf(float x) { return B2F(F2B(x)); }  // round to BF16 and back
+
+__device__ __forceinline__ float warp_sum(float v) {
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1) v += __shfl_xor_sync(0xffffffff, v, o);
+    return v;
+}
+__device__ __forceinline__ float warp_max(float v) {
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1) v = fmaxf(v, __shfl_xor_sync(0xffffffff, v, o));
+    return v;
+}
+template <int NWARPS>
+__device__ float block_sum(float v, float* red) {
+    v = warp_sum(v);
+    const int w = threadIdx.x >> 5, l = threadIdx.x & 31;
+    if (l == 0) red[w] = v;
+    __syncthreads();
+    float t = (l < NWARPS) ? red[l] : 0.f;
+    t = warp_sum(t);
+    __syncthreads();
+    return t;
+}
+
+
+// ------------------------------------------------------------------------------------------------ add_rmsnorm
+// One block per row. HF: h = bf16(h + y); var = mean(h_f32^2); n = bf16(h * rsqrt(var + eps)); x = bf16(w * n)
+constexpr int NORM_THREADS = 256;
+template <bool ADD>
+__global__ void add_rmsnorm_kernel(bf16* __restrict__ h, const bf16* __restrict__ y, const bf16* __restrict__ w,
+                                   bf16* __restrict__ x, int H, float eps) {
+    extern __shared__ float smem[];  // H floats + reduction scratch
+    float* hv = smem;
+    float* red = smem + H;
+    const size_t off = (size_t)blockIdx.x * H;
+    float ss = 0.f;
+    for (int i = threadIdx.x; i < H; i += NORM_THREADS) {
+        float v = B2F(h[off + i]);
+        if (ADD) {
+            v = rbf(v + B2F(y[off + i]));
+            h[off + i] = F2B(v);
+        }
+        hv[i] = v;
+        ss += v * v;
+    }
+    ss = block_sum<NORM_THREADS / 32>(ss, red);
+    const float rs = rsqrtf(ss / H + eps);
+    for (int i = threadIdx.x; i < H; i += NORM_THREADS) x[off + i] = F2B(B2F(w[i]) * rbf(hv[i] * rs));
+}
+
+void launch_add_rmsnorm(void* h, const void* y, const void* w, void* x, int rows, int H, float eps, cudaStream_t st) {
+    const size_t sm = (H + 32) * sizeof(float);
+    if (y) add_rmsnorm_kernel<true><<<rows, NORM_THREADS, sm, st>>>((bf16*)h, (const bf16*)y, (const bf16*)w, (bf16*)x, H, eps);
+    else add_rmsnorm_kernel<false><<<rows, NORM_THREADS, sm, st>>>((bf16*)h, nullptr, (const bf16*)w, (bf16*)x, H, eps);
+}
+
+// ------------------------------------------------------------------------------------------------ shortconv_step
+// bcx = in_proj(x) laid out [B, 3H] = (B | C | x). HF decode: bx = bf16(B*x); window = (s1, s2, bx) -> state;
+// conv = bf16(sum_k w[k] * window[k] (+bias)); y = bf16(C * conv)
+__global__ void shortconv_step_kernel(const bf16* __restrict__ bcx, bf16* __restrict__ state, const bf16* __restrict__ w,
+                                      const bf16* __restrict__ bias, bf16* __restrict__ y, int H) {
+    constexpr int L = 3;
+    const int b = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= H) return;
+    const bf16* row = bcx + (size_t)b * 3 * H;
+    const float bx = rbf(B2F(row[i]) * B2F(row[2 * H + i]));
+    bf16* st = state + ((size_t)b * H + i) * L;
+    const float s1 = B2F(st[1]), s2 = B2F(st[2]);
+    st[0] = st[1]; st[1] = st[2]; st[2] = F2B(bx);
+    float acc = B2F(w[i * L + 0]) * s1 + B2F(w[i * L + 1]) * s2 + B2F(w[i * L + 2]) * bx;
+    if (bias) acc += B2F(bias[i]);
+    y[(size_t)b * H + i] = F2B(B2F(row[H + i]) * rbf(acc));
+}
+
+void launch_shortconv_step(const void* bcx, void* state, const void* w, const void* bias, void* y, int B, int H, cudaStream_t st) {
+    dim3 grid((H + 255) / 256, B);
+    shortconv_step_kernel<<<grid, 256, 0, st>>>((const bf16*)bcx, (bf16*)state, (const bf16*)w, (const bf16*)bias, (bf16*)y, H);
+}
+
+// ------------------------------------------------------------------------------------------------ qk_norm_rope_kv
+// qkv = merged q|k|v projection [B, (NQ + 2*NKV) * D]. One block of D threads per (b, head).
+// q/k heads: n = bf16(x * rsqrt(mean(x^2) + eps)); x = bf16(w * n); RoPE as HF in BF16:
+//   cos/sin = bf16(cos/sin(pos * inv_freq[d % (D/2)]) * scaling); out = bf16(bf16(x*cos) + bf16(rot(x)*sin))
+// q -> q_out[b, head]; k, v -> cache[b, kv_head, pos]
+template <int D>
+__global__ void qk_norm_rope_kv_kernel(const bf16* __restrict__ qkv, const bf16* __restrict__ qw, const bf16* __restrict__ kw,
+                                       const float* __restrict__ inv_freq, float scaling, const int64_t* __restrict__ pos_p,
+                                       bf16* __restrict__ q_out, bf16* __restrict__ kc, bf16* __restrict__ vc,
+                                       int NQ, int NKV, int max_len, float eps) {
+    __shared__ float xs[D];
+    __shared__ float red[D / 32];
+    const int b = blockIdx.x, head = blockIdx.y, d = threadIdx.x;
+    const int64_t pos = *pos_p;
+    const int NH = NQ + 2 * NKV;
+    float x = B2F(qkv[((size_t)b * NH + head) * D + d]);
+    if (head >= NQ + NKV) {  // value head: straight into the cache
+        const int vh = head - NQ - NKV;
+        vc[(((size_t)b * NKV + vh) * max_len + pos) * D + d] = F2B(x);
+        return;
+    }
+    const bool is_q = head < NQ;
+    const float ss = block_sum<D / 32>(x * x, red);
+    x = rbf(B2F((is_q ? qw : kw)[d]) * rbf(x * rsqrtf(ss / D + eps)));
+    xs[d] = x;
+    __syncthreads();
+    const int half = D / 2;
+    const float rot = d < half ? -xs[d + half] : xs[d - half];
+    const float f = (float)pos * inv_freq[d % half];
+    const float c = rbf(cosf(f) * scaling), s = rbf(sinf(f) * scaling);
+    const bf16 out = F2B(rbf(x * c) + rbf(rot * s));
+    if (is_q) q_out[((size_t)b * NQ + head) * D + d] = out;
+    else kc[(((size_t)b * NKV + (head - NQ)) * max_len + pos) * D + d] = out;
+}
+
+void launch_qk_norm_rope_kv(const void* qkv, const void* qw, const void* kw, const float* inv_freq, float scaling,
+                            const int64_t* pos, void* q_out, void* kc, void* vc, int B, int NQ, int NKV, int max_len,
+                            float eps, cudaStream_t st) {
+    dim3 grid(B, NQ + 2 * NKV);
+    qk_norm_rope_kv_kernel<64><<<grid, 64, 0, st>>>((const bf16*)qkv, (const bf16*)qw, (const bf16*)kw, inv_freq, scaling,
+        pos, (bf16*)q_out, (bf16*)kc, (bf16*)vc, NQ, NKV, max_len, eps);
+}
+
+// ------------------------------------------------------------------------------------------------ decode_attention
+// One block per (b, query head); 8 warps split the positions 0..pos (t = warp, warp+8, ...), each keeps an
+// online softmax (running max m, sum l, accumulator over its 2 dims per lane); warps are merged at the end.
+constexpr int ATT_WARPS = 8;
+__global__ void decode_attention_kernel(const bf16* __restrict__ q, const bf16* __restrict__ kc, const bf16* __restrict__ vc,
+                                        const int64_t* __restrict__ pos_p, bf16* __restrict__ out,
+                                        int NQ, int NKV, int max_len, float scale) {
+    constexpr int D = 64;
+    __shared__ float sm_m[ATT_WARPS], sm_l[ATT_WARPS], sm_acc[ATT_WARPS][D];
+    const int b = blockIdx.x, h = blockIdx.y, kvh = h / (NQ / NKV);
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const int len = (int)(*pos_p) + 1;
+    const __nv_bfloat162* qp = reinterpret_cast<const __nv_bfloat162*>(q + ((size_t)b * NQ + h) * D);
+    const float2 qf = __bfloat1622float2(qp[lane]);
+    const float q0 = qf.x * scale, q1 = qf.y * scale;
+    const size_t base = ((size_t)b * NKV + kvh) * max_len * D;
+    const __nv_bfloat162* K = reinterpret_cast<const __nv_bfloat162*>(kc + base);
+    const __nv_bfloat162* V = reinterpret_cast<const __nv_bfloat162*>(vc + base);
+    float m = -INFINITY, l = 0.f, a0 = 0.f, a1 = 0.f;
+    for (int t = warp; t < len; t += ATT_WARPS) {
+        const float2 k = __bfloat1622float2(K[(size_t)t * (D / 2) + lane]);
+        const float s = warp_sum(q0 * k.x + q1 * k.y);
+        const float mn = fmaxf(m, s);
+        const float corr = __expf(m - mn), p = __expf(s - mn);
+        const float2 v = __bfloat1622float2(V[(size_t)t * (D / 2) + lane]);
+        l = l * corr + p;
+        a0 = a0 * corr + p * v.x;
+        a1 = a1 * corr + p * v.y;
+        m = mn;
+    }
+    if (lane == 0) { sm_m[warp] = m; sm_l[warp] = l; }
+    sm_acc[warp][2 * lane] = a0;
+    sm_acc[warp][2 * lane + 1] = a1;
+    __syncthreads();
+    if (warp == 0) {
+        float M = -INFINITY;
+        for (int w = 0; w < ATT_WARPS; ++w) M = fmaxf(M, sm_m[w]);
+        float L = 0.f, o0 = 0.f, o1 = 0.f;
+        for (int w = 0; w < ATT_WARPS; ++w) {
+            if (sm_l[w] == 0.f) continue;  // warp saw no positions
+            const float c = __expf(sm_m[w] - M);
+            L += sm_l[w] * c;
+            o0 += sm_acc[w][2 * lane] * c;
+            o1 += sm_acc[w][2 * lane + 1] * c;
+        }
+        __nv_bfloat162* op = reinterpret_cast<__nv_bfloat162*>(out + ((size_t)b * NQ + h) * D);
+        op[lane] = __floats2bfloat162_rn(o0 / L, o1 / L);
+    }
+}
+
+void launch_decode_attention(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out,
+                             int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st) {
+    dim3 grid(B, NQ);
+    decode_attention_kernel<<<grid, ATT_WARPS * 32, 0, st>>>((const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, (bf16*)out,
+                                                             NQ, NKV, max_len, scale);
+}
+
+// ------------------------------------------------------------------------------------------------ silu_mul
+// g = merged w1|w3 projection [B, 2I]: y = bf16(bf16(silu(a)) * b)
+__global__ void silu_mul_kernel(const bf16* __restrict__ g, bf16* __restrict__ y, int I) {
+    const int b = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= I) return;
+    const float a = B2F(g[(size_t)b * 2 * I + i]), u = B2F(g[(size_t)b * 2 * I + I + i]);
+    y[(size_t)b * I + i] = F2B(rbf(a / (1.f + __expf(-a))) * u);
+}
+
+void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st) {
+    dim3 grid((I + 255) / 256, B);
+    silu_mul_kernel<<<grid, 256, 0, st>>>((const bf16*)g, (bf16*)y, I);
+}

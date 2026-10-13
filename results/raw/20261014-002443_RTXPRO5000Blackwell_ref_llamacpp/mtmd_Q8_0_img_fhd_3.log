@@ -1,0 +1,33 @@
+0.00.416.166 I cmn          init: llama threadpool init, n_threads = 4
+0.00.596.798 I mtmd_cli_context: chat template example:
+<|im_start|>system
+You are a helpful assistant<|im_end|>
+<|im_start|>user
+Hello<|im_end|>
+<|im_start|>assistant
+Hi there<|im_end|>
+<|im_start|>user
+How are you?<|im_end|>
+<|im_start|>assistant
+
+0.00.596.800 I main: loading model: /data/cs3406/team21/ext/gguf/LFM2.5-VL-1.6B-Q8_0.gguf
+0.00.596.864 W WARN: This is an experimental CLI for testing multimodal capability.
+0.00.596.864 W       For normal use cases, please use the standard llama-cli
+0.00.655.330 I encoding mtmd batch, n_chunks = 1 (done = 1, total = 19)
+0.00.746.112 I mtmd batch encoding done in 91 ms
+0.00.760.561 I encoding mtmd batch, n_chunks = 1 (done = 3, total = 19)
+0.00.784.032 I mtmd batch encoding done in 24 ms
+0.00.792.446 I encoding mtmd batch, n_chunks = 1 (done = 5, total = 19)
+0.00.811.926 I mtmd batch encoding done in 20 ms
+0.00.819.419 I encoding mtmd batch, n_chunks = 1 (done = 7, total = 19)
+0.00.837.310 I mtmd batch encoding done in 18 ms
+0.00.844.744 I encoding mtmd batch, n_chunks = 1 (done = 9, total = 19)
+0.00.862.619 I mtmd batch encoding done in 17 ms
+0.00.870.096 I encoding mtmd batch, n_chunks = 1 (done = 11, total = 19)
+0.00.887.965 I mtmd batch encoding done in 18 ms
+0.00.895.513 I encoding mtmd batch, n_chunks = 1 (done = 13, total = 19)
+0.00.913.443 I mtmd batch encoding done in 18 ms
+0.00.920.893 I encoding mtmd batch, n_chunks = 1 (done = 15, total = 19)
+0.00.938.461 I mtmd batch encoding done in 17 ms
+0.00.945.639 I encoding mtmd batch, n_chunks = 1 (done = 17, total = 19)
+0.00.963.094 I mtmd batch encoding done in 18 ms

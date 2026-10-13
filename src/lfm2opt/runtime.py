@@ -19,7 +19,7 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 
 
 class StaticDecoder:
-    def __init__(self, net, bucket: int = 256, keep_logits: bool = False):
+    def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False):
         self.net = net
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
@@ -40,6 +40,9 @@ class StaticDecoder:
         eos = net.generation_config.eos_token_id
         eos = [eos] if isinstance(eos, int) else list(eos or [])
         self.eos = torch.tensor(eos, dtype=torch.long, device=self.device)
+        self.fused = fused
+        if fused:
+            self._prepare_fused()
 
     # ---------------------------------------------------------------- buffers + one decode step (graph body)
     def _alloc(self, B: int, max_len: int, max_new: int):
@@ -113,23 +116,84 @@ class StaticDecoder:
         pos.add_(1)
         s["step"].add_(1)
 
+    # ---------------------------------------------------------------- O2-O4: fused-kernel decode step
+    def _prepare_fused(self):
+        """Load the CUDA extension and build merged weights (q|k|v and w1|w3: one GEMV instead of 3 / 2)."""
+        from .kernels import ext
+
+        self.K = ext()
+        self.eps = float(self.cfg.norm_eps)
+        rot = self.lm.rotary_emb
+        self.inv_freq = rot.inv_freq.to(self.device, torch.float32).contiguous()
+        self.rope_scaling = float(getattr(rot, "attention_scaling", 1.0))
+        self.w_qkv, self.w_13, self.conv_w = {}, {}, {}
+        for i, layer in enumerate(self.layers):
+            if not self.is_attn[i]:
+                self.conv_w[i] = layer.conv.conv.weight.squeeze(1).contiguous()  # [H, 3]
+            if self.is_attn[i]:
+                a = layer.self_attn
+                self.w_qkv[i] = torch.cat([a.q_proj.weight, a.k_proj.weight, a.v_proj.weight], 0).contiguous()
+            f = layer.feed_forward
+            self.w_13[i] = torch.cat([f.w1.weight, f.w3.weight], 0).contiguous()
+        self.norm_w = [l.operator_norm.weight for l in self.layers] + [self.lm.embedding_norm.weight]
+
+    @torch.no_grad()
+    def _step_fused(self, s):
+        K, B, pos, H = self.K, s["B"], s["pos"], self.cfg.hidden_size
+        h = F.embedding(s["tok"].view(B), self.lm.embed_tokens.weight)          # [B, H] residual stream
+        x = torch.empty_like(h)
+        K.add_rmsnorm(h, None, self.norm_w[0], x, self.eps)
+        for i, layer in enumerate(self.layers):
+            if self.is_attn[i]:
+                a = layer.self_attn
+                qkv = F.linear(x, self.w_qkv[i])                                  # [B, (32+8+8)*64]
+                q = torch.empty(B, self.n_heads, self.head_dim, device=h.device, dtype=h.dtype)
+                K.qk_norm_rope_kv(qkv, a.q_layernorm.weight, a.k_layernorm.weight, self.inv_freq,
+                                  self.rope_scaling, pos, q, s["k"][i], s["v"][i], self.eps)
+                o = torch.empty_like(q)
+                K.decode_attention(q, s["k"][i], s["v"][i], pos, o, a.scaling)
+                y = F.linear(o.view(B, -1), a.out_proj.weight)
+            else:
+                c = layer.conv
+                bcx = F.linear(x, c.in_proj.weight, c.in_proj.bias)               # [B, 3H]
+                cy = torch.empty(B, H, device=h.device, dtype=h.dtype)
+                K.shortconv_step(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy)
+                y = F.linear(cy, c.out_proj.weight, c.out_proj.bias)
+            K.add_rmsnorm(h, y, layer.ffn_norm.weight, x, self.eps)               # h += mixer; x = ffn_norm(h)
+            g = F.linear(x, self.w_13[i])                                         # [B, 2I]
+            act = torch.empty(B, g.shape[-1] // 2, device=h.device, dtype=h.dtype)
+            K.silu_mul(g, act)
+            y = F.linear(act, layer.feed_forward.w2.weight)
+            K.add_rmsnorm(h, y, self.norm_w[i + 1], x, self.eps)                  # h += mlp; x = next norm(h)
+        logits = F.linear(x, self.lm_head.weight)                                 # x = embedding_norm(h)
+        if self.keep_logits:
+            s["logits"].copy_(logits)
+        if self.eos.numel():
+            logits.index_fill_(1, self.eos, float("-inf"))
+        nxt = torch.argmax(logits, dim=-1)
+        s["out"].index_copy_(1, s["step"], nxt.view(B, 1))
+        s["tok"].copy_(nxt.view(B, 1))
+        pos.add_(1)
+        s["step"].add_(1)
+
     def _get(self, B: int, need_len: int, max_new: int):
         max_len = -(-need_len // self.bucket) * self.bucket
         key = (B, max_len)
         if key not in self.graphs or self.graphs[key]["max_new"] < max_new:
             s = self._alloc(B, max_len, max(max_new, 1))
+            step = self._step_fused if self.fused else self._step
             # warm up on a side stream (cuBLAS handles, allocator), then capture one step
             side = torch.cuda.Stream()
             side.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(side):
                 for _ in range(3):
                     s["pos"].zero_(); s["step"].zero_()
-                    self._step(s)
+                    step(s)
             torch.cuda.current_stream().wait_stream(side)
             s["pos"].zero_(); s["step"].zero_()
             g = torch.cuda.CUDAGraph()
             with torch.cuda.graph(g):
-                self._step(s)
+                step(s)
             s["graph"] = g
             self.graphs[key] = s
         return self.graphs[key]
