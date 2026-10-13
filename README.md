@@ -22,7 +22,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Baseline benchmarking + profiling on **T4** | 3 | ✅ Complete (incl. long-context and full-prefill Nsight Compute, 2026-10-11) — see Results and the log |
 | Baseline benchmarking + profiling on the **course RTX 5000 server** (3 × 2 h/week, SSH) | 4–5 | ⏳ Next — slot plan in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md); waiting for the server address |
 | Bottleneck analysis | 4 | ✅ on T4: decode is launch-overhead bound; plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
-| **Evaluation 1:** baseline & problem understanding | 5 | — |
+| **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
 | Main optimization work | 6 | — |
 | **Evaluation 2:** working prototype | 7 | — |
 | Final experiments, ablations, 3B generalization check | 8 | — |

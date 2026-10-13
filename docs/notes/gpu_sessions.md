@@ -6,6 +6,21 @@ _Measurement GPU: the course **"RTX 5000" server** (team account `team21`, SSH f
 
 ---
 
+## 0. Deadline: Evaluation 1 starts Thursday 22 Oct 2026
+
+Course staff (13 Oct): use the booked slots for **baseline experiments**; baseline results are expected at Eval 1; an unused booked slot may not be replaced. Eval 1 asks for: problem understanding, working baseline, reliable measurements, initial profiling, identified bottleneck, optimization strategy. T4 side is done; what is missing is the **server baseline**.
+
+| Date | What | Must have? |
+| --- | --- | --- |
+| Tue 13 Oct (today) | **Book slots**; get the server address; `ssh-copy-id`; Colab dress rehearsal of slot 1 | yes |
+| Wed 14 – Thu 15 Oct | **Slot 1**: setup + baseline timing + profiling + attention probe + ncu decode/vision (`slot1`) | **yes** |
+| Fri 16 – Sat 17 Oct | **Slot 2**: whatever slot 1 skipped + remaining Nsight Compute (`slot2`) | yes |
+| Mon 19 – Tue 20 Oct | **Slot 3**: buffer (re-run anything failed) or reference baselines (O0) if their scripts are rehearsed | buffer |
+| Tue 20 – Wed 21 Oct | Results → plots, Eval 1 slides (T4 vs server, bottleneck evidence, plan); no GPU work planned | yes |
+| Thu 22 Oct | Evaluation 1 | — |
+
+Book the three slots as early in these windows as possible, so a failed slot can still be repeated before the 21st.
+
 ## 1. Which GPU is it?
 
 "RTX 5000" can mean three quite different cards. `scripts/preflight.sh` tells us on the first login; the plan works for all three, only the numbers change.
