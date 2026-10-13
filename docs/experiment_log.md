@@ -15,6 +15,22 @@ Entry template:
 
 ---
 
+## 2026-10-14 (night, 02:00–02:25): GEMV tuning, PDL, INT4 quality sweep, vision attention, vLLM TTFT  (Claude)
+
+**GEMV ([kernels/lfm2_decode.cu](../kernels/lfm2_decode.cu), microbenchmark [profiling/bench_gemv.py](../profiling/bench_gemv.py): real decode shapes, > 300 MB of distinct weights per shape so L2 can't help):**
+- Several rows per warp (x slice reused): small gain (INT8 1.40 → 1.33 ms TPOT).
+- Transposed (bank-conflict-free) x in shared memory: ~5 % *slower*. Bank conflicts were not the problem.
+- **The problem was the prologue:** every block first copied x (up to 16 KB) into shared memory and synchronized before any math. Each lane loading its own x slice straight from L1/L2 (`gemv_direct_kernel`, 1 row/warp, 4 chunks in flight) brings every shape to 1.1–1.23 TB/s (INT8 qkv 8.7 → 5.4 µs, o 8.4 → 3.7 µs, w2 21.7 → 15.2 µs). **INT8 TPOT 1.33 → 1.11 ms** (3.45× HF eager); INT4 0.74 ms.
+- Programmatic Dependent Launch (`griddepcontrol`, weights prefetched before the wait): correct, but only ~1 % inside the CUDA graph. Kept on (`LFM2_PDL=0` to disable); with PDL on, profiler kernel times overlap, so profile with it off.
+
+**INT4 quality sweep** (teacher-forced argmax agreement vs HF BF16, 381 steps): g128 RTN 86 %; g128 + clip search 91 %; g64 + clip 91 %; g32 + clip 93 %; g64 + clip with lm_head and w2 in INT8 93 %; g32 + clip with lm_head, w2, o, out in INT8 93 % (median |Δlogit| 1.1–1.5). INT8: 98.7 %, median 0.25. **Round-to-nearest INT4 is too lossy for this 1.6B model; calibrated methods (AWQ/GPTQ) would be needed.** INT8 is the quality-safe configuration.
+
+**Vision attention (O7a, [profiling/vision_attn_probe.py](../profiling/vision_attn_probe.py), 9 tiles × 1024 patches × 16 heads × 72):** with HF's padding mask PyTorch picks the sm80 memory-efficient kernel (1038 µs/layer, 42 TFLOPS); **cuDNN: 419 µs (2.5×)**, same accuracy; flash only without a mask (287 µs). Variant `vision_cudnn` → **1080p TTFT 113 → 98 ms**. Next: pack only valid patches and use flash (varlen), FP8 for the vision GEMMs (35.7 ms at ~200 TFLOPS BF16).
+
+**vLLM, honest TTFT** (prefix cache and multimodal cache off; the first run served repeated requests from cache, "TTFT 6 ms at 1080p"): text 5.5, img_small 19.3, img_hd 49.3, **img_fhd 127.7 ms** (HF: 6.9 / 20.2 / 39.8 / 116); TPOT 2.36 ms. vLLM without CUDA graphs (`enforce_eager`): TPOT 3.8 ms, same as HF eager.
+
+---
+
 ## 2026-10-14 (night): O2–O4 fused CUDA kernels + O6 INT8 weight-only GEMV  (Claude, overnight slots)
 
 **Goal:** after O1 the step is GPU-bound at ~2.9 ms: ~700 kernels, of which ~600 tiny elementwise/norm/cat ops. Fuse them, then attack the weight bytes.
