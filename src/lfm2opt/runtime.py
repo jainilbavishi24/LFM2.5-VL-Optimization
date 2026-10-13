@@ -19,7 +19,7 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 
 
 class StaticDecoder:
-    def __init__(self, net, bucket: int = 256):
+    def __init__(self, net, bucket: int = 256, keep_logits: bool = False):
         self.net = net
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
@@ -32,6 +32,7 @@ class StaticDecoder:
         self.head_dim = getattr(cfg, "head_dim", cfg.hidden_size // cfg.num_attention_heads)
         self.conv_len = cfg.conv_L_cache
         self.bucket = bucket
+        self.keep_logits = keep_logits  # copy each step's raw logits into s["logits"] (numerics checks only)
         self.dtype = next(net.parameters()).dtype
         self.device = next(net.parameters()).device
         self.graphs = {}  # (B, max_len) -> state dict incl. the captured graph
@@ -53,6 +54,8 @@ class StaticDecoder:
         s["pos"] = torch.zeros(1, dtype=torch.long, device=d)           # its position (= cache slot)
         s["step"] = torch.zeros(1, dtype=torch.long, device=d)          # index into the output buffer
         s["out"] = torch.zeros(B, max_new, dtype=torch.long, device=d)  # generated tokens
+        if self.keep_logits:
+            s["logits"] = torch.zeros(B, self.lm_head.out_features, device=d, dtype=torch.float32)
         s["slots"] = torch.arange(max_len, device=d)
         return s
 
@@ -100,6 +103,8 @@ class StaticDecoder:
             h = h + layer.feed_forward(layer.ffn_norm(h))
         h = self.lm.embedding_norm(h)
         logits = self.lm_head(h[:, -1])                                          # [B, V]
+        if self.keep_logits:
+            s["logits"].copy_(logits)
         if self.eos.numel():
             logits.index_fill_(1, self.eos, float("-inf"))
         nxt = torch.argmax(logits, dim=-1)                                       # greedy
@@ -131,8 +136,8 @@ class StaticDecoder:
 
     # ---------------------------------------------------------------- request
     @torch.no_grad()
-    def generate(self, input_ids, max_new_tokens: int, attention_mask=None, **model_inputs):
-        """Greedy, fixed length (EOS ignored) like the benchmark. Returns [B, prompt + new] token ids."""
+    def prefill(self, input_ids, max_new_tokens: int, attention_mask=None, **model_inputs):
+        """HF prefill, then load its KV / conv state into our static buffers. Returns (first token [B], state)."""
         B, T = input_ids.shape
         out = self.net(input_ids=input_ids, attention_mask=attention_mask, use_cache=True, logits_to_keep=1,
                        **model_inputs)
@@ -141,7 +146,7 @@ class StaticDecoder:
             logits = logits.index_fill(1, self.eos, float("-inf"))
         first = logits.argmax(-1)                                                # token 1 (from prefill)
         if max_new_tokens <= 1:
-            return torch.cat([input_ids, first.view(B, 1)], dim=1)
+            return first, None
         s = self._get(B, T + max_new_tokens, max_new_tokens - 1)
         cache = out.past_key_values
         for i in range(len(self.layers)):
@@ -155,6 +160,15 @@ class StaticDecoder:
         s["tok"].copy_(first.view(B, 1))
         s["pos"].fill_(T)
         s["step"].zero_()
+        return first, s
+
+    @torch.no_grad()
+    def generate(self, input_ids, max_new_tokens: int, attention_mask=None, **model_inputs):
+        """Greedy, fixed length (EOS ignored) like the benchmark. Returns [B, prompt + new] token ids."""
+        B = input_ids.shape[0]
+        first, s = self.prefill(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
+        if s is None:
+            return torch.cat([input_ids, first.view(B, 1)], dim=1)
         for _ in range(max_new_tokens - 1):
             s["graph"].replay()
         new = torch.cat([first.view(B, 1), s["out"][:, : max_new_tokens - 1]], dim=1)

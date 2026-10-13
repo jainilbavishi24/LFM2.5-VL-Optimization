@@ -1,0 +1,73 @@
+"""Teacher-forced numerics check of the O1 runtime (src/lfm2opt/runtime.py) against Hugging Face generate().
+
+HF generates N greedy tokens (min_new_tokens=N, raw logits kept). Our runtime then decodes the *same* token
+sequence (each step's input token is forced to HF's), so both see identical contexts and their per-step logits
+can be compared directly: max |logit difference|, argmax agreement, and HF's top-1/top-2 margin wherever the
+argmax differs (a near-tie flip is a numerics effect, a large-margin flip would be a bug).
+
+    python tests/check_runtime_numerics.py --workloads text,img_small,img_fhd --gen 128
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from lfm2opt.model import build_inputs, load  # noqa: E402
+from lfm2opt.runtime import StaticDecoder  # noqa: E402
+from lfm2opt.workloads import WORKLOADS  # noqa: E402
+
+
+@torch.no_grad()
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--workloads", default="text,img_small,img_fhd")
+    ap.add_argument("--gen", type=int, default=128)
+    ap.add_argument("--out", default=None)
+    args = ap.parse_args()
+
+    net, processor = load()
+    dec = StaticDecoder(net, keep_logits=True)
+    report = {}
+    for name in args.workloads.split(","):
+        wl = WORKLOADS[name]
+        inputs = build_inputs(processor, wl.image(), wl.prompt)
+        T = inputs["input_ids"].shape[1]
+        hf = net.generate(**inputs, max_new_tokens=args.gen, min_new_tokens=args.gen, do_sample=False,
+                          pad_token_id=processor.tokenizer.pad_token_id, output_logits=True,
+                          return_dict_in_generate=True)
+        seq = hf.sequences[:, T:]                                   # [1, gen]
+        hf_logits = torch.stack(hf.logits, dim=1)[0].float()        # [gen, V] raw logits per step
+
+        model_inputs = {k: v for k, v in inputs.items() if k not in ("input_ids", "attention_mask")}
+        first, s = dec.prefill(inputs["input_ids"], args.gen, attention_mask=inputs.get("attention_mask"),
+                               **model_inputs)
+        diffs, agree, flips = [], 0, []
+        for t in range(1, args.gen):
+            s["tok"].copy_(seq[:, t - 1 : t])                       # force HF's token as this step's input
+            s["graph"].replay()
+            ours = s["logits"][0]
+            ref = hf_logits[t]
+            diffs.append((ours - ref).abs().max().item())
+            if ours.argmax() == ref.argmax():
+                agree += 1
+            else:
+                top2 = ref.topk(2).values
+                flips.append(dict(step=t, hf_margin=(top2[0] - top2[1]).item(), max_abs_diff=diffs[-1]))
+        d = torch.tensor(diffs)
+        report[name] = dict(prompt_tokens=T, steps=args.gen - 1, argmax_agree=agree,
+                            max_abs_logit_diff=d.max().item(), median_abs_logit_diff=d.median().item(),
+                            first_token_match=bool(first[0] == seq[0, 0]), flips=flips)
+        print(f"{name:9s} T={T:5d}  argmax agree {agree}/{args.gen - 1}  max|dlogit| {d.max():.3f}  "
+              f"median {d.median():.3f}  flips at near-ties: {[round(f['hf_margin'], 3) for f in flips]}")
+    if args.out:
+        Path(args.out).write_text(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()
