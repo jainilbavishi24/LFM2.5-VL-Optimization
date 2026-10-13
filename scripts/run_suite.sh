@@ -3,6 +3,7 @@
 #
 #   bash scripts/run_suite.sh                                  # everything (SUITE=all), no deadline
 #   SUITE=slot1 SLOT_MINUTES=105 bash scripts/run_suite.sh     # a GPU-slot preset that must end in 105 min
+#   SUITE=slot1 SLOT_END=16:00 bash scripts/run_suite.sh       # ...or stop 12 min (SLOT_MARGIN_MIN) before 16:00
 #   STEPS="bench_full torch_prof" bash scripts/run_suite.sh    # explicit steps (in this order)
 #   VARIANT=fused_rmsnorm TAG=o2 SUITE=variant bash scripts/run_suite.sh
 #
@@ -52,6 +53,12 @@ mkdir -p results/raw profiling/reports
 FILTER='falling back to its reference|clean_up_tokenization|_warn_once|acc_events'
 START_EPOCH=$(date +%s)
 DEADLINE="${DEADLINE:-}"
+if [[ -z "$DEADLINE" && -n "${SLOT_END:-}" ]]; then
+    # Slot end (HH:MM) = forced logout on the course server: stop scheduling SLOT_MARGIN_MIN (default 12) minutes earlier
+    end=$(date -d "$SLOT_END" +%s)
+    if (( end < START_EPOCH )); then end=$(( end + 86400 )); fi
+    DEADLINE=$(( end - ${SLOT_MARGIN_MIN:-12} * 60 ))
+fi
 if [[ -z "$DEADLINE" && -n "${SLOT_MINUTES:-}" ]]; then DEADLINE=$(( START_EPOCH + SLOT_MINUTES * 60 )); fi
 
 declare -A EST=([bench_full]=14 [bench_batch]=4 [numerics]=2 [overhead]=3 [torch_prof]=3 [nsys]=2 [sdpa]=4

@@ -51,13 +51,24 @@ if [[ -z "${TORCH_INDEX_URL:-}" ]]; then
 fi
 echo "[setup_env] torch index: $TORCH_INDEX_URL"
 
+# transformers 5 needs Python >= 3.10. Prefer uv (fast, and it can provide Python 3.12 itself if the system one is old).
+SYS_PY_OK=$(python3 -c 'import sys; print(int(sys.version_info >= (3, 10)))' 2>/dev/null || echo 0)
+if ! command -v uv >/dev/null; then
+    echo "[setup_env] uv not found; trying to install it into ~/.local/bin"
+    curl -LsSf https://astral.sh/uv/install.sh 2>/dev/null | env UV_NO_MODIFY_PATH=1 sh >/dev/null 2>&1 \
+        || python3 -m pip install -q --user uv >/dev/null 2>&1 || true
+    export PATH="$HOME/.local/bin:$PATH"
+fi
 if command -v uv >/dev/null; then
-    uv venv -q --allow-existing "$VENV_DIR"
+    if [[ "$SYS_PY_OK" == "1" ]]; then uv venv -q --allow-existing "$VENV_DIR"
+    else uv venv -q --allow-existing --python 3.12 "$VENV_DIR"; fi
     PIP=(uv pip install -q --python "$VENV_DIR/bin/python")
-else
+elif [[ "$SYS_PY_OK" == "1" ]]; then
     python3 -m venv "$VENV_DIR"
     "$VENV_DIR/bin/python" -m pip install -q --upgrade pip wheel
     PIP=("$VENV_DIR/bin/python" -m pip install -q)
+else
+    echo "[setup_env] ERROR: system Python < 3.10 and uv unavailable (no internet?). Need Python >= 3.10."; exit 1
 fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
