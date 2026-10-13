@@ -26,7 +26,7 @@ import torch, transformers
 print(f"torch {torch.__version__} (CUDA {torch.version.cuda}), transformers {transformers.__version__}")
 assert torch.cuda.is_available(), "CUDA not available"
 print(f"GPU: {torch.cuda.get_device_name()}  capability: {torch.cuda.get_device_capability()}  "
-      f"bf16: {torch.cuda.is_bf16_supported()}")
+      f"native bf16: {torch.cuda.is_bf16_supported(including_emulation=False)}")
 x = torch.randn(1024, 1024, device="cuda", dtype=torch.float16)
 torch.cuda.synchronize(); print("matmul ok:", float((x @ x).float().abs().mean()) > 0)
 PY
