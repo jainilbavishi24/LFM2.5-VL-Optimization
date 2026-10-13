@@ -1,0 +1,11 @@
+{
+  "duration_s": 5.000587621238083,
+  "n_power_samples": 487,
+  "energy_j": 39.952,
+  "power_avg_w": 17.905702258726897,
+  "power_max_w": 45.05,
+  "sm_clock_min_mhz": 180,
+  "sm_clock_avg_mhz": 517.2689938398357,
+  "temp_max_c": 36,
+  "idle_power_w": 7.989461044601871
+}

@@ -19,7 +19,7 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 
 
 class StaticDecoder:
-    def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False):
+    def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16):
         self.net = net
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
@@ -41,6 +41,7 @@ class StaticDecoder:
         eos = [eos] if isinstance(eos, int) else list(eos or [])
         self.eos = torch.tensor(eos, dtype=torch.long, device=self.device)
         self.fused = fused
+        self.attn_splits = attn_splits  # fused path: flash-decoding splits over positions (0 = one block per head)
         if fused:
             self._prepare_fused()
 
@@ -151,7 +152,11 @@ class StaticDecoder:
                 K.qk_norm_rope_kv(qkv, a.q_layernorm.weight, a.k_layernorm.weight, self.inv_freq,
                                   self.rope_scaling, pos, q, s["k"][i], s["v"][i], self.eps)
                 o = torch.empty_like(q)
-                K.decode_attention(q, s["k"][i], s["v"][i], pos, o, a.scaling)
+                if self.attn_splits:
+                    ws = torch.empty(B, self.n_heads, self.attn_splits, 66, device=h.device, dtype=torch.float32)
+                    K.decode_attention_split(q, s["k"][i], s["v"][i], pos, o, ws, a.scaling)
+                else:
+                    K.decode_attention(q, s["k"][i], s["v"][i], pos, o, a.scaling)
                 y = F.linear(o.view(B, -1), a.out_proj.weight)
             else:
                 c = layer.conv

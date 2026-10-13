@@ -9,6 +9,7 @@
 //   shortconv_step   y = C * conv3(shift(state, B*x))                       [Lfm2ShortConv decode path]
 //   qk_norm_rope_kv  q,k: per-head RMSNorm + RoPE; k,v -> cache[pos]       [Lfm2Attention before SDPA]
 //   decode_attention softmax(q K^T * scale) V over cache[0..pos], GQA      [SDPA, q_len = 1]
+//   decode_attention_split  same, flash-decoding (split over positions + combine) for long contexts
 //   silu_mul         silu(a) * b on the merged w1|w3 projection            [Lfm2MLP]
 #include <cstdint>
 #include <cuda_runtime.h>
@@ -194,6 +195,109 @@ void launch_decode_attention(const void* q, const void* kc, const void* vc, cons
     dim3 grid(B, NQ);
     decode_attention_kernel<<<grid, ATT_WARPS * 32, 0, st>>>((const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, (bf16*)out,
                                                              NQ, NKV, max_len, scale);
+}
+
+// ------------------------------------------------------------------------------------------------ decode_attention_split
+// Flash-decoding for long contexts. Grid (B*NKV, S): block (b, kv head, split) covers positions
+// [s*chunk, (s+1)*chunk) ∩ [0, pos]; its 4 warps are the 4 query heads that share this KV head (K/V rows are
+// read once from DRAM, then hit L1 for the other warps). Inside a warp, 4 lane groups of 8 take 4 positions per
+// iteration; each lane holds 8 of the 64 dims (one 16-byte load of K and V). Partial (max, sum, acc[64]) per
+// (b, q head, split) go to ws; attn_combine merges the S partials.
+constexpr int SPLIT_WARPS = 4;  // = query heads per KV head (32 / 8)
+__global__ void decode_attention_split_kernel(const bf16* __restrict__ q, const bf16* __restrict__ kc, const bf16* __restrict__ vc,
+                                              const int64_t* __restrict__ pos_p, float* __restrict__ ws,
+                                              int NQ, int NKV, int max_len, int S, float scale) {
+    constexpr int D = 64;
+    const int bk = blockIdx.x, s = blockIdx.y;
+    const int b = bk / NKV, kvh = bk % NKV;
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const int h = kvh * (NQ / NKV) + warp;
+    const int grp = lane >> 3, sub = lane & 7;            // position slot in this iteration, 8-dim slice
+    const int len = (int)(*pos_p) + 1;
+    const int chunk = (max_len + S - 1) / S;
+    const int t0 = s * chunk, t1 = min(len, t0 + chunk);
+    float* out = ws + (((size_t)b * NQ + h) * S + s) * (D + 2);
+    if (t0 >= t1) {                                        // empty split
+        if (lane == 0) { out[0] = -INFINITY; out[1] = 0.f; }
+        return;
+    }
+    float qv[8];
+    {
+        const uint4 raw = reinterpret_cast<const uint4*>(q + ((size_t)b * NQ + h) * D)[sub];
+        const __nv_bfloat162* p2 = reinterpret_cast<const __nv_bfloat162*>(&raw);
+#pragma unroll
+        for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(p2[j]); qv[2 * j] = f.x * scale; qv[2 * j + 1] = f.y * scale; }
+    }
+    const size_t base = ((size_t)b * NKV + kvh) * max_len * D;
+    const uint4* K = reinterpret_cast<const uint4*>(kc + base);
+    const uint4* V = reinterpret_cast<const uint4*>(vc + base);
+    float m = -INFINITY, l = 0.f, acc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    for (int it = t0; it < t1; it += 4) {                  // same trip count for all lanes (shuffles need the full warp)
+        const int t = it + grp;
+        const bool valid = t < t1;
+        float dot = 0.f;
+        uint4 vraw = make_uint4(0, 0, 0, 0);
+        if (valid) {
+            const uint4 kraw = K[(size_t)t * (D / 8) + sub];
+            vraw = V[(size_t)t * (D / 8) + sub];
+            const __nv_bfloat162* k2 = reinterpret_cast<const __nv_bfloat162*>(&kraw);
+#pragma unroll
+            for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(k2[j]); dot += qv[2 * j] * f.x + qv[2 * j + 1] * f.y; }
+        }
+        dot += __shfl_xor_sync(0xffffffff, dot, 4);
+        dot += __shfl_xor_sync(0xffffffff, dot, 2);
+        dot += __shfl_xor_sync(0xffffffff, dot, 1);
+        if (valid) {
+            const float mn = fmaxf(m, dot), corr = __expf(m - mn), p = __expf(dot - mn);
+            l = l * corr + p;
+            const __nv_bfloat162* v2 = reinterpret_cast<const __nv_bfloat162*>(&vraw);
+#pragma unroll
+            for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(v2[j]); acc[2 * j] = acc[2 * j] * corr + p * f.x; acc[2 * j + 1] = acc[2 * j + 1] * corr + p * f.y; }
+            m = mn;
+        }
+    }
+    // merge the 4 lane groups (same sub = same dims): xor 8 and 16
+#pragma unroll
+    for (int o = 8; o <= 16; o <<= 1) {
+        const float m2 = __shfl_xor_sync(0xffffffff, m, o), l2 = __shfl_xor_sync(0xffffffff, l, o);
+        const float mn = fmaxf(m, m2);
+        const float c1 = (m == -INFINITY) ? 0.f : __expf(m - mn), c2 = (m2 == -INFINITY) ? 0.f : __expf(m2 - mn);
+        l = l * c1 + l2 * c2;
+#pragma unroll
+        for (int j = 0; j < 8; ++j) { const float a2 = __shfl_xor_sync(0xffffffff, acc[j], o); acc[j] = acc[j] * c1 + a2 * c2; }
+        m = mn;
+    }
+    if (grp == 0) {
+#pragma unroll
+        for (int j = 0; j < 8; ++j) out[2 + sub * 8 + j] = acc[j];
+        if (sub == 0) { out[0] = m; out[1] = l; }
+    }
+}
+
+// One block of 64 threads per (b, q head): out = sum_s acc_s e^(m_s - M) / sum_s l_s e^(m_s - M)
+__global__ void attn_combine_kernel(const float* __restrict__ ws, bf16* __restrict__ out, int S) {
+    constexpr int D = 64;
+    const int bh = blockIdx.x, d = threadIdx.x;
+    const float* w = ws + (size_t)bh * S * (D + 2);
+    float M = -INFINITY;
+    for (int s = 0; s < S; ++s) M = fmaxf(M, w[s * (D + 2)]);
+    float L = 0.f, o = 0.f;
+    for (int s = 0; s < S; ++s) {
+        const float ls = w[s * (D + 2) + 1];
+        if (ls == 0.f) continue;
+        const float c = __expf(w[s * (D + 2)] - M);
+        L += ls * c;
+        o += w[s * (D + 2) + 2 + d] * c;
+    }
+    out[(size_t)bh * D + d] = F2B(o / L);
+}
+
+void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
+                                   int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st) {
+    dim3 grid(B * NKV, S);
+    decode_attention_split_kernel<<<grid, SPLIT_WARPS * 32, 0, st>>>((const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, ws,
+                                                                     NQ, NKV, max_len, S, scale);
+    attn_combine_kernel<<<B * NQ, 64, 0, st>>>(ws, (bf16*)out, S);
 }
 
 // ------------------------------------------------------------------------------------------------ silu_mul

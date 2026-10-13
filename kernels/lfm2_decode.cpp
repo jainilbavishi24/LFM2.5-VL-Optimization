@@ -11,6 +11,8 @@ void launch_qk_norm_rope_kv(const void* qkv, const void* qw, const void* kw, con
 void launch_decode_attention(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out,
                              int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st);
 void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st);
+void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
+                                   int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st);
 
 #define CHECK_BF16(t) TORCH_CHECK(t.is_cuda() && t.scalar_type() == at::kBFloat16 && t.is_contiguous(), #t " must be contiguous CUDA bf16")
 static inline cudaStream_t stream() { return at::cuda::getCurrentCUDAStream(); }
@@ -46,6 +48,15 @@ void decode_attention(torch::Tensor q, torch::Tensor kc, torch::Tensor vc, torch
                             q.size(0), q.size(1), kc.size(1), kc.size(2), (float)scale, stream());
 }
 
+void decode_attention_split(torch::Tensor q, torch::Tensor kc, torch::Tensor vc, torch::Tensor pos, torch::Tensor out,
+                            torch::Tensor ws, double scale) {
+    CHECK_BF16(q); CHECK_BF16(kc); CHECK_BF16(vc); CHECK_BF16(out);
+    TORCH_CHECK(kc.size(3) == 64 && q.size(1) == 4 * kc.size(1), "head_dim 64 and 4 query heads per KV head only");
+    TORCH_CHECK(ws.scalar_type() == at::kFloat && ws.is_contiguous() && ws.dim() == 4 && ws.size(3) == 66, "ws: fp32 [B, NQ, S, 66]");
+    launch_decode_attention_split(q.data_ptr(), kc.data_ptr(), vc.data_ptr(), pos.data_ptr<int64_t>(), out.data_ptr(),
+                                  ws.data_ptr<float>(), q.size(0), q.size(1), kc.size(1), kc.size(2), ws.size(2), (float)scale, stream());
+}
+
 void silu_mul(torch::Tensor g, torch::Tensor y) {
     CHECK_BF16(g); CHECK_BF16(y);
     launch_silu_mul(g.data_ptr(), y.data_ptr(), g.size(0), g.size(-1) / 2, stream());
@@ -56,5 +67,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("shortconv_step", &shortconv_step, "LFM2 gated short-conv decode step");
     m.def("qk_norm_rope_kv", &qk_norm_rope_kv, "q/k head RMSNorm + RoPE, k/v into the static cache at pos");
     m.def("decode_attention", &decode_attention, "GQA decode attention over cache[0..pos]");
+    m.def("decode_attention_split", &decode_attention_split, "GQA decode attention, split over positions (flash-decoding)");
     m.def("silu_mul", &silu_mul, "silu(a) * b on [a | b]");
 }
