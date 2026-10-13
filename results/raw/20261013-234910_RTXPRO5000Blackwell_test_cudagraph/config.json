@@ -1,0 +1,16 @@
+{
+  "preset": null,
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variants": "baseline,cudagraph",
+  "workloads": "text,img_small,img_fhd",
+  "gen_lens": "1,64",
+  "batch_sizes": "1",
+  "warmup": 1,
+  "repeats": 2,
+  "idle_seconds": 5.0,
+  "no_phases": true,
+  "tag": "test_cudagraph",
+  "out": "/data/cs3406/team21/PAA_Project/results/raw"
+}

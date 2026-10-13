@@ -50,6 +50,7 @@ run_item() {
         o0b)      use .venv-ref; suite EST_SCALE=1.0 VARIANT=compile_static TAG=o0b_compile STEPS="bench_nohooks summarize" ;;
         o0ab)     use .venv-ref; suite PYTHONPATH="$CC1D" EST_SCALE=1.0 VARIANT=compile_static TAG=o0ab_compile_cc1d \
                       STEPS="bench_nohooks summarize" ;;
+        o1)       use .venv; suite VARIANT=cudagraph TAG=o1_cudagraph STEPS="bench_nohooks summarize" ;;
         vllm)     use .venv-vllm; timeout --signal=INT "$(( $(left) < 30 ? $(left) : 30 ))m" \
                       python benchmarks/ref_vllm.py --gen-lens 1,128,512 --repeats 5 ;;
         vllm_eager) use .venv-vllm; timeout --signal=INT "$(( $(left) < 20 ? $(left) : 20 ))m" \
@@ -62,7 +63,7 @@ run_item() {
     esac
 }
 
-ITEMS="${ITEMS:-carry o0a_ctrl o0a_cc1d o0b o0ab vllm llamacpp vllm_eager bl_night}"
+ITEMS="${ITEMS:-carry o0a_ctrl o0a_cc1d o0b o0ab o1 vllm llamacpp vllm_eager bl_night}"
 say "deadline $(date -d @"$DEADLINE" +%H:%M) ($(left) min); items: $ITEMS"
 for pass in 1 2 3; do
     pending=0
@@ -78,8 +79,9 @@ for pass in 1 2 3; do
     (( pending )) || break
     (( $(left) >= 4 )) && { say "waiting 3 min for pending installs/downloads"; sleep 180; }
 done
-# Nothing left to do: keep the GPU busy with repeat measurements (run-to-run / session-to-session variance)
-while (( $(left) >= 8 )); do
+# Nothing left to do: keep the GPU busy with repeat measurements (run-to-run / session-to-session variance),
+# unless results/raw/plan_done/NO_FILL exists (GPU wanted for interactive development instead)
+while (( $(left) >= 8 )) && [[ ! -f "$MARK/NO_FILL" ]]; do
     use .venv; say "filler: baseline repeat"; suite TAG=baseline_fill STEPS="bench_nohooks"
 done
 say "plan finished ($(left) min left)"

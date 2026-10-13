@@ -57,6 +57,27 @@ def _compile_static(net, processor):
     return net
 
 
+@register("cudagraph")
+def _cudagraph(net, processor):
+    """O1: HF prefill, then our static decode loop replayed as one CUDA graph per token (src/lfm2opt/runtime.py).
+
+    Greedy and fixed-length only (what the benchmark measures). Run with --no-phases: decode no longer calls
+    the HF language-model module, so the phase hooks would only see the prefill.
+    """
+    from .runtime import StaticDecoder
+
+    dec = StaticDecoder(net)
+
+    def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
+                 pad_token_id=None, **model_inputs):
+        assert not do_sample, "cudagraph runtime is greedy only"
+        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
+
+    net.generate = generate
+    net._static_decoder = dec
+    return net
+
+
 def apply_variant(name: str, net, processor):
     if name not in VARIANTS:
         raise KeyError(f"unknown variant {name!r}; available: {sorted(VARIANTS)}")
