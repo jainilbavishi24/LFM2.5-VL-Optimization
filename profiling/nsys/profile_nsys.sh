@@ -16,7 +16,7 @@ mkdir -p "$OUT"
 REP="$OUT/nsys_${WL}_g${GEN}"
 
 nsys profile \
-    --trace=cuda,nvtx,osrt \
+    --trace=cuda,nvtx,osrt --cuda-graph-trace=node \
     --sample=none --cpuctxsw=none \
     --capture-range=cudaProfilerApi --capture-range-end=stop \
     --force-overwrite=true -o "$REP" \

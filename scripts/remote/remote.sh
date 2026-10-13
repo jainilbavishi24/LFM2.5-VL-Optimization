@@ -35,7 +35,7 @@ DATA="${DATA:-/data/cs3406/team21}"
 RDIR="${RDIR:-$DATA/PAA_Project}"
 SSH=(ssh "$REMOTE")
 # Keep every cache on our team folder (home/quota elsewhere may be small or wiped)
-ENVSETUP="export XDG_CACHE_HOME=$DATA/.cache UV_CACHE_DIR=$DATA/.cache/uv PIP_CACHE_DIR=$DATA/.cache/pip HF_HOME=$DATA/.cache/huggingface PATH=$DATA/.local/bin:\$PATH; cd $RDIR"
+ENVSETUP="export TMPDIR=$DATA/.tmp XDG_CACHE_HOME=$DATA/.cache UV_CACHE_DIR=$DATA/.cache/uv PIP_CACHE_DIR=$DATA/.cache/pip HF_HOME=$DATA/.cache/huggingface PATH=$DATA/.local/bin:\$PATH; cd $RDIR"
 
 need_master() {
     if ! ssh -O check "$REMOTE" 2>/dev/null; then
