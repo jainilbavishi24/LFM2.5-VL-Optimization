@@ -1,0 +1,66 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                               generate         0.00%       0.000us         0.00%       0.000us       0.000us     322.467ms       162.52%     322.467ms     322.467ms             1  
+                                              lm_decode         0.00%       0.000us         0.00%       0.000us       0.000us     192.033ms        96.79%     192.033ms       6.195ms            31  
+                                               aten::mm         4.54%      14.826ms         7.20%      23.492ms       7.870us      93.960ms        47.36%      93.998ms      31.490us          2985  
+                                           vision_tower         0.00%       0.000us         0.00%       0.000us       0.000us      74.109ms        37.35%      74.109ms      74.109ms             1  
+std::enable_if<!(false), void>::type internal::gemvx...         0.00%       0.000us         0.00%       0.000us       0.000us      66.163ms        33.35%      66.163ms      26.339us          2512  
+                                            aten::addmm         0.34%       1.113ms         0.46%       1.497ms       8.701us      36.281ms        18.29%      36.281ms     210.936us           172  
+                                             lm_prefill         0.00%       0.000us         0.00%       0.000us       0.000us      32.743ms        16.50%      32.743ms      32.743ms             1  
+                     aten::_efficient_attention_forward         0.04%     115.198us         0.08%     275.597us      10.207us      30.101ms        15.17%      30.101ms       1.115ms            27  
+fmha_cutlassF_bf16_aligned_64x128_rf_sm80(PyTorchMem...         0.00%       0.000us         0.00%       0.000us       0.000us      30.101ms        15.17%      30.101ms       1.115ms            27  
+void cutlass::Kernel2<cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      24.069ms        12.13%      24.069ms     176.979us           136  
+void cutlass::Kernel2<cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      23.625ms        11.91%      23.625ms     407.320us            58  
+void cutlass::Kernel2<cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us      14.241ms         7.18%      14.241ms     290.630us            49  
+                                              aten::mul         3.88%      12.650ms         7.28%      23.758ms       4.789us       8.038ms         4.05%       8.038ms       1.620us          4961  
+                                                lm_head         0.00%       0.000us         0.00%       0.000us       0.000us       6.828ms         3.44%       6.828ms     220.257us            31  
+                                            aten::copy_         1.76%       5.747ms         5.42%      17.676ms       5.217us       5.622ms         2.83%       5.623ms       1.660us          3388  
+                                              aten::add         2.37%       7.742ms         4.39%      14.323ms       4.773us       4.760ms         2.40%       4.760ms       1.586us          3001  
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       3.477ms         1.75%       3.477ms       2.312us          1504  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       3.066ms         1.55%       3.066ms       2.113us          1451  
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       2.837ms         1.43%       2.837ms       2.354us          1205  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.820ms         1.42%       2.820ms       1.309us          2155  
+                                             aten::mean         1.66%       5.406ms         2.65%       8.661ms       6.015us       2.680ms         1.35%       2.680ms       1.861us          1440  
+void at::native::reduce_kernel<512, 1, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us       2.680ms         1.35%       2.680ms       1.861us          1440  
+                         aten::_flash_attention_forward         0.62%       2.031ms         1.80%       5.864ms      30.542us       2.677ms         1.35%       2.677ms      13.942us           192  
+                                             aten::gelu         0.03%      97.617us         0.05%     177.032us       4.918us       2.672ms         1.35%       2.672ms      74.210us            36  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.657ms         1.34%       2.657ms      98.409us            27  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       2.255ms         1.14%       2.255ms       1.532us          1472  
+                                              aten::cat         0.91%       2.954ms         1.54%       5.034ms       5.819us       1.925ms         0.97%       1.925ms       2.226us           865  
+                                              aten::pow         1.52%       4.973ms         2.63%       8.587ms       5.963us       1.645ms         0.83%       1.645ms       1.143us          1440  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.645ms         0.83%       1.645ms       1.143us          1440  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.592ms         0.80%       1.592ms       1.058us          1505  
+                                aten::native_layer_norm         0.06%     198.729us         0.16%     525.940us       9.563us       1.584ms         0.80%       1.584ms      28.798us            55  
+void at::native::(anonymous namespace)::vectorized_l...         0.00%       0.000us         0.00%       0.000us       0.000us       1.584ms         0.80%       1.584ms      28.798us            55  
+                                            aten::rsqrt         0.99%       3.235ms         1.94%       6.344ms       4.405us       1.499ms         0.76%       1.499ms       1.041us          1440  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.499ms         0.76%       1.499ms       1.041us          1440  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.487ms         0.75%       1.487ms       1.033us          1440  
+std::enable_if<!(false), void>::type internal::gemvx...         0.00%       0.000us         0.00%       0.000us       0.000us       1.306ms         0.66%       1.306ms       3.510us           372  
+                                            aten::where         0.17%     544.395us         0.71%       2.323ms      12.762us       1.119ms         0.56%       2.326ms      12.782us           182  
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       1.022ms         0.52%       1.022ms      37.863us            27  
+void pytorch_flash::flash_fwd_splitkv_kernel<Flash_f...         0.00%       0.000us         0.00%       0.000us       0.000us     997.960us         0.50%     997.960us       5.365us           186  
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us     982.717us         0.50%     982.717us       2.482us           396  
+                                             aten::silu         0.44%       1.438ms         0.81%       2.636ms       5.148us     982.063us         0.49%     982.063us       1.918us           512  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     982.063us         0.49%     982.063us       1.918us           512  
+void pytorch_flash::flash_fwd_kernel<Flash_fwd_kerne...         0.00%       0.000us         0.00%       0.000us       0.000us     972.102us         0.49%     972.102us     162.017us             6  
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us     836.863us         0.42%     836.863us       2.250us           372  
+                                              projector         0.00%       0.000us         0.00%       0.000us       0.000us     821.892us         0.41%     821.892us      91.321us             9  
+void pytorch_flash::flash_fwd_splitkv_combine_kernel...         0.00%       0.000us         0.00%       0.000us       0.000us     706.820us         0.36%     706.820us       3.800us           186  
+                                              aten::neg         0.34%       1.104ms         0.61%       1.989ms       5.180us     596.747us         0.30%     596.747us       1.554us           384  
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us     596.747us         0.30%     596.747us       1.554us           384  
+void cutlass::Kernel2<cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us     562.309us         0.28%     562.309us      26.777us            21  
+                    DaoAILab::_causal_conv1d_update_cpp         1.66%       5.414ms         1.90%       6.215ms      20.048us     469.962us         0.24%     469.962us       1.516us           310  
+void causal_conv1d_update_kernel<Causal_conv1d_updat...         0.00%       0.000us         0.00%       0.000us       0.000us     469.962us         0.24%     469.962us       1.516us           310  
+                                           aten::argmax         0.05%     147.911us         0.07%     226.413us       7.075us     357.025us         0.18%     357.025us      11.157us            32  
+void at::native::reduce_kernel<512, 1, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us     357.025us         0.18%     357.025us      11.157us            32  
+                         Memcpy DtoD (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us     272.317us         0.14%     272.317us       0.926us           294  
+void cutlass::Kernel2<cutlass_80_tensorop_bf16_s1681...         0.00%       0.000us         0.00%       0.000us       0.000us     268.802us         0.14%     268.802us      29.867us             9  
+                                            aten::fill_         0.15%     500.277us         0.35%       1.158ms       3.980us     266.529us         0.13%     266.529us       0.916us           291  
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us     255.684us         0.13%     255.684us       5.440us            47  
+                                        lm_head_prefill         0.00%       0.000us         0.00%       0.000us       0.000us     220.481us         0.11%     220.481us     220.481us             1  
+                          aten::_upsample_bilinear2d_aa         0.02%      52.364us         0.04%     145.706us      16.190us     210.081us         0.11%     250.530us      27.837us             9  
+void at::native::(anonymous namespace)::upsample_gen...         0.00%       0.000us         0.00%       0.000us       0.000us     210.081us         0.11%     210.081us      23.342us             9  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 326.337ms
+Self CUDA time total: 198.412ms

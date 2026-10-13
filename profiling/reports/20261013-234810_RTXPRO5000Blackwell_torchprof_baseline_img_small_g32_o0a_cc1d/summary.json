@@ -1,0 +1,35 @@
+{
+  "n_kernels_total": 22520,
+  "n_decode_steps": 31,
+  "generate_wall_ms": 236.53371899414063,
+  "decode_wall_ms_per_step": 6.796870550340222,
+  "decode_kernel_ms_per_step": 2.9348713870966616,
+  "decode_kernels_per_step": 683.1290322580645,
+  "decode_gpu_busy_frac": 0.4317974522774683,
+  "kernel_ms_by_phase": {
+    "lm_decode": 82.33139199999955,
+    "lm_head": 6.820520999999999,
+    "lm_head_prefill": 0.220226,
+    "lm_prefill": 4.790086000000001,
+    "other": 1.9409399999999977,
+    "projector": 0.061727000000000004,
+    "vision_tower": 11.671752999999999
+  },
+  "lm_decode_kernel_share_by_category": {
+    "gemm": 0.7365,
+    "elementwise": 0.1496,
+    "copy_index": 0.0633,
+    "norm_reduce": 0.0283,
+    "attention": 0.0167,
+    "conv": 0.0056
+  },
+  "workload": "img_small",
+  "gen_len": 32,
+  "variant": "baseline",
+  "batch_size": 1,
+  "prompt_tokens": 252,
+  "image_tokens": 234,
+  "vision_tiles": 1,
+  "vision_patches": 936,
+  "vision_patches_padded": 1024
+}

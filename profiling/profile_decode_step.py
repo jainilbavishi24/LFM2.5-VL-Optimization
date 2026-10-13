@@ -27,7 +27,7 @@ def category(name: str) -> str:
                      ("sm90", "gemv/gemm"), ("sm100", "gemv/gemm"), ("sm120", "gemv/gemm"), ("splitk", "gemv/gemm"),
                      ("add_rmsnorm", "ours: add_rmsnorm"), ("shortconv", "ours: shortconv"), ("qk_norm_rope", "ours: qk_rope_kv"),
                      ("attention_split", "ours: attention"), ("attn_combine", "ours: attention"), ("decode_attention", "ours: attention"),
-                     ("silu_mul", "ours: silu_mul"), ("argmax", "argmax/topk"), ("reduce", "reduce"), ("embedding", "embedding"),
+                     ("silu_mul", "ours: silu_mul"), ("gemv_w4", "ours: gemv int4"), ("gemv_kernel", "ours: gemv"), ("argmax", "argmax/topk"), ("reduce", "reduce"), ("embedding", "embedding"),
                      ("index", "index/copy"), ("copy", "index/copy"), ("fill", "index/copy")]:
         if key in n:
             return cat
@@ -40,15 +40,16 @@ def main():
     ap.add_argument("--fused", action="store_true")
     ap.add_argument("--workload", default="img_small")
     ap.add_argument("--steps", type=int, default=20)
+    ap.add_argument("--gemv", default="cublas", choices=["cublas", "bf16", "int8", "int4"])
     args = ap.parse_args()
 
     net, processor = load()
-    dec = StaticDecoder(net, fused=args.fused)
+    dec = StaticDecoder(net, fused=args.fused or args.gemv != "cublas", gemv=args.gemv)
     wl = WORKLOADS[args.workload]
     inputs = build_inputs(processor, wl.image(), wl.prompt)
     model_inputs = {k: v for k, v in inputs.items() if k not in ("input_ids", "attention_mask")}
     _, s = dec.prefill(inputs["input_ids"], args.steps + 8, attention_mask=inputs.get("attention_mask"), **model_inputs)
-    step = dec._step_fused if args.fused else dec._step
+    step = dec._step_fused if dec.fused else dec._step
     for _ in range(3):
         step(s)
     torch.cuda.synchronize()
@@ -69,7 +70,7 @@ def main():
         c[1] += us
     total_n = sum(n for n, _ in per_kernel.values()) / args.steps
     total_us = sum(us for _, us in per_kernel.values()) / args.steps
-    print(f"{'fused' if args.fused else 'O1'} {args.workload}: {total_n:.0f} kernels/step, kernel time {total_us / 1e3:.3f} ms/step")
+    print(f"{args.gemv if dec.fused else 'O1'} {args.workload}: {total_n:.0f} kernels/step, kernel time {total_us / 1e3:.3f} ms/step")
     for c, (n, us) in sorted(cats.items(), key=lambda kv: -kv[1][1]):
         print(f"  {c:22s} {n / args.steps:6.1f} kernels  {us / args.steps:8.1f} us  {100 * us / args.steps / total_us:5.1f} %")
     print("top kernels:")

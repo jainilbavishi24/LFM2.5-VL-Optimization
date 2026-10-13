@@ -1,0 +1,32 @@
+{
+  "n_kernels_total": 21797,
+  "n_decode_steps": 31,
+  "generate_wall_ms": 212.61524597167968,
+  "decode_wall_ms_per_step": 6.464618675970263,
+  "decode_kernel_ms_per_step": 2.925482258064437,
+  "decode_kernels_per_step": 677.9032258064516,
+  "decode_gpu_busy_frac": 0.45253748205424615,
+  "kernel_ms_by_phase": {
+    "lm_decode": 82.01581799999933,
+    "lm_head": 6.834485,
+    "lm_head_prefill": 0.219615,
+    "lm_prefill": 3.0847189999999993,
+    "other": 1.9240329999999979
+  },
+  "lm_decode_kernel_share_by_category": {
+    "gemm": 0.7395,
+    "elementwise": 0.1509,
+    "copy_index": 0.0642,
+    "norm_reduce": 0.0279,
+    "attention": 0.0118,
+    "conv": 0.0057
+  },
+  "workload": "text",
+  "gen_len": 32,
+  "variant": "baseline",
+  "batch_size": 1,
+  "prompt_tokens": 18,
+  "image_tokens": 0,
+  "vision_tiles": 0,
+  "vision_patches": 0
+}

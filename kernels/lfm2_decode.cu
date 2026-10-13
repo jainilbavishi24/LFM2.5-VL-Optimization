@@ -21,6 +21,29 @@ using bf16 = __nv_bfloat16;
 #define F2B(x) __float2bfloat16(x)
 __device__ __forceinline__ float rbf(float x) { return B2F(F2B(x)); }  // round to BF16 and back
 
+// Programmatic Dependent Launch (sm_90+): kernels are launched with programmatic stream serialization, so the next
+// kernel can start while this one drains. Contract: before pdl_wait() a kernel may only read immutable data
+// (weights) and must not write anything; pdl_wait() returns once the previous grid has completed and its writes are
+// visible. pdl_trigger() lets the next kernel launch early. Both are no-ops for launches without the attribute.
+__device__ __forceinline__ void pdl_wait() { asm volatile("griddepcontrol.wait;" ::: "memory"); }
+__device__ __forceinline__ void pdl_trigger() { asm volatile("griddepcontrol.launch_dependents;"); }
+static bool g_pdl = true;
+void set_pdl(bool on) { g_pdl = on; }
+template <typename... KArgs, typename... Args>
+static void launch_k(void (*kernel)(KArgs...), dim3 grid, dim3 block, size_t smem, cudaStream_t st, Args... args) {
+    cudaLaunchConfig_t cfg = {};
+    cfg.gridDim = grid;
+    cfg.blockDim = block;
+    cfg.dynamicSmemBytes = smem;
+    cfg.stream = st;
+    cudaLaunchAttribute attr;
+    attr.id = cudaLaunchAttributeProgrammaticStreamSerialization;
+    attr.val.programmaticStreamSerializationAllowed = g_pdl ? 1 : 0;
+    cfg.attrs = &attr;
+    cfg.numAttrs = 1;
+    cudaLaunchKernelEx(&cfg, kernel, static_cast<KArgs>(args)...);
+}
+
 __device__ __forceinline__ float warp_sum(float v) {
 #pragma unroll
     for (int o = 16; o > 0; o >>= 1) v += __shfl_xor_sync(0xffffffff, v, o);
@@ -50,6 +73,8 @@ constexpr int NORM_THREADS = 256;
 template <bool ADD>
 __global__ void add_rmsnorm_kernel(bf16* __restrict__ h, const bf16* __restrict__ y, const bf16* __restrict__ w,
                                    bf16* __restrict__ x, int H, float eps) {
+    pdl_trigger();
+    pdl_wait();
     extern __shared__ float smem[];  // H floats + reduction scratch
     float* hv = smem;
     float* red = smem + H;
@@ -71,8 +96,8 @@ __global__ void add_rmsnorm_kernel(bf16* __restrict__ h, const bf16* __restrict_
 
 void launch_add_rmsnorm(void* h, const void* y, const void* w, void* x, int rows, int H, float eps, cudaStream_t st) {
     const size_t sm = (H + 32) * sizeof(float);
-    if (y) add_rmsnorm_kernel<true><<<rows, NORM_THREADS, sm, st>>>((bf16*)h, (const bf16*)y, (const bf16*)w, (bf16*)x, H, eps);
-    else add_rmsnorm_kernel<false><<<rows, NORM_THREADS, sm, st>>>((bf16*)h, nullptr, (const bf16*)w, (bf16*)x, H, eps);
+    if (y) launch_k(add_rmsnorm_kernel<true>, rows, NORM_THREADS, sm, st, (bf16*)h, (const bf16*)y, (const bf16*)w, (bf16*)x, H, eps);
+    else launch_k(add_rmsnorm_kernel<false>, rows, NORM_THREADS, sm, st, (bf16*)h, nullptr, (const bf16*)w, (bf16*)x, H, eps);
 }
 
 // ------------------------------------------------------------------------------------------------ shortconv_step
@@ -80,6 +105,8 @@ void launch_add_rmsnorm(void* h, const void* y, const void* w, void* x, int rows
 // conv = bf16(sum_k w[k] * window[k] (+bias)); y = bf16(C * conv)
 __global__ void shortconv_step_kernel(const bf16* __restrict__ bcx, bf16* __restrict__ state, const bf16* __restrict__ w,
                                       const bf16* __restrict__ bias, bf16* __restrict__ y, int H) {
+    pdl_trigger();
+    pdl_wait();
     constexpr int L = 3;
     const int b = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= H) return;
@@ -95,7 +122,7 @@ __global__ void shortconv_step_kernel(const bf16* __restrict__ bcx, bf16* __rest
 
 void launch_shortconv_step(const void* bcx, void* state, const void* w, const void* bias, void* y, int B, int H, cudaStream_t st) {
     dim3 grid((H + 255) / 256, B);
-    shortconv_step_kernel<<<grid, 256, 0, st>>>((const bf16*)bcx, (bf16*)state, (const bf16*)w, (const bf16*)bias, (bf16*)y, H);
+    launch_k(shortconv_step_kernel, grid, 256, 0, st, (const bf16*)bcx, (bf16*)state, (const bf16*)w, (const bf16*)bias, (bf16*)y, H);
 }
 
 // ------------------------------------------------------------------------------------------------ qk_norm_rope_kv
@@ -108,6 +135,8 @@ __global__ void qk_norm_rope_kv_kernel(const bf16* __restrict__ qkv, const bf16*
                                        const float* __restrict__ inv_freq, float scaling, const int64_t* __restrict__ pos_p,
                                        bf16* __restrict__ q_out, bf16* __restrict__ kc, bf16* __restrict__ vc,
                                        int NQ, int NKV, int max_len, float eps) {
+    pdl_trigger();
+    pdl_wait();
     __shared__ float xs[D];
     __shared__ float red[D / 32];
     const int b = blockIdx.x, head = blockIdx.y, d = threadIdx.x;
@@ -137,7 +166,7 @@ void launch_qk_norm_rope_kv(const void* qkv, const void* qw, const void* kw, con
                             const int64_t* pos, void* q_out, void* kc, void* vc, int B, int NQ, int NKV, int max_len,
                             float eps, cudaStream_t st) {
     dim3 grid(B, NQ + 2 * NKV);
-    qk_norm_rope_kv_kernel<64><<<grid, 64, 0, st>>>((const bf16*)qkv, (const bf16*)qw, (const bf16*)kw, inv_freq, scaling,
+    launch_k(qk_norm_rope_kv_kernel<64>, grid, 64, 0, st, (const bf16*)qkv, (const bf16*)qw, (const bf16*)kw, inv_freq, scaling,
         pos, (bf16*)q_out, (bf16*)kc, (bf16*)vc, NQ, NKV, max_len, eps);
 }
 
@@ -148,6 +177,8 @@ constexpr int ATT_WARPS = 8;
 __global__ void decode_attention_kernel(const bf16* __restrict__ q, const bf16* __restrict__ kc, const bf16* __restrict__ vc,
                                         const int64_t* __restrict__ pos_p, bf16* __restrict__ out,
                                         int NQ, int NKV, int max_len, float scale) {
+    pdl_trigger();
+    pdl_wait();
     constexpr int D = 64;
     __shared__ float sm_m[ATT_WARPS], sm_l[ATT_WARPS], sm_acc[ATT_WARPS][D];
     const int b = blockIdx.x, h = blockIdx.y, kvh = h / (NQ / NKV);
@@ -194,7 +225,7 @@ __global__ void decode_attention_kernel(const bf16* __restrict__ q, const bf16* 
 void launch_decode_attention(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out,
                              int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st) {
     dim3 grid(B, NQ);
-    decode_attention_kernel<<<grid, ATT_WARPS * 32, 0, st>>>((const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, (bf16*)out,
+    launch_k(decode_attention_kernel, grid, ATT_WARPS * 32, 0, st, (const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, (bf16*)out,
                                                              NQ, NKV, max_len, scale);
 }
 
@@ -208,6 +239,8 @@ constexpr int SPLIT_WARPS = 4;  // = query heads per KV head (32 / 8)
 __global__ void decode_attention_split_kernel(const bf16* __restrict__ q, const bf16* __restrict__ kc, const bf16* __restrict__ vc,
                                               const int64_t* __restrict__ pos_p, float* __restrict__ ws,
                                               int NQ, int NKV, int max_len, int S, float scale) {
+    pdl_trigger();
+    pdl_wait();
     constexpr int D = 64;
     const int bk = blockIdx.x, s = blockIdx.y;
     const int b = bk / NKV, kvh = bk % NKV;
@@ -277,6 +310,8 @@ __global__ void decode_attention_split_kernel(const bf16* __restrict__ q, const 
 
 // One block of 64 threads per (b, q head): out = sum_s acc_s e^(m_s - M) / sum_s l_s e^(m_s - M)
 __global__ void attn_combine_kernel(const float* __restrict__ ws, bf16* __restrict__ out, int S) {
+    pdl_trigger();
+    pdl_wait();
     constexpr int D = 64;
     const int bh = blockIdx.x, d = threadIdx.x;
     const float* w = ws + (size_t)bh * S * (D + 2);
@@ -296,9 +331,9 @@ __global__ void attn_combine_kernel(const float* __restrict__ ws, bf16* __restri
 void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
                                    int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st) {
     dim3 grid(B * NKV, S);
-    decode_attention_split_kernel<<<grid, SPLIT_WARPS * 32, 0, st>>>((const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, ws,
+    launch_k(decode_attention_split_kernel, grid, SPLIT_WARPS * 32, 0, st, (const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, ws,
                                                                      NQ, NKV, max_len, S, scale);
-    attn_combine_kernel<<<B * NQ, 64, 0, st>>>(ws, (bf16*)out, S);
+    launch_k(attn_combine_kernel, B * NQ, 64, 0, st, ws, (bf16*)out, S);
 }
 
 // ------------------------------------------------------------------------------------------------ gemv (O6)
@@ -338,14 +373,12 @@ template <typename WT, int ROWS, int UNROLL>
 __global__ void gemv_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
                             bf16* __restrict__ y, int N, int K) {
     extern __shared__ float xs[];
+    pdl_trigger();
     constexpr int PER = WTraits<WT>::PER;
     const int chunks = K / PER;                             // K is a multiple of 32 * PER (checked on the host)
-    // natural layout (a transposed, bank-conflict-free layout measured ~5 % slower here: profiling/bench_gemv.py)
-    for (int k = threadIdx.x; k < K; k += blockDim.x) xs[k] = B2F(x[k]);
-    __syncthreads();
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS;  // this warp's ROWS consecutive output rows
-    if (n0 >= N) return;
+    const bool active = n0 < N;
     const uint4* rows[ROWS];
 #pragma unroll
     for (int r = 0; r < ROWS; ++r) rows[r] = reinterpret_cast<const uint4*>(W + (size_t)min(n0 + r, N - 1) * K);
@@ -353,17 +386,33 @@ __global__ void gemv_kernel(const WT* __restrict__ W, const float* __restrict__ 
 #pragma unroll
     for (int r = 0; r < ROWS; ++r) acc[r] = 0.f;
     int c = lane;
-    for (; c + 32 * (UNROLL - 1) < chunks; c += 32 * UNROLL) {
-        uint4 buf[ROWS][UNROLL];
+    uint4 buf[ROWS][UNROLL];
+    bool more = active && c + 32 * (UNROLL - 1) < chunks;
+    if (more) {  // weights do not depend on the previous kernel: start streaming them before the dependency wait
 #pragma unroll
         for (int u = 0; u < UNROLL; ++u)
 #pragma unroll
             for (int r = 0; r < ROWS; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+    }
+    pdl_wait();
+    // natural layout (a transposed, bank-conflict-free layout measured ~5 % slower here: profiling/bench_gemv.py)
+    for (int k = threadIdx.x; k < K; k += blockDim.x) xs[k] = B2F(x[k]);
+    __syncthreads();
+    if (!active) return;
+    while (more) {
 #pragma unroll
         for (int u = 0; u < UNROLL; ++u) {
             const float* xp = xs + (c + 32 * u) * PER;      // x slice loaded once, reused by all ROWS rows
 #pragma unroll
             for (int r = 0; r < ROWS; ++r) acc[r] += WTraits<WT>::dot(buf[r][u], xp, 1);
+        }
+        c += 32 * UNROLL;
+        more = c + 32 * (UNROLL - 1) < chunks;
+        if (more) {
+#pragma unroll
+            for (int u = 0; u < UNROLL; ++u)
+#pragma unroll
+                for (int r = 0; r < ROWS; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
         }
     }
     for (; c < chunks; c += 32) {
@@ -384,9 +433,9 @@ static void gemv_dispatch(const WT* W, const float* scale, const bf16* x, bf16* 
     const size_t sm = (size_t)K * sizeof(float);
     const int per_block = GEMV_WARPS * rows;
     const dim3 grid((N + per_block - 1) / per_block);
-    if (rows == 4) gemv_kernel<WT, 4, 2><<<grid, GEMV_WARPS * 32, sm, st>>>(W, scale, x, y, N, K);
-    else if (rows == 2) gemv_kernel<WT, 2, 2><<<grid, GEMV_WARPS * 32, sm, st>>>(W, scale, x, y, N, K);
-    else gemv_kernel<WT, 1, 4><<<grid, GEMV_WARPS * 32, sm, st>>>(W, scale, x, y, N, K);
+    if (rows == 4) launch_k(gemv_kernel<WT, 4, 2>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
+    else if (rows == 2) launch_k(gemv_kernel<WT, 2, 2>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
+    else launch_k(gemv_kernel<WT, 1, 4>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
 }
 
 void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, cudaStream_t st) {
@@ -402,12 +451,11 @@ template <int ROWS>
 __global__ void gemv_w4_kernel(const uint8_t* __restrict__ Wp, const float* __restrict__ S, const bf16* __restrict__ x,
                                bf16* __restrict__ y, int N, int K, int group) {
     extern __shared__ float xs[];
+    pdl_trigger();
     const int chunks = K / 32, groups = K / group, chunks_per_group = group / 32;
-    for (int k = threadIdx.x; k < K; k += blockDim.x) xs[(k % 32) * chunks + k / 32] = B2F(x[k]);  // transposed, see gemv
-    __syncthreads();
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS;
-    if (n0 >= N) return;
+    const bool active = n0 < N;
     const uint4* rows[ROWS];
     const float* srow[ROWS];
 #pragma unroll
@@ -419,11 +467,19 @@ __global__ void gemv_w4_kernel(const uint8_t* __restrict__ Wp, const float* __re
     float acc[ROWS];
 #pragma unroll
     for (int r = 0; r < ROWS; ++r) acc[r] = 0.f;
-    for (int c = lane; c < chunks; c += 32) {
-        uint4 buf[ROWS];
-        float sc[ROWS];
+    int c = lane;
+    uint4 buf[ROWS];
+    float sc[ROWS];
+    bool more = active && c < chunks;
+    if (more) {  // prefetch the first weights + scales before the dependency wait (they are constants)
 #pragma unroll
         for (int r = 0; r < ROWS; ++r) { buf[r] = ld_stream(rows[r] + c); sc[r] = __ldg(srow[r] + c / chunks_per_group); }
+    }
+    pdl_wait();
+    for (int k = threadIdx.x; k < K; k += blockDim.x) xs[(k % 32) * chunks + k / 32] = B2F(x[k]);  // transposed: lanes hit distinct banks
+    __syncthreads();
+    if (!active) return;
+    while (more) {
         const float* xp = xs + c;                            // element e of this chunk at xp[e * chunks]
 #pragma unroll
         for (int r = 0; r < ROWS; ++r) {
@@ -441,6 +497,12 @@ __global__ void gemv_w4_kernel(const uint8_t* __restrict__ Wp, const float* __re
             }
             acc[r] += a * sc[r];
         }
+        c += 32;
+        more = c < chunks;
+        if (more) {
+#pragma unroll
+            for (int r = 0; r < ROWS; ++r) { buf[r] = ld_stream(rows[r] + c); sc[r] = __ldg(srow[r] + c / chunks_per_group); }
+        }
     }
 #pragma unroll
     for (int r = 0; r < ROWS; ++r) {
@@ -453,14 +515,16 @@ void launch_gemv_w4(const void* Wp, const float* S, const void* x, void* y, int 
     if (rows <= 0) rows = N >= 32768 ? 4 : 2;
     const size_t sm = (size_t)K * sizeof(float);
     const dim3 grid((N + GEMV_WARPS * rows - 1) / (GEMV_WARPS * rows));
-    if (rows == 4) gemv_w4_kernel<4><<<grid, GEMV_WARPS * 32, sm, st>>>((const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
-    else if (rows == 2) gemv_w4_kernel<2><<<grid, GEMV_WARPS * 32, sm, st>>>((const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
-    else gemv_w4_kernel<1><<<grid, GEMV_WARPS * 32, sm, st>>>((const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
+    if (rows == 4) launch_k(gemv_w4_kernel<4>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
+    else if (rows == 2) launch_k(gemv_w4_kernel<2>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
+    else launch_k(gemv_w4_kernel<1>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
 }
 
 // ------------------------------------------------------------------------------------------------ silu_mul
 // g = merged w1|w3 projection [B, 2I]: y = bf16(bf16(silu(a)) * b)
 __global__ void silu_mul_kernel(const bf16* __restrict__ g, bf16* __restrict__ y, int I) {
+    pdl_trigger();
+    pdl_wait();
     const int b = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= I) return;
     const float a = B2F(g[(size_t)b * 2 * I + i]), u = B2F(g[(size_t)b * 2 * I + I + i]);
@@ -469,5 +533,5 @@ __global__ void silu_mul_kernel(const bf16* __restrict__ g, bf16* __restrict__ y
 
 void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st) {
     dim3 grid((I + 255) / 256, B);
-    silu_mul_kernel<<<grid, 256, 0, st>>>((const bf16*)g, (bf16*)y, I);
+    launch_k(silu_mul_kernel, grid, 256, 0, st, (const bf16*)g, (bf16*)y, I);
 }

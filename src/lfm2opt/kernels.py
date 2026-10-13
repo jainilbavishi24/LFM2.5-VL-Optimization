@@ -27,4 +27,6 @@ def ext():
             extra_cuda_cflags=["-O3", "-lineinfo"],
             verbose=False,
         )
+        # Programmatic Dependent Launch between our kernels (on by default; LFM2_PDL=0 for A/B measurements)
+        _EXT.set_pdl(os.environ.get("LFM2_PDL", "1") != "0")
     return _EXT
