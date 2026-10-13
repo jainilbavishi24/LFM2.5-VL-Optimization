@@ -15,6 +15,28 @@ Entry template:
 
 ---
 
+## 2026-10-14 (night, 02:25–02:40): full-grid results of the night's best variants, 3B, batching, FP8 vision (rejected)  (Claude)
+
+**Full grids** (`bench.py --preset full --no-phases`, 10 repeats; `results/raw/20261014-022*`; TPOT at 128 new tokens, J/token dynamic in parentheses):
+
+| Variant | text | img_small | img_hd | img_fhd | J/token | TTFT 1080p |
+| --- | --- | --- | --- | --- | --- | --- |
+| HF eager (baseline, slot 1) | 3.83 | 3.83 | 3.84 | 3.81 ms | 0.74–0.89 | 116 ms |
+| `fused` (O1–O4, cuBLAS GEMV) | 2.23 | 2.24 | 2.27 | 2.32 | 0.65–0.70 | 116 |
+| `fused_gemv` (+ our BF16 GEMV) | **2.08** | 2.09 | 2.10 | 2.14 | 0.61–0.63 | 118 |
+| `fused_w8` (+ INT8 weights) | **1.11** | 1.13 | 1.15 | 1.19 | 0.32–0.35 | 118 |
+| `fused_w4` (+ INT4 g128, lossy) | 0.76 | 0.78 | 0.80 | 0.84 | 0.22–0.26 | 118 |
+| `fused_w8_vcudnn` (+ cuDNN vision attention) | 1.11 | 1.13 | 1.15 | 1.19 | 0.32–0.35 | **102 ms** (vision 73.5 → 62.9) |
+
+- With our GEMV everywhere, the BF16 step beats cuBLAS inside the graph (2.23 → 2.08 ms). The GPU now runs at its 300 W limit during decode (it is busy streaming weights rather than waiting), so energy per token falls in proportion to the bytes: **INT8 = 2.3× less energy per token than HF eager**.
+- **LFM2.5-VL-3B (generalization, `3b_fused`):** TPOT 6.50 (HF) → 4.95 (`fused`, cuBLAS) → **2.50 ms (`fused_w8`)**, J/token 1.81 → 0.74. Same kernels, unchanged (30 layers, 10752-wide MLP).
+- **Batching (`fused_batch`, img_small):** the fused runtime also runs batched through the cuBLAS path: batch 4: 2.60 ms, 1538 tok/s (HF 1021); batch 16: 2.72 ms, **5878 tok/s** (HF 3972).
+- **FP8 vision GEMMs (O7b, `vision_fp8`): rejected.** W8A8 E4M3 (per-channel weights, dynamic per-token activations, `torch._scaled_mm`) made the vision tower *slower* (1080p TTFT 97 → 136 ms: the eager activation-quantization kernels cost more than the FP8 GEMMs save) and inaccurate (image-feature cosine as low as 0.50, outputs diverge at token 7). Would need fused quantization and finer (per-block) activation scales.
+
+**Night summary:** batch-1 decode on the Blackwell went from 3.83 ms (HF eager) to 2.08 ms in BF16 (1.84×, beats vLLM 2.36 and llama.cpp BF16 2.26), and to 1.11 ms with INT8 weights (3.45×, beats llama.cpp Q8_0 1.45; 98.7 % teacher-forced agreement). 1080p TTFT 116 → 102 ms. All of it is CUDA graphs plus our own kernels (fused elementwise/norm/conv/RoPE/attention, BF16/INT8/INT4 GEMV, PDL).
+
+---
+
 ## 2026-10-14 (night, 02:00–02:25): GEMV tuning, PDL, INT4 quality sweep, vision attention, vLLM TTFT  (Claude)
 
 **GEMV ([kernels/lfm2_decode.cu](../kernels/lfm2_decode.cu), microbenchmark [profiling/bench_gemv.py](../profiling/bench_gemv.py): real decode shapes, > 300 MB of distinct weights per shape so L2 can't help):**

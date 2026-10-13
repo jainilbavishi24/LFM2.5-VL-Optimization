@@ -7,6 +7,8 @@ measure it against the baseline with identical inputs:
     def _(net, processor): ...patch modules...
 """
 
+import torch
+
 VARIANTS = {}
 
 
@@ -142,6 +144,56 @@ def _vision_cudnn(net, processor):
 
     return _vision_sdpa(net, [SDPBackend.CUDNN_ATTENTION, SDPBackend.FLASH_ATTENTION,
                               SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH])
+
+
+class FP8Linear(torch.nn.Module):
+    """W8A8 FP8 (E4M3) linear for prefill-size inputs: weight scaled per output channel (once), activation per
+    token (dynamic), product on FP8 tensor cores via torch._scaled_mm with row-wise scales, BF16 output."""
+
+    FP8_MAX = 448.0
+
+    def __init__(self, lin: torch.nn.Linear):
+        super().__init__()
+        w = lin.weight.detach().float()
+        sw = (w.abs().amax(1) / self.FP8_MAX).clamp_min(1e-12)                     # [N]
+        self.register_buffer("wq", (w / sw[:, None]).to(torch.float8_e4m3fn).contiguous())
+        self.register_buffer("sw", sw.view(1, -1).contiguous())
+        self.bias = lin.bias
+        self.out_features = lin.out_features
+
+    def forward(self, x):
+        shape = x.shape
+        x2 = x.reshape(-1, shape[-1])
+        sx = (x2.float().abs().amax(1, keepdim=True) / self.FP8_MAX).clamp_min(1e-12)  # [M, 1]
+        xq = (x2.float() / sx).to(torch.float8_e4m3fn)
+        y = torch._scaled_mm(xq, self.wq.t(), scale_a=sx, scale_b=self.sw, bias=self.bias, out_dtype=x.dtype)
+        return y.view(*shape[:-1], self.out_features)
+
+
+def _vision_fp8(net):
+    """O7b: every nn.Linear inside the SigLIP2 encoder layers -> FP8Linear (attention projections + MLP)."""
+    layers = [m for m in net.model.vision_tower.modules() if type(m).__name__ == "Siglip2EncoderLayer"]
+    assert layers, "no SigLIP2 encoder layers found"
+    for layer in layers:
+        for name, mod in list(layer.named_modules()):
+            for cname, child in list(mod.named_children()):
+                if isinstance(child, torch.nn.Linear):
+                    setattr(mod, cname, FP8Linear(child))
+    return net
+
+
+@register("vision_fp8")
+def _vision_fp8_variant(net, processor):
+    """O7b: FP8 W8A8 GEMMs in the vision encoder (BF16 elsewhere)."""
+    return _vision_fp8(net)
+
+
+@register("fused_w8_vfast")
+def _fused_w8_vfast(net, processor):
+    """O1-O6 (INT8 decode) + O7a (cuDNN vision attention) + O7b (FP8 vision GEMMs)."""
+    _vision_cudnn(net, processor)
+    _vision_fp8(net)
+    return _fused_variant(net, "int8")
 
 
 @register("fused_w8_vcudnn")
