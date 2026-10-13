@@ -15,6 +15,48 @@ Entry template:
 
 ---
 
+## 2026-10-14 (night): O2–O4 fused CUDA kernels + O6 INT8 weight-only GEMV  (Claude, overnight slots)
+
+**Goal:** after O1 the step is GPU-bound at ~2.9 ms: ~700 kernels, of which ~600 tiny elementwise/norm/cat ops. Fuse them, then attack the weight bytes.
+
+**Setup:** `.venv-ref` (uv's Python 3.12.15 with headers; the system Python can't build extensions), torch 2.11.0+cu130, nvcc 13.3, sm_120. Extension = [kernels/lfm2_decode.cu](../kernels/lfm2_decode.cu) (kernels + raw-pointer launchers) + [kernels/lfm2_decode.cpp](../kernels/lfm2_decode.cpp) (PyTorch bindings; nvcc 13 cannot parse ATen's `List_inl.h`, so torch headers stay out of the .cu), JIT-built by [src/lfm2opt/kernels.py](../src/lfm2opt/kernels.py). Runtime: `StaticDecoder(fused=True, gemv=...)`, variants `fused` / `fused_gemv` / `fused_w8`.
+
+**Kernels (each replaces a chain of PyTorch ops, keeping HF's BF16 rounding points):**
+
+| Kernel | Replaces | Per step |
+| --- | --- | --- |
+| `add_rmsnorm` | residual add + RMSNorm (pow, mean, rsqrt, mul, cast, mul) | 33 |
+| `shortconv_step` | B·x, cat, state copy, depthwise conv, C·y, transposes | 10 |
+| `qk_norm_rope_kv` | q/k head RMSNorm, RoPE (cos/sin from the device-side position), K/V cache write | 6 |
+| `decode_attention_split` + combine | SDPA over the static cache: flash-decoding, grid (8 KV heads × 16 splits), the 4 query heads of a KV head share K/V loads | 12 |
+| `silu_mul` | SiLU + mul on the merged w1‖w3 output | 16 |
+| `gemv` (BF16 / INT8) | `nn.Linear` at batch 1: one warp per row, 16-byte `ld.global.nc.L1::no_allocate` loads, 4 in flight per lane, x in shared memory | 65 |
+
+Plus merged projections (q‖k‖v: 1 GEMV instead of 3; w1‖w3: 1 instead of 2). Step: **~700 → 149 kernels**.
+
+**Correctness:** [tests/test_kernels.py](../tests/test_kernels.py) 27/27 at the real shapes: norm, conv, QK-norm/RoPE/KV and SwiGLU are **bit-exact** vs the PyTorch reference; attention max error 5e-4 (one BF16 ulp); GEMVs within accumulation-order noise. End to end, teacher-forced vs HF ([tests/check_runtime_numerics.py](../tests/check_runtime_numerics.py) `--fused`): argmax agrees on 376/381 steps, max |Δlogit| 0.28, every flip at an HF top-2 margin ≤ 0.06.
+
+**Results (quick tests, batch 1, 128 tokens; full grids are in the overnight plan):**
+
+| Variant | TPOT text | TPOT img_fhd (ctx 2.3k) | J per 128-token request (text) |
+| --- | --- | --- | --- |
+| baseline (HF eager) | 3.83 ms | 3.81 ms | ~100 J |
+| O1 `cudagraph` | 2.91 | 2.94 | ~88 |
+| + O2–O4 `fused`, first attention kernel | 2.23 | 2.65 | 84 |
+| + split-K attention | 2.23 | **2.27** | 84 |
+| + our BF16 GEMV (`fused_gemv`) | 2.24 | 2.28 | 70 |
+| **+ O6 INT8 weights (`fused_w8`)** | **1.40** | **1.43** | **45** |
+| llama.cpp BF16 / Q8_0 (reference) | 2.26 / 1.45 | – | – |
+
+- After fusion, `profiling/profile_decode_step.py` shows the step is **94 % GEMV** (2.10 of 2.24 ms). The practical DRAM read roof measured on this card is 1.23 TB/s (a 2 GB `sum`; the 1.34 TB/s spec is not reachable), and cuBLAS's GEMVs already reach ~1.11 TB/s (~90 %). So our own BF16 GEMV only matches cuBLAS, and the BF16 floor is ~1.9 ms.
+- **O6 halves the bytes:** INT8 weights with a symmetric per-output-row scale (computed at load, decode only; prefill keeps the BF16 weights). TPOT 2.24 → 1.40 ms; energy per request roughly halves. Quality, teacher-forced vs BF16 HF: argmax 376/381, max |Δlogit| 0.52, flips only at margins ≤ 0.125. Needs a task-level check (captions / VQA accuracy) before the report claims it.
+- The INT8 GEMV runs at ~75 % of the roof (1.17 GB in ~1.26 ms), so it has more headroom than the BF16 one. Next: more rows per warp so each x load is reused, `dp4a`-style integer dot or packed conversions.
+- Pitfalls hit tonight: (1) `torch.compile`/Triton and extension builds fail with the system Python (no `Python.h`); (2) a 16-lane-group loop must keep the same trip count on all lanes before `__shfl_xor_sync`; (3) `bench.py` kept earlier variants' models alive in multi-variant runs (the instrumentor held a reference), inflating "peak memory". Fixed.
+
+**Takeaway / next step:** batch-1 decode is now 2.7× faster than HF eager (3.83 → 1.40 ms) with INT8 weights, or 1.7× with BF16, and beats llama.cpp at both precisions. Next: a task-level INT8 quality eval, INT8 GEMV tuning, prefill/vision (TTFT is still HF: 116 ms at 1080p), and full-grid + energy numbers.
+
+---
+
 ## 2026-10-13/14: O1 first cut: static decode runtime + CUDA graph  (Claude, overnight slots)
 
 **Goal:** remove the host/launch overhead that bounds decode (703 kernels/step, GPU busy 45 %).

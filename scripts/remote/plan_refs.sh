@@ -32,7 +32,7 @@ cc1d_ok() { ref_ok && PYTHONPATH="$CC1D" .venv-ref/bin/python -c "import causal_
 ready() {
     case "$1" in
         carry)           [[ -n "${CARRY:-}" ]] ;;
-        o0a_ctrl)        ref_ok ;;
+        o0a_ctrl|o2|o6|o6_3b|o2_batch) ref_ok ;;
         o0a_cc1d|o0ab)   cc1d_ok ;;
         vllm|vllm_eager) [[ -x .venv-vllm/bin/python ]] && .venv-vllm/bin/python -c "import vllm" 2>/dev/null ;;
         llamacpp)        [[ -f "$LLAMA/CMakeLists.txt" && -f "$GGUF/LFM2.5-VL-1.6B-BF16.gguf" && -f "$GGUF/mmproj-LFM2.5-VL-1.6b-BF16.gguf" ]] \
@@ -51,6 +51,14 @@ run_item() {
         o0ab)     use .venv-ref; suite PYTHONPATH="$CC1D" EST_SCALE=1.0 VARIANT=compile_static TAG=o0ab_compile_cc1d \
                       STEPS="bench_nohooks summarize" ;;
         o1)       use .venv; suite VARIANT=cudagraph TAG=o1_cudagraph STEPS="bench_nohooks summarize" ;;
+        o2)       use .venv-ref; suite VARIANT=fused TAG=o2_fused STEPS="bench_nohooks summarize" ;;
+        o6)       use .venv-ref; suite VARIANT=fused_w8 TAG=o6_w8 STEPS="bench_nohooks summarize" ;;
+        o6_3b)    use .venv-ref; timeout --signal=INT "$(( $(left) < 25 ? $(left) : 25 ))m" python benchmarks/bench.py \
+                      --model LiquidAI/LFM2.5-VL-3B --variants baseline,fused,fused_w8 --workloads text,img_small,img_fhd \
+                      --gen-lens 1,128 --warmup 2 --repeats 5 --no-phases --tag 3b_fused ;;
+        o2_batch) use .venv-ref; timeout --signal=INT "$(( $(left) < 15 ? $(left) : 15 ))m" python benchmarks/bench.py \
+                      --variants baseline,fused --workloads img_small --gen-lens 1,128 --batch-sizes 1,4,16 --warmup 2 \
+                      --repeats 5 --no-phases --tag fused_batch ;;
         vllm)     use .venv-vllm; timeout --signal=INT "$(( $(left) < 30 ? $(left) : 30 ))m" \
                       python benchmarks/ref_vllm.py --gen-lens 1,128,512 --repeats 5 ;;
         vllm_eager) use .venv-vllm; timeout --signal=INT "$(( $(left) < 20 ? $(left) : 20 ))m" \
@@ -63,7 +71,7 @@ run_item() {
     esac
 }
 
-ITEMS="${ITEMS:-carry o0a_ctrl o0a_cc1d o0b o0ab o1 vllm llamacpp vllm_eager bl_night}"
+ITEMS="${ITEMS:-carry o0a_ctrl o0a_cc1d o0b o0ab o1 vllm o2 o6 o6_3b o2_batch llamacpp vllm_eager bl_night}"
 say "deadline $(date -d @"$DEADLINE" +%H:%M) ($(left) min); items: $ITEMS"
 for pass in 1 2 3; do
     pending=0

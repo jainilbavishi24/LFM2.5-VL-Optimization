@@ -157,6 +157,8 @@ class StaticDecoder:
                 scale = (w.float().abs().amax(1) / 127).clamp_min(1e-12)
                 self.lin[key] = torch.round(w.float() / scale[:, None]).clamp(-127, 127).to(torch.int8).contiguous()
                 self.lin_scale[key] = scale.contiguous()
+            self.w_qkv, self.w_13 = {}, {}  # merged BF16 copies no longer needed (prefill uses the HF weights)
+            torch.cuda.empty_cache()
 
     def _linear(self, x, key, bias=None):
         """Decode GEMV for weight `key`: cuBLAS (F.linear) or our BF16 / INT8 kernel (batch 1 only)."""

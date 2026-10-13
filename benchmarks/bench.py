@@ -190,7 +190,7 @@ def main():
                         torch.cuda.empty_cache()
 
         instr.detach()
-        del net
+        del net, instr  # the instrumentor (and a runtime variant's CUDA graphs) keep the model alive otherwise
         gc.collect()
         torch.cuda.empty_cache()
 
