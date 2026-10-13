@@ -1,0 +1,102 @@
+[suite 00:25:16] suite 20261014-002516_baseline_night variant=baseline steps: bench_nohooks bench_full summarize
+[suite 00:25:16] deadline 01:54:00 (88 min), EST_SCALE=0.5
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 595.84, 300.00 W, 3090 MHz, 14001 MHz
+[suite 00:25:16] START bench_nohooks (est 7 min, limit 14 min)
+[bench] run 20261014-002518_RTXPRO5000Blackwell_baseline_night_nohooks_full on NVIDIA RTX PRO 5000 Blackwell (sm_120), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /data/cs3406/team21/PAA_Project/results/raw/20261014-002518_RTXPRO5000Blackwell_baseline_night_nohooks_full
+[bench] idle power 23.3 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 0.9s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=      6.9 ms  E/run=   0.75 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=32   tiles=0  img_tok=0     wall=    124.2 ms  E/run=  24.89 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=    486.1 ms  E/run= 100.52 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=512  tiles=0  img_tok=0     wall=   1935.7 ms  E/run= 416.98 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     20.3 ms  E/run=   3.34 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=32   tiles=1  img_tok=234   wall=    137.2 ms  E/run=  29.87 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    500.4 ms  E/run= 112.74 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=512  tiles=1  img_tok=234   wall=   1970.2 ms  E/run= 447.29 J  mem=3.02 GB
+[bench]   baseline    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     40.6 ms  E/run=  12.42 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=    157.9 ms  E/run=  38.46 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    519.7 ms  E/run= 123.27 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=   1964.8 ms  E/run= 468.66 J  mem=3.08 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    118.7 ms  E/run=  33.86 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=    230.4 ms  E/run=  64.82 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    594.4 ms  E/run= 154.55 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=   2050.0 ms  E/run= 513.22 J  mem=3.26 GB
+[bench] done -> /data/cs3406/team21/PAA_Project/results/raw/20261014-002518_RTXPRO5000Blackwell_baseline_night_nohooks_full
+[suite 00:27:36] END   bench_nohooks rc=0 (2 min 20 s)
+[suite 00:27:36] START bench_full (est 7 min, limit 14 min)
+[bench] run 20261014-002738_RTXPRO5000Blackwell_baseline_night_full on NVIDIA RTX PRO 5000 Blackwell (sm_120), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /data/cs3406/team21/PAA_Project/results/raw/20261014-002738_RTXPRO5000Blackwell_baseline_night_full
+[bench] idle power 32.8 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 0.8s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=      6.9 ms  E/run=   1.65 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=32   tiles=0  img_tok=0     wall=    126.2 ms  E/run=  27.48 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=    494.4 ms  E/run= 113.68 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=512  tiles=0  img_tok=0     wall=   1975.9 ms  E/run= 460.59 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     20.5 ms  E/run=   3.94 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=32   tiles=1  img_tok=234   wall=    140.2 ms  E/run=  34.41 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    509.2 ms  E/run= 119.03 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=512  tiles=1  img_tok=234   wall=   1985.2 ms  E/run= 470.96 J  mem=3.02 GB
+[bench]   baseline    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     41.5 ms  E/run=  12.78 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=    159.6 ms  E/run=  42.37 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    529.9 ms  E/run= 130.60 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=   2006.6 ms  E/run= 484.94 J  mem=3.08 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    119.7 ms  E/run=  33.83 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=    232.9 ms  E/run=  67.57 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    602.7 ms  E/run= 155.91 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=   2082.6 ms  E/run= 520.65 J  mem=3.26 GB
+[bench] done -> /data/cs3406/team21/PAA_Project/results/raw/20261014-002738_RTXPRO5000Blackwell_baseline_night_full
+[suite 00:29:59] END   bench_full rc=0 (2 min 23 s)
+[suite 00:29:59] START summarize (est 1 min, limit 6 min)
+# 20261014-002518_RTXPRO5000Blackwell_baseline_night_nohooks_full
+
+GPU: NVIDIA RTX PRO 5000 Blackwell (sm_120), driver 595.84, torch 2.11.0+cu130, transformers 5.19.0, causal_conv1d: False, idle power: 23.3 W
+
+| variant | workload | bs | gen | tiles | img tok | TTFT ms | vision ms | prefill ms | TPOT ms | tok/s | step host/gpu ms | J/run | J/tok (dyn) | avg W | min SM MHz | mem GB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | img_fhd | 1 | 1 | 9 | 2300 | 118.7 | – | – | – | – | –/– | 33.86 | – (–) | 207.0 | 2197 | 3.26 |
+| baseline | img_fhd | 1 | 32 | 9 | 2300 | 118.7 | – | – | 3.60 | 277.5 | –/– | 64.82 | 0.999 (0.915) | 291.1 | 2190 | 3.26 |
+| baseline | img_fhd | 1 | 128 | 9 | 2300 | 118.7 | – | – | 3.75 | 267.0 | –/– | 154.55 | 0.950 (0.863) | 263.2 | 2430 | 3.26 |
+| baseline | img_fhd | 1 | 512 | 9 | 2300 | 118.7 | – | – | 3.78 | 264.6 | –/– | 513.22 | 0.938 (0.850) | 249.9 | 2422 | 3.26 |
+| baseline | img_hd | 1 | 1 | 3 | 764 | 40.6 | – | – | – | – | –/– | 12.42 | – (–) | 189.6 | 2437 | 3.08 |
+| baseline | img_hd | 1 | 32 | 3 | 764 | 40.6 | – | – | 3.78 | 264.4 | –/– | 38.46 | 0.840 (0.752) | 253.8 | 2445 | 3.08 |
+| baseline | img_hd | 1 | 128 | 3 | 764 | 40.6 | – | – | 3.77 | 265.1 | –/– | 123.27 | 0.873 (0.785) | 240.0 | 2512 | 3.08 |
+| baseline | img_hd | 1 | 512 | 3 | 764 | 40.6 | – | – | 3.77 | 265.6 | –/– | 468.66 | 0.893 (0.805) | 238.8 | 2512 | 3.08 |
+| baseline | img_small | 1 | 1 | 1 | 234 | 20.3 | – | – | – | – | –/– | 3.34 | – (–) | 212.1 | 2557 | 3.02 |
+| baseline | img_small | 1 | 32 | 1 | 234 | 20.3 | – | – | 3.77 | 265.0 | –/– | 29.87 | 0.856 (0.768) | 224.6 | 2505 | 3.02 |
+| baseline | img_small | 1 | 128 | 1 | 234 | 20.3 | – | – | 3.78 | 264.5 | –/– | 112.74 | 0.861 (0.774) | 223.6 | 2550 | 3.02 |
+| baseline | img_small | 1 | 512 | 1 | 234 | 20.3 | – | – | 3.82 | 262.1 | –/– | 447.29 | 0.869 (0.780) | 226.6 | 2542 | 3.02 |
+| baseline | text | 1 | 1 | 0 | 0 | 6.9 | – | – | – | – | –/– | 0.75 | – (–) | 35.5 | 2400 | 2.99 |
+| baseline | text | 1 | 32 | 0 | 0 | 6.9 | – | – | 3.78 | 264.3 | –/– | 24.89 | 0.779 (0.691) | 157.8 | 2400 | 3.00 |
+| baseline | text | 1 | 128 | 0 | 0 | 6.9 | – | – | 3.77 | 265.0 | –/– | 100.52 | 0.786 (0.698) | 207.4 | 2550 | 3.00 |
+| baseline | text | 1 | 512 | 0 | 0 | 6.9 | – | – | 3.77 | 264.9 | –/– | 416.98 | 0.815 (0.727) | 215.2 | 2550 | 3.00 |
+
+# 20261014-002738_RTXPRO5000Blackwell_baseline_night_full
+
+GPU: NVIDIA RTX PRO 5000 Blackwell (sm_120), driver 595.84, torch 2.11.0+cu130, transformers 5.19.0, causal_conv1d: False, idle power: 32.8 W
+
+| variant | workload | bs | gen | tiles | img tok | TTFT ms | vision ms | prefill ms | TPOT ms | tok/s | step host/gpu ms | J/run | J/tok (dyn) | avg W | min SM MHz | mem GB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | img_fhd | 1 | 1 | 9 | 2300 | 119.7 | 78.5 | 37.1 | – | – | –/– | 33.83 | – (–) | 178.9 | 2167 | 3.26 |
+| baseline | img_fhd | 1 | 32 | 9 | 2300 | 119.7 | 74.6 | 35.4 | 3.65 | 274.0 | 3.83/3.43 | 67.57 | 1.088 (0.969) | 290.4 | 2167 | 3.26 |
+| baseline | img_fhd | 1 | 128 | 9 | 2300 | 119.7 | 74.6 | 35.4 | 3.80 | 262.9 | 3.84/3.45 | 155.91 | 0.961 (0.837) | 264.5 | 2422 | 3.26 |
+| baseline | img_fhd | 1 | 512 | 9 | 2300 | 119.7 | 74.6 | 35.3 | 3.84 | 260.3 | 3.85/3.45 | 520.65 | 0.953 (0.827) | 250.3 | 2422 | 3.26 |
+| baseline | img_hd | 1 | 1 | 3 | 764 | 41.5 | 25.2 | 12.9 | – | – | –/– | 12.78 | – (–) | 203.8 | 2370 | 3.08 |
+| baseline | img_hd | 1 | 32 | 3 | 764 | 41.5 | 24.8 | 12.4 | 3.81 | 262.5 | 3.84/3.44 | 42.37 | 0.955 (0.830) | 261.7 | 2422 | 3.08 |
+| baseline | img_hd | 1 | 128 | 3 | 764 | 41.5 | 24.8 | 12.4 | 3.85 | 260.0 | 3.84/3.45 | 130.60 | 0.928 (0.802) | 245.3 | 2505 | 3.08 |
+| baseline | img_hd | 1 | 512 | 3 | 764 | 41.5 | 24.9 | 12.4 | 3.85 | 260.0 | 3.84/3.45 | 484.94 | 0.924 (0.798) | 241.9 | 2505 | 3.08 |
+| baseline | img_small | 1 | 1 | 1 | 234 | 20.5 | 12.1 | 5.2 | – | – | –/– | 3.94 | – (–) | 232.8 | 2542 | 3.02 |
+| baseline | img_small | 1 | 32 | 1 | 234 | 20.5 | 12.1 | 5.2 | 3.86 | 259.0 | 3.85/3.45 | 34.41 | 0.983 (0.857) | 234.1 | 2475 | 3.02 |
+| baseline | img_small | 1 | 128 | 1 | 234 | 20.5 | 12.1 | 5.2 | 3.85 | 259.9 | 3.84/3.45 | 119.03 | 0.906 (0.780) | 236.8 | 2535 | 3.02 |
+| baseline | img_small | 1 | 512 | 1 | 234 | 20.5 | 12.2 | 5.3 | 3.84 | 260.1 | 3.84/3.45 | 470.96 | 0.914 (0.788) | 237.6 | 2535 | 3.02 |
+| baseline | text | 1 | 1 | 0 | 0 | 6.9 | 0.0 | 4.0 | – | – | –/– | 1.65 | – (–) | 49.1 | 2400 | 2.99 |
+| baseline | text | 1 | 32 | 0 | 0 | 6.9 | 0.0 | 4.0 | 3.85 | 259.9 | 3.84/3.45 | 27.48 | 0.833 (0.707) | 173.8 | 2400 | 3.00 |
+| baseline | text | 1 | 128 | 0 | 0 | 6.9 | 0.0 | 4.0 | 3.84 | 260.5 | 3.83/3.43 | 113.68 | 0.882 (0.756) | 230.7 | 2542 | 3.00 |
+| baseline | text | 1 | 512 | 0 | 0 | 6.9 | 0.0 | 4.0 | 3.85 | 259.5 | 3.85/3.45 | 460.59 | 0.898 (0.772) | 233.6 | 2535 | 3.00 |
+
+[suite 00:29:59] END   summarize rc=0 (0 min 0 s)
+[suite 00:29:59] DONE:    bench_nohooks bench_full summarize
+[suite 00:29:59] FAILED:  none
+[suite 00:29:59] SKIPPED: none
+[suite 00:29:59] suite 20261014-002516_baseline_night done; log: results/raw/suite_20261014-002516_baseline_night.log

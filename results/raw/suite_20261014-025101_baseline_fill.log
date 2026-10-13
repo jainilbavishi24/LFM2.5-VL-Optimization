@@ -1,0 +1,31 @@
+[suite 02:51:01] suite 20261014-025101_baseline_fill variant=baseline steps: bench_nohooks
+[suite 02:51:01] deadline 03:54:00 (62 min), EST_SCALE=0.5
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 595.84, 300.00 W, 3090 MHz, 14001 MHz
+[suite 02:51:01] START bench_nohooks (est 7 min, limit 14 min)
+[bench] run 20261014-025103_RTXPRO5000Blackwell_baseline_fill_nohooks_full on NVIDIA RTX PRO 5000 Blackwell (sm_120), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /data/cs3406/team21/PAA_Project/results/raw/20261014-025103_RTXPRO5000Blackwell_baseline_fill_nohooks_full
+[bench] idle power 22.9 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 0.8s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=      6.5 ms  E/run=   0.85 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=32   tiles=0  img_tok=0     wall=    120.9 ms  E/run=  28.42 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=    474.1 ms  E/run= 113.56 J  mem=3.00 GB
+[bench]   baseline      text bs=1   gen=512  tiles=0  img_tok=0     wall=   1883.1 ms  E/run= 455.49 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     20.1 ms  E/run=   3.48 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=32   tiles=1  img_tok=234   wall=    134.0 ms  E/run=  32.67 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    487.0 ms  E/run= 120.09 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=512  tiles=1  img_tok=234   wall=   1903.4 ms  E/run= 464.71 J  mem=3.02 GB
+[bench]   baseline    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     41.1 ms  E/run=  12.42 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=    154.6 ms  E/run=  41.33 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    509.7 ms  E/run= 125.52 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=   1932.7 ms  E/run= 475.10 J  mem=3.08 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    118.9 ms  E/run=  34.24 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=    227.5 ms  E/run=  65.31 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    582.4 ms  E/run= 152.71 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=   2003.7 ms  E/run= 510.12 J  mem=3.26 GB
+[bench] done -> /data/cs3406/team21/PAA_Project/results/raw/20261014-025103_RTXPRO5000Blackwell_baseline_fill_nohooks_full
+[suite 02:53:19] END   bench_nohooks rc=0 (2 min 18 s)
+[suite 02:53:19] DONE:    bench_nohooks
+[suite 02:53:19] FAILED:  none
+[suite 02:53:19] SKIPPED: none
+[suite 02:53:19] suite 20261014-025101_baseline_fill done; log: results/raw/suite_20261014-025101_baseline_fill.log

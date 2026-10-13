@@ -1,0 +1,56 @@
+[suite 02:15:54] suite 20261014-021554_o2_fused variant=fused steps: bench_nohooks summarize
+[suite 02:15:54] deadline 03:54:00 (98 min), EST_SCALE=0.5
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 595.84, 300.00 W, 3090 MHz, 14001 MHz
+[suite 02:15:54] START bench_nohooks (est 7 min, limit 14 min)
+[bench] run 20261014-021555_RTXPRO5000Blackwell_o2_fused_nohooks_full on NVIDIA RTX PRO 5000 Blackwell (sm_120), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /data/cs3406/team21/PAA_Project/results/raw/20261014-021555_RTXPRO5000Blackwell_o2_fused_nohooks_full
+[bench] idle power 15.5 W
+[bench] variant=fused dtype=bf16 attn=sdpa loaded in 0.9s
+[bench]      fused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.4 ms  E/run=   0.83 J  mem=4.06 GB
+[bench]      fused      text bs=1   gen=32   tiles=0  img_tok=0     wall=     73.6 ms  E/run=  18.26 J  mem=4.08 GB
+[bench]      fused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    288.0 ms  E/run=  84.84 J  mem=4.09 GB
+[bench]      fused      text bs=1   gen=512  tiles=0  img_tok=0     wall=   1157.0 ms  E/run= 345.97 J  mem=4.11 GB
+[bench]      fused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     18.0 ms  E/run=   3.24 J  mem=4.14 GB
+[bench]      fused img_small bs=1   gen=32   tiles=1  img_tok=234   wall=     88.0 ms  E/run=  24.95 J  mem=4.15 GB
+[bench]      fused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    304.2 ms  E/run=  90.61 J  mem=4.16 GB
+[bench]      fused img_small bs=1   gen=512  tiles=1  img_tok=234   wall=   1175.2 ms  E/run= 350.80 J  mem=4.16 GB
+[bench]      fused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     39.5 ms  E/run=   9.99 J  mem=4.22 GB
+[bench]      fused    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=    111.0 ms  E/run=  30.94 J  mem=4.24 GB
+[bench]      fused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    329.2 ms  E/run=  97.01 J  mem=4.25 GB
+[bench]      fused    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=   1207.5 ms  E/run= 363.75 J  mem=4.28 GB
+[bench]      fused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    117.9 ms  E/run=  36.72 J  mem=4.46 GB
+[bench]      fused   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=    189.8 ms  E/run=  54.75 J  mem=4.50 GB
+[bench]      fused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    412.8 ms  E/run= 123.76 J  mem=4.50 GB
+[bench]      fused   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=   1309.1 ms  E/run= 393.73 J  mem=4.55 GB
+[bench] done -> /data/cs3406/team21/PAA_Project/results/raw/20261014-021555_RTXPRO5000Blackwell_o2_fused_nohooks_full
+[suite 02:17:25] END   bench_nohooks rc=0 (1 min 31 s)
+[suite 02:17:25] START summarize (est 1 min, limit 6 min)
+# 20261014-021555_RTXPRO5000Blackwell_o2_fused_nohooks_full
+
+GPU: NVIDIA RTX PRO 5000 Blackwell (sm_120), driver 595.84, torch 2.11.0+cu130, transformers 5.19.0, causal_conv1d: False, idle power: 15.5 W
+
+| variant | workload | bs | gen | tiles | img tok | TTFT ms | vision ms | prefill ms | TPOT ms | tok/s | step host/gpu ms | J/run | J/tok (dyn) | avg W | min SM MHz | mem GB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| fused | img_fhd | 1 | 1 | 9 | 2300 | 117.9 | – | – | – | – | –/– | 36.72 | – (–) | 217.2 | 2137 | 4.46 |
+| fused | img_fhd | 1 | 32 | 9 | 2300 | 117.9 | – | – | 2.32 | 431.3 | –/– | 54.75 | 0.582 (0.546) | 300.0 | 2152 | 4.50 |
+| fused | img_fhd | 1 | 128 | 9 | 2300 | 117.9 | – | – | 2.32 | 430.7 | –/– | 123.76 | 0.685 (0.649) | 300.1 | 2250 | 4.50 |
+| fused | img_fhd | 1 | 512 | 9 | 2300 | 117.9 | – | – | 2.33 | 429.0 | –/– | 393.73 | 0.699 (0.663) | 300.0 | 2250 | 4.55 |
+| fused | img_hd | 1 | 1 | 3 | 764 | 39.5 | – | – | – | – | –/– | 9.99 | – (–) | 283.2 | 2287 | 4.22 |
+| fused | img_hd | 1 | 32 | 3 | 764 | 39.5 | – | – | 2.31 | 433.2 | –/– | 30.94 | 0.676 (0.640) | 275.2 | 2287 | 4.24 |
+| fused | img_hd | 1 | 128 | 3 | 764 | 39.5 | – | – | 2.28 | 438.4 | –/– | 97.01 | 0.685 (0.650) | 300.4 | 2355 | 4.25 |
+| fused | img_hd | 1 | 512 | 3 | 764 | 39.5 | – | – | 2.29 | 437.5 | –/– | 363.75 | 0.692 (0.657) | 300.0 | 2347 | 4.28 |
+| fused | img_small | 1 | 1 | 1 | 234 | 18.0 | – | – | – | – | –/– | 3.24 | – (–) | 301.0 | 2437 | 4.14 |
+| fused | img_small | 1 | 32 | 1 | 234 | 18.0 | – | – | 2.26 | 442.7 | –/– | 24.95 | 0.700 (0.665) | 286.8 | 2467 | 4.15 |
+| fused | img_small | 1 | 128 | 1 | 234 | 18.0 | – | – | 2.25 | 443.8 | –/– | 90.61 | 0.688 (0.653) | 300.3 | 2422 | 4.16 |
+| fused | img_small | 1 | 512 | 1 | 234 | 18.0 | – | – | 2.26 | 441.6 | –/– | 350.80 | 0.680 (0.645) | 300.0 | 2392 | 4.16 |
+| fused | text | 1 | 1 | 0 | 0 | 4.4 | – | – | – | – | –/– | 0.83 | – (–) | 40.5 | 2400 | 4.06 |
+| fused | text | 1 | 32 | 0 | 0 | 4.4 | – | – | 2.23 | 447.6 | –/– | 18.26 | 0.562 (0.528) | 128.0 | 2400 | 4.08 |
+| fused | text | 1 | 128 | 0 | 0 | 4.4 | – | – | 2.23 | 447.7 | –/– | 84.84 | 0.661 (0.627) | 300.9 | 2490 | 4.09 |
+| fused | text | 1 | 512 | 0 | 0 | 4.4 | – | – | 2.26 | 443.3 | –/– | 345.97 | 0.675 (0.640) | 300.0 | 2437 | 4.11 |
+
+[suite 02:17:25] END   summarize rc=0 (0 min 0 s)
+[suite 02:17:25] DONE:    bench_nohooks summarize
+[suite 02:17:25] FAILED:  none
+[suite 02:17:25] SKIPPED: none
+[suite 02:17:25] suite 20261014-021554_o2_fused done; log: results/raw/suite_20261014-021554_o2_fused.log

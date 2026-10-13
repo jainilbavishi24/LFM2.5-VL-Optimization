@@ -1,0 +1,17 @@
+== host: server  user: team21  date: 2026-10-13T22:45:07+05:30
+== OS: Ubuntu 24.04.4 LTS  kernel: 6.8.0-139-generic
+== CPU: Intel(R) Core(TM) Ultra 9 285K x 24 threads   RAM: 125 GB total, 121 GB available
+== disk (home): 6.5T free of 7.3T
+== GPU:
+name, driver_version, memory.total [MiB], power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz], persistence_mode, compute_mode
+NVIDIA RTX PRO 5000 Blackwell, 595.84, 48935 MiB, 300.00 W, 3090 MHz, 14001 MHz, Disabled, Default
+== max CUDA supported by driver: 13.2
+== other processes on the GPU (must be empty for valid timing/energy):
+== nvcc: /usr/local/cuda/bin/nvcc Build cuda_13.3.r13.3/compiler.38244171_0
+== python: /data/cs3406/team21/PAA_Project/.venv/bin/python3 Python 3.12.3   conda: none   uv: /data/cs3406/team21/.local/bin/uv
+== tmux: /usr/bin/tmux   git: /usr/bin/git
+== root: no   passwordless sudo: no
+== profiling restricted to admin (RmProfilingAdminOnly): RmProfilingAdminOnly: 0
+== internet: pypi 200fail, huggingface 200, github 200fail
+== ncu counters: OK
+== nsys: /opt/nvidia/nsight-systems/2026.1.3/bin/nsys  ncu: /opt/nvidia/nsight-compute/2026.2.1/ncu

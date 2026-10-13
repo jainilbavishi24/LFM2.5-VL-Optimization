@@ -1,0 +1,31 @@
+[suite 03:30:53] suite 20261014-033053_fused_gemv_fill variant=fused_gemv steps: bench_nohooks
+[suite 03:30:53] deadline 03:54:00 (23 min), EST_SCALE=0.5
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 595.84, 300.00 W, 3090 MHz, 14001 MHz
+[suite 03:30:53] START bench_nohooks (est 7 min, limit 14 min)
+[bench] run 20261014-033054_RTXPRO5000Blackwell_fused_gemv_fill_nohooks_full on NVIDIA RTX PRO 5000 Blackwell (sm_120), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /data/cs3406/team21/PAA_Project/results/raw/20261014-033054_RTXPRO5000Blackwell_fused_gemv_fill_nohooks_full
+[bench] idle power 28.1 W
+[bench] variant=fused_gemv dtype=bf16 attn=sdpa loaded in 0.8s
+[bench] fused_gemv      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.6 ms  E/run=   0.83 J  mem=4.06 GB
+[bench] fused_gemv      text bs=1   gen=32   tiles=0  img_tok=0     wall=     68.8 ms  E/run=  17.52 J  mem=4.07 GB
+[bench] fused_gemv      text bs=1   gen=128  tiles=0  img_tok=0     wall=    268.3 ms  E/run=  75.38 J  mem=4.07 GB
+[bench] fused_gemv      text bs=1   gen=512  tiles=0  img_tok=0     wall=   1073.2 ms  E/run= 310.24 J  mem=4.08 GB
+[bench] fused_gemv img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     18.1 ms  E/run=   4.84 J  mem=4.11 GB
+[bench] fused_gemv img_small bs=1   gen=32   tiles=1  img_tok=234   wall=     82.9 ms  E/run=  24.15 J  mem=4.11 GB
+[bench] fused_gemv img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    283.1 ms  E/run=  83.78 J  mem=4.11 GB
+[bench] fused_gemv img_small bs=1   gen=512  tiles=1  img_tok=234   wall=   1088.3 ms  E/run= 327.01 J  mem=4.11 GB
+[bench] fused_gemv    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     40.0 ms  E/run=  10.34 J  mem=4.18 GB
+[bench] fused_gemv    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=    105.3 ms  E/run=  30.20 J  mem=4.19 GB
+[bench] fused_gemv    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    307.2 ms  E/run=  90.76 J  mem=4.19 GB
+[bench] fused_gemv    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=   1121.6 ms  E/run= 336.72 J  mem=4.21 GB
+[bench] fused_gemv   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    118.6 ms  E/run=  37.15 J  mem=4.39 GB
+[bench] fused_gemv   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=    184.7 ms  E/run=  54.62 J  mem=4.42 GB
+[bench] fused_gemv   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    390.6 ms  E/run= 117.13 J  mem=4.42 GB
+[bench] fused_gemv   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=   1221.6 ms  E/run= 366.71 J  mem=4.45 GB
+[bench] done -> /data/cs3406/team21/PAA_Project/results/raw/20261014-033054_RTXPRO5000Blackwell_fused_gemv_fill_nohooks_full
+[suite 03:32:19] END   bench_nohooks rc=0 (1 min 26 s)
+[suite 03:32:19] DONE:    bench_nohooks
+[suite 03:32:19] FAILED:  none
+[suite 03:32:19] SKIPPED: none
+[suite 03:32:19] suite 20261014-033053_fused_gemv_fill done; log: results/raw/suite_20261014-033053_fused_gemv_fill.log

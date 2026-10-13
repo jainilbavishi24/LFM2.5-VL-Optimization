@@ -1,0 +1,11 @@
+[suite 23:48:47] suite 20261013-234847_o0ab_compile_cc1d variant=compile_static steps: bench_nohooks summarize
+[suite 23:48:47] deadline 23:54:00 (5 min), EST_SCALE=1.0
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 595.84, 300.00 W, 3090 MHz, 14001 MHz
+[suite 23:48:47] SKIP  bench_nohooks (needs ~14 min, 5 min left)
+[suite 23:48:47] START summarize (est 1 min, limit 5 min)
+[suite 23:48:47] END   summarize rc=0 (0 min 0 s)
+[suite 23:48:47] DONE:    summarize
+[suite 23:48:47] FAILED:  none
+[suite 23:48:47] SKIPPED: bench_nohooks
+[suite 23:48:47] suite 20261013-234847_o0ab_compile_cc1d done; log: results/raw/suite_20261013-234847_o0ab_compile_cc1d.log

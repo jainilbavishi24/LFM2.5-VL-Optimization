@@ -1,0 +1,31 @@
+[suite 03:37:00] suite 20261014-033700_fused_w8_fill variant=fused_w8 steps: bench_nohooks
+[suite 03:37:00] deadline 03:54:00 (17 min), EST_SCALE=0.5
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+NVIDIA RTX PRO 5000 Blackwell, 595.84, 300.00 W, 3090 MHz, 14001 MHz
+[suite 03:37:00] START bench_nohooks (est 7 min, limit 14 min)
+[bench] run 20261014-033701_RTXPRO5000Blackwell_fused_w8_fill_nohooks_full on NVIDIA RTX PRO 5000 Blackwell (sm_120), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /data/cs3406/team21/PAA_Project/results/raw/20261014-033701_RTXPRO5000Blackwell_fused_w8_fill_nohooks_full
+[bench] idle power 24.4 W
+[bench] variant=fused_w8 dtype=bf16 attn=sdpa loaded in 1.0s
+[bench]   fused_w8      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.3 ms  E/run=   0.80 J  mem=5.16 GB
+[bench]   fused_w8      text bs=1   gen=32   tiles=0  img_tok=0     wall=     38.8 ms  E/run=   8.90 J  mem=5.16 GB
+[bench]   fused_w8      text bs=1   gen=128  tiles=0  img_tok=0     wall=    145.2 ms  E/run=  43.69 J  mem=5.16 GB
+[bench]   fused_w8      text bs=1   gen=512  tiles=0  img_tok=0     wall=    579.7 ms  E/run= 171.97 J  mem=5.17 GB
+[bench]   fused_w8 img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     18.1 ms  E/run=   3.43 J  mem=5.20 GB
+[bench]   fused_w8 img_small bs=1   gen=32   tiles=1  img_tok=234   wall=     53.1 ms  E/run=  15.53 J  mem=5.20 GB
+[bench]   fused_w8 img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    161.3 ms  E/run=  49.00 J  mem=5.20 GB
+[bench]   fused_w8 img_small bs=1   gen=512  tiles=1  img_tok=234   wall=    596.4 ms  E/run= 177.55 J  mem=5.20 GB
+[bench]   fused_w8    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     39.9 ms  E/run=  10.32 J  mem=5.27 GB
+[bench]   fused_w8    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=     76.0 ms  E/run=  21.42 J  mem=5.28 GB
+[bench]   fused_w8    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    185.5 ms  E/run=  55.39 J  mem=5.28 GB
+[bench]   fused_w8    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=    629.2 ms  E/run= 187.52 J  mem=5.30 GB
+[bench]   fused_w8   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    118.2 ms  E/run=  33.53 J  mem=5.48 GB
+[bench]   fused_w8   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=    154.7 ms  E/run=  47.22 J  mem=5.51 GB
+[bench]   fused_w8   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    268.8 ms  E/run=  78.85 J  mem=5.51 GB
+[bench]   fused_w8   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=    729.7 ms  E/run= 216.81 J  mem=5.55 GB
+[bench] done -> /data/cs3406/team21/PAA_Project/results/raw/20261014-033701_RTXPRO5000Blackwell_fused_w8_fill_nohooks_full
+[suite 03:37:56] END   bench_nohooks rc=0 (0 min 56 s)
+[suite 03:37:56] DONE:    bench_nohooks
+[suite 03:37:56] FAILED:  none
+[suite 03:37:56] SKIPPED: none
+[suite 03:37:56] suite 20261014-033700_fused_w8_fill done; log: results/raw/suite_20261014-033700_fused_w8_fill.log
