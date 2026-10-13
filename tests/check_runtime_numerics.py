@@ -34,12 +34,21 @@ def main():
     ap.add_argument("--w4-group", type=int, default=128)
     ap.add_argument("--w4-clip", action="store_true", help="int4: per-group clipping search")
     ap.add_argument("--w4-int8", default="", help="int4: weight kinds kept in INT8 (qkv,o,in,out,w13,w2,head)")
+    ap.add_argument("--awq", action="store_true", help="int4: AWQ scales calibrated on variants.CALIB_PROMPTS")
     args = ap.parse_args()
 
     net, processor = load()
+    calib = None
+    if args.awq:
+        from lfm2opt.runtime import collect_calibration
+        from lfm2opt.variants import CALIB_PROMPTS
+
+        img = WORKLOADS["img_small"].image()
+        calib = collect_calibration(net, [(build_inputs(processor, img if i % 2 == 0 else None, p), 64)
+                                          for i, p in enumerate(CALIB_PROMPTS)])
     dec = StaticDecoder(net, keep_logits=True, fused=args.fused or args.gemv != "cublas", gemv=args.gemv,
                         w4_group=args.w4_group, w4_clip=args.w4_clip,
-                        w4_keep_int8=tuple(k for k in args.w4_int8.split(",") if k))
+                        w4_keep_int8=tuple(k for k in args.w4_int8.split(",") if k), calib=calib)
     report = {}
     for name in args.workloads.split(","):
         wl = WORKLOADS[name]

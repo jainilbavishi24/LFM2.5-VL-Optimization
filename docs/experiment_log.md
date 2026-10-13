@@ -44,6 +44,10 @@ Entry template:
 
 From batch 8–16 the GEMV becomes compute-bound (INT8→FP32 conversion and FMA per weight per sequence) while cuBLAS uses tensor cores. Dispatch rule now: our GEMV for BF16 up to batch 4 and INT8 up to batch 8, otherwise cuBLAS on BF16 weights (the INT8 runtime keeps the merged BF16 copies, +1.1 GB). A W8A8 tensor-core GEMM would be the proper large-batch INT8 path.
 
+**INT4, two more attempts (02:43):** (1) AWQ-style activation-aware scales (calibrated on 4 prompts *different* from the benchmark prompts, `fused_w4_awq`, `quant.quantize_int4_awq`): g64 + clip 92 % argmax agreement (91 % without AWQ), g128 89 %; median |Δlogit| still ~2. (2) Sensitivity, INT8 everywhere except one weight kind in INT4 (g64 + clip; img_small + img_fhd, 254 steps): qkv 96.5 %, o 98.4 %, in 97.6 %, out 97.6 %, w1‖w3 96.1 %, w2 96.5 %, lm_head 96.5 % (INT8 alone: 98.4 % on these two inputs). Every kind costs something and the errors add up; no cheap subset. **Conclusion: INT8 is the deployable setting; good INT4 needs GPTQ-class methods (future work).**
+
+**`torch.compile` on the vision tower (O7c, `fused_w8_vcompile`): rejected.** 1080p TTFT 97.8 → 118 ms (img_small 15.8 → 18.4), outputs identical: inside the compiled graph Inductor's GEMMs and its SDPA choice lose to cuBLAS + cuDNN.
+
 **Night summary:** batch-1 decode on the Blackwell went from 3.83 ms (HF eager) to 2.08 ms in BF16 (1.84×, beats vLLM 2.36 and llama.cpp BF16 2.26), and to 1.11 ms with INT8 weights (3.45×, beats llama.cpp Q8_0 1.45; 98.7 % teacher-forced agreement). 1080p TTFT 116 → 102 ms. All of it is CUDA graphs plus our own kernels (fused elementwise/norm/conv/RoPE/attention, BF16/INT8/INT4 GEMV, PDL).
 
 ---

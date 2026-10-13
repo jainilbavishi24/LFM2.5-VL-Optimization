@@ -95,7 +95,11 @@ for pass in 1 2 3; do
 done
 # Nothing left to do: keep the GPU busy with repeat measurements (run-to-run / session-to-session variance),
 # unless results/raw/plan_done/NO_FILL exists (GPU wanted for interactive development instead)
+# FILL_VARIANTS (default: baseline only) are cycled in .venv-ref, e.g. "baseline fused_gemv fused_w8" for error bars.
+fill_i=0
 while (( $(left) >= 8 )) && [[ ! -f "$MARK/NO_FILL" ]]; do
-    use .venv; say "filler: baseline repeat"; suite TAG=baseline_fill STEPS="bench_nohooks"
+    read -r -a fills <<< "${FILL_VARIANTS:-baseline}"
+    v="${fills[$(( fill_i % ${#fills[@]} ))]}"; fill_i=$(( fill_i + 1 ))
+    use .venv-ref; say "filler: $v repeat"; suite VARIANT="$v" TAG="${v}_fill" STEPS="bench_nohooks"
 done
 say "plan finished ($(left) min left)"

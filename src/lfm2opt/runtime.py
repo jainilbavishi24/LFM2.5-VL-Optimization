@@ -20,7 +20,8 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 
 class StaticDecoder:
     def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16,
-                 gemv: str = "cublas", w4_group: int = 128, w4_clip: bool = False, w4_keep_int8: tuple = ()):
+                 gemv: str = "cublas", w4_group: int = 128, w4_clip: bool = False, w4_keep_int8: tuple = (),
+                 calib: dict | None = None):
         self.net = net
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
@@ -44,6 +45,8 @@ class StaticDecoder:
         self.fused = fused
         self.attn_splits = attn_splits  # fused path: flash-decoding splits over positions (0 = one block per head)
         self.w4_group, self.w4_clip, self.w4_keep_int8 = w4_group, w4_clip, set(w4_keep_int8)  # int4 options
+        self.calib = calib or {}  # int4 AWQ: {weight key: calibration inputs [M, K]} (collect_calibration)
+        self.lin_inv_s = {}
         self.gemv = gemv  # fused path, batch 1: "cublas" (F.linear), "bf16" (our GEMV), "int8" / "int4" (O6: weight-only)
         if fused:
             self._prepare_fused()
@@ -154,12 +157,15 @@ class StaticDecoder:
         self.lin[("head", 0)] = self.lm_head.weight
         self.lin_scale = {}
         if self.gemv in ("int8", "int4"):
-            from .quant import quantize_int4, quantize_int8
+            from .quant import quantize_int4, quantize_int4_awq, quantize_int8
 
             self.lin_bf16 = dict(self.lin)  # kept for large batches, where cuBLAS' tensor-core GEMM beats our GEMV
             for key in list(self.lin):
                 if self.gemv == "int8" or key[0] in self.w4_keep_int8:     # mixed precision: sensitive ones in INT8
                     self.lin[key], self.lin_scale[key] = quantize_int8(self.lin[key])
+                elif key in self.calib:
+                    self.lin[key], self.lin_scale[key], self.lin_inv_s[key] = quantize_int4_awq(
+                        self.lin[key], self.calib[key].to(self.device), self.w4_group, clip_search=self.w4_clip)
                 else:
                     self.lin[key], self.lin_scale[key] = quantize_int4(self.lin[key], self.w4_group, self.w4_clip)
             torch.cuda.empty_cache()
@@ -177,6 +183,8 @@ class StaticDecoder:
             return F.linear(x, w, bias)
         y = torch.empty(B, w.shape[0], device=x.device, dtype=x.dtype)
         if w.dtype == torch.uint8:
+            if key in self.lin_inv_s:  # AWQ: the weight columns were scaled by s, so x is scaled by 1/s
+                x = x * self.lin_inv_s[key].to(x.dtype)
             self.K.gemv_w4(w, self.lin_scale[key], x, y)
         else:
             self.K.gemv(w, self.lin_scale.get(key), x, y)
@@ -286,3 +294,43 @@ class StaticDecoder:
             s["graph"].replay()
         new = torch.cat([first.view(B, 1), s["out"][:, : max_new_tokens - 1]], dim=1)
         return torch.cat([input_ids, new], dim=1)
+
+
+@torch.no_grad()
+def collect_calibration(net, batches, max_rows: int = 2048, seed: int = 0):
+    """Inputs of every decode projection (keys as in StaticDecoder.lin) while HF generates on `batches`
+    (list of (model inputs, n_new)). Returns {key: [<= max_rows, K] BF16 on CPU} for AWQ."""
+    lm = net.model.language_model
+    cfg = lm.config
+    rows = {}
+    hooks = []
+
+    def grab(key):
+        def hook(mod, args):
+            rows.setdefault(key, []).append(args[0].detach().reshape(-1, args[0].shape[-1]).to("cpu", torch.bfloat16))
+        return hook
+
+    for i, layer in enumerate(lm.layers[: cfg.num_hidden_layers]):
+        if cfg.layer_types[i] == "full_attention":
+            hooks.append(layer.self_attn.q_proj.register_forward_pre_hook(grab(("qkv", i))))
+            hooks.append(layer.self_attn.out_proj.register_forward_pre_hook(grab(("o", i))))
+        else:
+            hooks.append(layer.conv.in_proj.register_forward_pre_hook(grab(("in", i))))
+            hooks.append(layer.conv.out_proj.register_forward_pre_hook(grab(("out", i))))
+        hooks.append(layer.feed_forward.w1.register_forward_pre_hook(grab(("w13", i))))
+        hooks.append(layer.feed_forward.w2.register_forward_pre_hook(grab(("w2", i))))
+    hooks.append(net.lm_head.register_forward_pre_hook(grab(("head", 0))))
+    try:
+        for inputs, n_new in batches:
+            net.generate(**inputs, max_new_tokens=n_new, min_new_tokens=n_new, do_sample=False)
+    finally:
+        for h in hooks:
+            h.remove()
+    g = torch.Generator().manual_seed(seed)
+    out = {}
+    for key, chunks in rows.items():
+        x = torch.cat(chunks, 0)
+        if x.shape[0] > max_rows:
+            x = x[torch.randperm(x.shape[0], generator=g)[:max_rows]]
+        out[key] = x
+    return out

@@ -196,6 +196,41 @@ def _fused_w8_vfast(net, processor):
     return _fused_variant(net, "int8")
 
 
+# AWQ calibration prompts: deliberately different from the benchmark prompts (src/lfm2opt/workloads.py)
+CALIB_PROMPTS = ["What objects can you see, and what colors are they?", "Write a short story about this picture.",
+                 "List three facts about the history of computers.", "How does a refrigerator keep food cold?"]
+
+
+@register("fused_w4_awq")
+def _fused_w4_awq(net, processor):
+    """O6c: INT4 group-wise with AWQ-style activation-aware scales (calibrated on CALIB_PROMPTS, 64 tokens each)."""
+    from .model import build_inputs
+    from .runtime import StaticDecoder, collect_calibration
+    from .workloads import WORKLOADS
+
+    img = WORKLOADS["img_small"].image()
+    batches = [(build_inputs(processor, img if i % 2 == 0 else None, p), 64) for i, p in enumerate(CALIB_PROMPTS)]
+    calib = collect_calibration(net, batches)
+    dec = StaticDecoder(net, fused=True, gemv="int4", w4_group=64, w4_clip=True, calib=calib)
+
+    def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
+                 pad_token_id=None, **model_inputs):
+        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
+
+    net.generate = generate
+    net._static_decoder = dec
+    return net
+
+
+@register("fused_w8_vcompile")
+def _fused_w8_vcompile(net, processor):
+    """O7c: INT8 decode + cuDNN vision attention + torch.compile on the vision tower (fuses LayerNorm/GELU/bias)."""
+    _vision_cudnn(net, processor)
+    vt = net.model.vision_tower
+    vt.forward = torch.compile(vt.forward, dynamic=False)
+    return _fused_variant(net, "int8")
+
+
 @register("fused_w8_vcudnn")
 def _fused_w8_vcudnn(net, processor):
     """O1-O6 (INT8 decode) + O7a (cuDNN vision attention): the current best end-to-end configuration."""

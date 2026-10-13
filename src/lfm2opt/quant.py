@@ -45,3 +45,27 @@ def dequantize_int4(packed: torch.Tensor, scale: torch.Tensor):
     q = torch.stack([(p & 0xF) - 8, (p >> 4) - 8], dim=-1).view(packed.shape[0], -1).float()
     group = q.shape[1] // scale.shape[1]
     return (q.view(q.shape[0], -1, group) * scale[..., None]).view(q.shape[0], -1)
+
+
+@torch.no_grad()
+def quantize_int4_awq(w: torch.Tensor, x_calib: torch.Tensor, group: int = GROUP, grid: int = 20, clip_search: bool = True):
+    """AWQ-style INT4: per input channel scale s = mean|x|^alpha (alpha searched on calibration inputs x_calib
+    [M, K] by the output error ||x W^T - (x / s) Q(W s)^T||), then group-wise INT4 of W * s.
+    Returns (packed, scales, inv_s) where inv_s [K] must multiply x before the GEMV."""
+    wf = w.float()
+    xc = x_calib.float()
+    act = xc.abs().mean(0).clamp_min(1e-6)                              # [K]
+    ref = xc @ wf.t()
+    best = (float("inf"), None)
+    for i in range(grid):
+        alpha = i / grid
+        s = act.pow(alpha)
+        s = s / (s.max() * s.min()).sqrt()                              # keep the scaled weights in range
+        packed, scale = quantize_int4(wf * s[None, :], group, clip_search=False)
+        wq = dequantize_int4(packed, scale) / s[None, :]
+        err = (xc @ wq.t() - ref).pow(2).mean().item()
+        if err < best[0]:
+            best = (err, s)
+    s = best[1]
+    packed, scale = quantize_int4(wf * s[None, :], group, clip_search=clip_search)
+    return packed, scale, (1.0 / s).contiguous()
