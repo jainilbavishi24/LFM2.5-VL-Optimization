@@ -184,7 +184,7 @@ Common rules for every step:
 
 ### O5. Attention without the FP32 math fallback
 
-**Where:** [sdpa_attention.py#L108-L114](../../third_party/transformers/src/transformers/integrations/sdpa_attention.py#L108-L114): with an attention mask present, `use_gqa_in_sdpa` ([L30-L37](../../third_party/transformers/src/transformers/integrations/sdpa_attention.py#L30-L37)) returns False → `repeat_kv` copies K/V to 32 heads every step, then SDPA with an explicit mask → on the T4 the **math** backend (FP32 scores, safe-softmax `isneginf/where/all`).
+**Where:** [sdpa_attention.py#L108-L114](../../third_party/transformers/src/transformers/integrations/sdpa_attention.py#L108-L114). At batch 1 transformers passes **no mask**, so `use_gqa_in_sdpa` ([L30-L37](../../third_party/transformers/src/transformers/integrations/sdpa_attention.py#L30-L37)) returns True and SDPA is called with `enable_gqa=True`. On the T4 no fused kernel supports GQA → the **math** backend (FP32 casts of Q/K/V, FP32 scores, safe-softmax `isneginf/where/all`). Measured with `profiling/sdpa_probe.py` (2026-10-13); an earlier mask/`repeat_kv` explanation was wrong.
 
 **Evidence:** decode: 12 large copies + ~10 math-path kernels per step; copies grow with context (img_fhd decode: copies 16 % of decode GPU time). Prefill img_fhd: ~230 of 634 ms (FP32 softmax over 32×2327×2327 = 90 ms, mask add 50 ms, where 37 ms, isneginf 19 ms, casts ~30 ms).
 
@@ -192,13 +192,14 @@ Common rules for every step:
 - Decode: GQA-aware decode attention kernel (one block per KV head, 4 query heads share the loaded K/V, online softmax, split over sequence "flash-decoding" when context is long), reading the static cache with `seq_len` from device memory (CUDA-graph friendly, O1).
 - Prefill: causal attention without materialized mask (FlashAttention-style tiling, FP16 in / FP32 accumulate); on sm_80+ first check whether PyTorch's flash backend already does this when `is_causal=True` and no mask.
 
-- [ ] O5a: confirm on the server GPU which SDPA backend is used (is the math fallback T4-only?): `profiling/sdpa_probe.py`, session 1
+- [x] O5a (T4): `enable_gqa` → math path; `repeat_kv` + mem-efficient is 3.6–23× faster (decode 2304: 0.63 → 0.18 ms; prefill 2327: 45.6 → 1.9 ms)
+- [ ] O5a (server): same probe in slot 1; quick-win variant `sdpa_repeat_kv` if the server also falls back to math
 - [ ] O5b: decode attention kernel + test vs reference at context 16 … 4096
 - [ ] O5c: prefill path (own kernel on T4, or mask-free flash SDPA where available)
 
 **Open questions**
-- Q5.1 Why exactly is the memory-efficient backend rejected on T4: GQA, mask dtype/alignment (kv_len not multiple of 8?), or head dim? Test with `torch.backends.cuda.sdp_kernel` / `sdpa_kernel` context manager to force backends and read the warnings.
-- Q5.2 At batch 1 without padding, is the mask even needed? (`_ignore_causal_mask_sdpa`, masking_utils.py L236) If HF can drop it, `enable_gqa=True` path is taken; how much does that alone give?
+- Q5.1 ✅ (T4): rejected because of GQA (`enable_gqa=True` unsupported by mem-efficient on sm_75). Server: answered by the slot-1 probe.
+- Q5.2 ✅ (T4): at batch 1 HF already drops the mask; that is exactly what selects `enable_gqa=True`.
 - Q5.3 Context lengths that matter for the demo: ~250 (1 tile) to ~2.3k (9 tiles) + output. Is split-K needed below 4k?
 
 ---

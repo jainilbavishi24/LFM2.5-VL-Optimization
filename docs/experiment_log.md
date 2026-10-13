@@ -15,6 +15,29 @@ Entry template:
 
 ---
 
+## 2026-10-13: Attention-path probe on the T4 corrects our explanation of the FP32 math path
+
+**Setup:** `profiling/sdpa_probe.py`, first run (inside the Colab dress rehearsal of `slot1`), T4, FP16. Raw: `results/raw/20261013-*_T4_sdpa_probe.json` (on Colab; pulled with the rehearsal).
+
+**Results:**
+
+- **Inside generate() at batch 1, transformers passes no attention mask** and therefore uses `enable_gqa=True` (prefill 6/6 calls, decode 42/42 calls).
+- **On the T4, `enable_gqa=True` itself forces the FP32 math backend:** neither flash (not on sm_75) nor memory-efficient attention supports GQA there.
+- Expanding K/V (`repeat_kv`) instead lets SDPA use the memory-efficient kernel:
+
+  | Case | `enable_gqa` (today) | `repeat_kv` + mem-efficient | Speed-up |
+  | --- | --- | --- | --- |
+  | Prefill 2327 tokens, causal | 45.6 ms | 1.9 ms | ~23× |
+  | Prefill 252 tokens, causal | 0.60 ms | 0.04 ms | ~15× |
+  | Decode, context 2304 | 0.63 ms | 0.18 ms | 3.6× |
+  | Decode, context 256 | 0.68 ms | 0.05 ms | ~15× |
+
+**Correction:** the 2026-10-08 entry said the math path comes from an attention mask + `repeat_kv`. That was wrong: no mask is passed at batch 1; the cause is `enable_gqa=True` on a GPU without a GQA-capable fused kernel. The large per-step K/V copies are the math path's FP16→FP32 casts, not `repeat_kv`.
+
+**Takeaway:** on the T4, O5 has an almost free first step (force `repeat_kv` + memory-efficient SDPA); on sm_80+ the flash backend may support GQA natively, which tonight's server probe will show. A proper GQA-aware kernel (no K/V expansion) remains the real O5.
+
+---
+
 ## 2026-10-13: Measurement GPU changed again: course "RTX 5000" server, 3 × 2-hour slots/week
 
 **Change:** instead of the L40 (6 h/week) we use the course "RTX 5000" server: team account over SSH, **three 2-hour slots per week**. The exact card (Quadro RTX 5000 / RTX 5000 Ada / RTX PRO 5000 Blackwell) is not confirmed yet; `scripts/preflight.sh` will tell. The team password is never stored in the repo; access will be via SSH key (`ssh-copy-id`).
@@ -85,7 +108,7 @@ None of the new L40 tooling has run against the real server yet (no access detai
 **New details found while writing it:**
 
 - Per-op count of one decode step (791 kernels): 93 GEMV, ~360 RMSNorm pieces, ~130 attention non-GEMM (RoPE, KV `cat`, `repeat_kv`, math-path SDPA), ~70 short-conv non-GEMM, 32 SwiGLU, 32 residual adds, ~30 generate() glue.
-- Cause of the FP32 math attention path: with an attention mask present, transformers' `use_gqa_in_sdpa` (sdpa_attention.py L30-L37) returns False, so K/V are expanded to 32 heads with `repeat_kv` every step (the large per-step copies) and SDPA gets an explicit mask, which on the T4 lands on the math backend. Whether the mask can be dropped at batch 1 is open question Q5.2.
+- ~~Cause of the FP32 math attention path: mask → `repeat_kv`~~ **Wrong, corrected 2026-10-13:** at batch 1 no mask is passed and `enable_gqa=True` is what forces the math backend on the T4 (see the 2026-10-13 probe entry).
 
 **Next step:** O1 (static cache + CUDA graphs) and O2 (fused RMSNorm) on the T4; O0 reference baselines in the same Colab run.
 
