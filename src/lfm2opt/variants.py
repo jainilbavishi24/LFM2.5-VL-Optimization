@@ -38,6 +38,25 @@ def _sdpa_repeat_kv(net, processor):
     return net
 
 
+@register("compile_static")
+def _compile_static(net, processor):
+    """O0b reference: existing switches only = HF static cache + torch.compile(mode="reduce-overhead").
+
+    generate() then auto-compiles the decode forward (prefill stays eager) and replays it as a CUDA graph.
+    Each distinct cache length (prompt + max_new_tokens) is a new graph, so keep the grid small and
+    warm up >= 2 times; run with --no-phases (forward hooks would break the compiled graph).
+    """
+    import torch
+    from transformers import CompileConfig
+
+    for knob in ("recompile_limit", "cache_size_limit"):  # name changed across torch versions
+        if hasattr(torch._dynamo.config, knob):
+            setattr(torch._dynamo.config, knob, 64)
+    net.generation_config.cache_implementation = "static"
+    net.generation_config.compile_config = CompileConfig(fullgraph=False, mode="reduce-overhead", dynamic=False)
+    return net
+
+
 def apply_variant(name: str, net, processor):
     if name not in VARIANTS:
         raise KeyError(f"unknown variant {name!r}; available: {sorted(VARIANTS)}")

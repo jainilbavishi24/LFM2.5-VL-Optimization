@@ -1,0 +1,16 @@
+{
+  "preset": null,
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variants": "baseline",
+  "workloads": "img_small",
+  "gen_lens": "1,16",
+  "batch_sizes": "1",
+  "warmup": 2,
+  "repeats": 2,
+  "idle_seconds": 2.0,
+  "no_phases": false,
+  "tag": "smoke",
+  "out": "/data/cs3406/team21/PAA_Project/results/raw"
+}

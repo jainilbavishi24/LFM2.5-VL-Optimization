@@ -1,0 +1,3 @@
+variant,workload,batch_size,gen_len,dtype,tiles,image_tokens,prompt_tokens,preprocess_ms,wall_ms,ttft_ms,vision_ms,projector_ms,lm_prefill_ms,tpot_ms,decode_tok_s,decode_step_host_ms,decode_step_gpu_ms,energy_run_j,decode_j_per_tok,decode_dyn_j_per_tok,power_avg_w,sm_clock_min_mhz,peak_mem_gb
+baseline,img_small,1,64,bf16,1,234,252,1.7375103197991848,262.25266978144646,,12.07744026184082,0.10118400305509567,5.198080062866211,,,3.827526932582259,3.4368960857391357,66.497,,,148.82765384615385,2542,3.0238232612609863
+baseline,text,1,64,bf16,0,0,18,0.25879498571157455,247.60250886902213,,0.0,0.0,4.00713586807251,,,3.8164574652910233,3.4235520362854004,41.448,,,66.91011999999999,2400,2.9956846237182617

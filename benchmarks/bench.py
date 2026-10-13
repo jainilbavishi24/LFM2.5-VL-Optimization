@@ -123,7 +123,8 @@ def main():
         print(f"[bench] variant={variant} dtype={dtype} attn={args.attn} loaded in {load_s:.1f}s")
 
         instr = PhaseInstrumentor(net, modes=() if args.no_phases else ("events",))
-        instr.attach()
+        if not args.no_phases:  # no hooks at all: they cost host time and break torch.compile graphs
+            instr.attach()
 
         for wl in workloads:
             image = wl.image()

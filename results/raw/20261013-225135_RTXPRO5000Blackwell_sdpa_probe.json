@@ -1,0 +1,308 @@
+{
+  "env": {
+    "timestamp_utc": "2026-10-13T17:21:29+00:00",
+    "hostname": "server",
+    "python": "3.12.3",
+    "torch": "2.11.0+cu130",
+    "torch_cuda": "13.0",
+    "cudnn": 91900,
+    "transformers": "5.19.0",
+    "git_commit": "98f6b98",
+    "causal_conv1d_installed": false,
+    "kernels_installed": false,
+    "flash_attn_installed": false,
+    "cuda_visible_devices": null,
+    "gpu_name": "NVIDIA RTX PRO 5000 Blackwell",
+    "gpu_capability": "sm_120",
+    "gpu_sm_count": 110,
+    "gpu_mem_gb": 47.27,
+    "gpu_l2_mb": 96.0,
+    "bf16_supported": true,
+    "driver": "595.84",
+    "power_limit_w": 300.0,
+    "power_default_limit_w": 300.0,
+    "sm_clock_max_mhz": 3090,
+    "mem_clock_max_mhz": 14001,
+    "sm_clock_now_mhz": 510,
+    "temperature_c": 56,
+    "persistence_mode": 0,
+    "applications_clock_sm_mhz": 2377
+  },
+  "dtype": "torch.bfloat16",
+  "in_model": {
+    "prefill: mask=none -> enable_gqa": 6,
+    "decode: mask=none -> enable_gqa": 42
+  },
+  "standalone": [
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 256,
+      "gqa": "enable_gqa",
+      "mask": "mask",
+      "default_kernels": [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel",
+        "void (anonymous namespace)::softmax_warp_forward<float, floa",
+        "void at::native::elementwise_kernel<128, 2, at::native::gpu_",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<",
+        "void at::native::unrolled_elementwise_kernel<at::native::dir"
+      ],
+      "default_us": 96.16640090942383,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 34.2,
+      "math_us": 104.9
+    },
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 256,
+      "gqa": "enable_gqa",
+      "mask": "none",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_kernel<Flash_fwd_kernel_traits"
+      ],
+      "default_us": 12.120319604873657,
+      "flash_us": 24.2,
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 18.6,
+      "math_us": 86.5
+    },
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 256,
+      "gqa": "repeat_kv",
+      "mask": "mask",
+      "default_kernels": [
+        "fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttent",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::vectorized_elementwise_kernel<4, at::native"
+      ],
+      "default_us": 21.34592056274414,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": 30.1,
+      "cudnn_us": 34.3,
+      "math_us": 92.4
+    },
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 256,
+      "gqa": "repeat_kv",
+      "mask": "none",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_kernel<Flash_fwd_kernel_traits"
+      ],
+      "default_us": 10.88320016860962,
+      "flash_us": 18.9,
+      "efficient_us": 15.2,
+      "cudnn_us": 18.8,
+      "math_us": 74.4
+    },
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 2304,
+      "gqa": "enable_gqa",
+      "mask": "mask",
+      "default_kernels": [
+        "std::enable_if<!(false), void>::type internal::gemvx::kernel",
+        "void at::native::(anonymous namespace)::cunn_SoftMaxForwardR",
+        "void at::native::elementwise_kernel<128, 2, at::native::gpu_",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<",
+        "void at::native::unrolled_elementwise_kernel<at::native::dir"
+      ],
+      "default_us": 94.55743789672852,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 36.9,
+      "math_us": 105.2
+    },
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 2304,
+      "gqa": "enable_gqa",
+      "mask": "none",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_f",
+        "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kerne"
+      ],
+      "default_us": 15.951999425888062,
+      "flash_us": 24.0,
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 22.2,
+      "math_us": 87.4
+    },
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 2304,
+      "gqa": "repeat_kv",
+      "mask": "mask",
+      "default_kernels": [
+        "fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttent",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::vectorized_elementwise_kernel<4, at::native"
+      ],
+      "default_us": 101.11871719360352,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": 101.2,
+      "cudnn_us": 36.4,
+      "math_us": 92.6
+    },
+    {
+      "phase": "decode",
+      "q_len": 1,
+      "kv_len": 2304,
+      "gqa": "repeat_kv",
+      "mask": "none",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_splitkv_combine_kernel<Flash_f",
+        "void pytorch_flash::flash_fwd_splitkv_kernel<Flash_fwd_kerne"
+      ],
+      "default_us": 17.262719869613647,
+      "flash_us": 22.9,
+      "efficient_us": 80.1,
+      "cudnn_us": 22.4,
+      "math_us": 74.5
+    },
+    {
+      "phase": "prefill",
+      "q_len": 252,
+      "kv_len": 252,
+      "gqa": "enable_gqa",
+      "mask": "mask",
+      "default_kernels": [
+        "void (anonymous namespace)::softmax_warp_forward<float, floa",
+        "void at::native::elementwise_kernel<128, 2, at::native::gpu_",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<",
+        "void at::native::unrolled_elementwise_kernel<at::native::dir",
+        "void at::native::vectorized_elementwise_kernel<4, at::native"
+      ],
+      "default_us": 94.4876766204834,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 34.0,
+      "math_us": 105.2
+    },
+    {
+      "phase": "prefill",
+      "q_len": 252,
+      "kv_len": 252,
+      "gqa": "enable_gqa",
+      "mask": "is_causal",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_kernel<Flash_fwd_kernel_traits"
+      ],
+      "default_us": 11.103359460830688,
+      "flash_us": 19.1,
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 19.2,
+      "math_us": 112.9
+    },
+    {
+      "phase": "prefill",
+      "q_len": 252,
+      "kv_len": 252,
+      "gqa": "repeat_kv",
+      "mask": "mask",
+      "default_kernels": [
+        "fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttent",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::vectorized_elementwise_kernel<4, at::native"
+      ],
+      "default_us": 29.600000381469727,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": 38.0,
+      "cudnn_us": 33.5,
+      "math_us": 92.5
+    },
+    {
+      "phase": "prefill",
+      "q_len": 252,
+      "kv_len": 252,
+      "gqa": "repeat_kv",
+      "mask": "is_causal",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_kernel<Flash_fwd_kernel_traits"
+      ],
+      "default_us": 11.079039573669434,
+      "flash_us": 21.4,
+      "efficient_us": 15.1,
+      "cudnn_us": 18.8,
+      "math_us": 99.6
+    },
+    {
+      "phase": "prefill",
+      "q_len": 2327,
+      "kv_len": 2327,
+      "gqa": "enable_gqa",
+      "mask": "mask",
+      "default_kernels": [
+        "void at::native::(anonymous namespace)::cunn_SoftMaxForwardR",
+        "void at::native::elementwise_kernel<128, 2, at::native::gpu_",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<",
+        "void at::native::unrolled_elementwise_kernel<at::native::dir",
+        "void at::native::vectorized_elementwise_kernel<4, at::native"
+      ],
+      "default_us": 8181.447143554687,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 389.8,
+      "math_us": 8193.4
+    },
+    {
+      "phase": "prefill",
+      "q_len": 2327,
+      "kv_len": 2327,
+      "gqa": "enable_gqa",
+      "mask": "is_causal",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_kernel<Flash_fwd_kernel_traits"
+      ],
+      "default_us": 157.19679832458496,
+      "flash_us": 157.4,
+      "efficient_us": "unsupported: No available kernel. Aborting execution.",
+      "cudnn_us": 155.8,
+      "math_us": 8213.4
+    },
+    {
+      "phase": "prefill",
+      "q_len": 2327,
+      "kv_len": 2327,
+      "gqa": "repeat_kv",
+      "mask": "mask",
+      "default_kernels": [
+        "fmha_cutlassF_bf16_aligned_64x64_rf_sm80(PyTorchMemEffAttent",
+        "void at::native::elementwise_kernel<128, 4, at::native::gpu_",
+        "void at::native::vectorized_elementwise_kernel<4, at::native"
+      ],
+      "default_us": 621.591682434082,
+      "flash_us": "unsupported: No available kernel. Aborting execution.",
+      "efficient_us": 626.8,
+      "cudnn_us": 401.6,
+      "math_us": 8223.4
+    },
+    {
+      "phase": "prefill",
+      "q_len": 2327,
+      "kv_len": 2327,
+      "gqa": "repeat_kv",
+      "mask": "is_causal",
+      "default_kernels": [
+        "void pytorch_flash::flash_fwd_kernel<Flash_fwd_kernel_traits"
+      ],
+      "default_us": 156.21952056884766,
+      "flash_us": 156.3,
+      "efficient_us": 304.4,
+      "cudnn_us": 157.0,
+      "math_us": 8254.2
+    }
+  ]
+}

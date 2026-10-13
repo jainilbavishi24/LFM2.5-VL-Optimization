@@ -1,0 +1,9 @@
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Style,Range
+92.7,156551720,31,5050055.5,5046690.0,5015156,5149264,24849.8,PushPop,:lm_decode
+3.4,5797849,1,5797849.0,5797849.0,5797849,5797849,0.0,PushPop,:lm_prefill
+3.2,5453359,1,5453359.0,5453359.0,5453359,5453359,0.0,PushPop,:vision_tower
+0.3,576025,9,64002.8,55692.0,52095,123598,22976.7,PushPop,:projector
+0.3,422767,31,13637.6,13553.0,13066,16448,562.7,PushPop,:lm_head
+0.0,22035,1,22035.0,22035.0,22035,22035,0.0,PushPop,:lm_head_prefill
+0.0,19114,1,19114.0,19114.0,19114,19114,0.0,PushPop,CCCL:cub::DeviceScan::InclusiveScan
+0.0,17757,1,17757.0,17757.0,17757,17757,0.0,PushPop,CCCL:cub::DeviceScan::ExclusiveScan
