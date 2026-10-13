@@ -1,30 +1,38 @@
 #!/usr/bin/env bash
-# Drive the course GPU server (L40) over SSH from this machine. Mirrors scripts/colab/colab.sh.
+# Drive the course GPU server over SSH from this machine. Mirrors scripts/colab/colab.sh.
+# Slot workflow and timings: docs/notes/gpu_sessions.md
 #
-#   bash scripts/remote/remote.sh check               # can we connect? GPU visible? who else is on it?
+#   bash scripts/remote/remote.sh check               # connect, GPU, who else is on it
 #   bash scripts/remote/remote.sh push                # rsync code (no .git/models/results/third_party)
-#   bash scripts/remote/remote.sh setup               # preflight + Python env + model weights + profilers
-#   bash scripts/remote/remote.sh bg <job> "<cmd>"    # run detached in tmux (survives SSH drops); log in ~/jobs/<job>.out
+#   bash scripts/remote/remote.sh setup               # preflight + Python env + model weights + profilers (idempotent)
+#   bash scripts/remote/remote.sh slot <preset> [min] # run a slot preset (run_suite.sh SUITE=<preset>) in tmux with a
+#                                                     #   hard deadline of <min> minutes (default 100)
+#   bash scripts/remote/remote.sh watch <job>         # sync results every 10 min + show progress until the job ends
+#   bash scripts/remote/remote.sh bg <job> "<cmd>"    # any command detached in tmux; log in ~/jobs/<job>.out
 #   bash scripts/remote/remote.sh log <job> [n]       # last n lines of a job's log
 #   bash scripts/remote/remote.sh jobs                # running tmux jobs
-#   bash scripts/remote/remote.sh sync                # pull results/raw and profiling/reports (incremental, safe to repeat)
-#   bash scripts/remote/remote.sh run "<cmd>"         # run a short command in the project dir (attached)
+#   bash scripts/remote/remote.sh stop <job>          # stop a job (Ctrl-C to the tmux session, then kill)
+#   bash scripts/remote/remote.sh sync                # pull results/raw and profiling/reports (incremental)
+#   bash scripts/remote/remote.sh run "<cmd>"         # short command in the project dir (attached)
 #   bash scripts/remote/remote.sh shell               # interactive shell in the project dir
 #
-# Env: REMOTE  ssh host or ~/.ssh/config alias (default: l40)
-#      RDIR    project dir on the server (default: ~/PAA_Project)
+# Env: REMOTE  ssh host or ~/.ssh/config alias (default: gpu)
+#      RDIR    project dir on the server, relative to its home (default: PAA_Project)
 #
-# Set up once in ~/.ssh/config (values from the course staff):
-#   Host l40
-#       HostName <server address>
-#       User <username>
-#       Port <port, usually 22>
-#       IdentityFile ~/.ssh/id_ed25519
-#       ServerAliveInterval 30
-#       ServerAliveCountMax 6
+# One-time setup (password is typed once by a human, then only the SSH key is used; never store the password):
+#   1. ~/.ssh/config:
+#        Host gpu
+#            HostName <server address from the course staff>
+#            User team21
+#            Port 22
+#            IdentityFile ~/.ssh/id_ed25519
+#            ServerAliveInterval 30
+#            ServerAliveCountMax 6
+#   2. ssh-copy-id gpu        (asks for the team password once)
+#   3. bash scripts/remote/remote.sh check
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REMOTE="${REMOTE:-l40}"
+REMOTE="${REMOTE:-gpu}"
 RDIR="${RDIR:-PAA_Project}"   # relative to the remote home directory
 SSH=(ssh -o ConnectTimeout=15 -o ServerAliveInterval=30 "$REMOTE")
 
@@ -56,6 +64,22 @@ case "${1:-}" in
         "${SSH[@]}" "mkdir -p ~/jobs && tmux new-session -d -s $job bash -lc $(printf '%q' "$script")" \
             && echo "started job $job on $REMOTE (tmux attach -t $job to watch)"
         ;;
+    slot)
+        preset="$2"; minutes="${3:-100}"; job="${preset}_$(date +%H%M)"
+        "$0" bg "$job" "SUITE=$preset SLOT_MINUTES=$minutes EST_SCALE=${EST_SCALE:-1.0} bash scripts/run_suite.sh"
+        echo "next: bash $0 watch $job"
+        ;;
+    watch)
+        job="$2"
+        while true; do
+            "$0" sync > /dev/null 2>&1 || echo "[watch] sync failed (will retry)"
+            out="$("${SSH[@]}" "grep -E '^\[suite|^JOB_EXIT=' ~/jobs/$job.out | tail -4" 2>/dev/null || echo '[watch] ssh failed')"
+            echo "[$(date +%H:%M)] synced; $out" | tail -4
+            if grep -q '^JOB_EXIT=' <<< "$out"; then "$0" sync; echo "[watch] job $job finished"; break; fi
+            sleep 600
+        done
+        ;;
+    stop) "${SSH[@]}" "tmux send-keys -t $2 C-c; sleep 20; tmux kill-session -t $2 2>/dev/null; echo stopped $2" ;;
     log) "${SSH[@]}" "tail -n ${3:-20} ~/jobs/$2.out" ;;
     jobs) "${SSH[@]}" "tmux ls 2>/dev/null || echo 'no jobs'" ;;
     sync)

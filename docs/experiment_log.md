@@ -15,6 +15,19 @@ Entry template:
 
 ---
 
+## 2026-10-13: Measurement GPU changed again: course "RTX 5000" server, 3 × 2-hour slots/week
+
+**Change:** instead of the L40 (6 h/week) we use the course "RTX 5000" server: team account over SSH, **three 2-hour slots per week**. The exact card (Quadro RTX 5000 / RTX 5000 Ada / RTX PRO 5000 Blackwell) is not confirmed yet; `scripts/preflight.sh` will tell. The team password is never stored in the repo; access will be via SSH key (`ssh-copy-id`).
+
+**What changed for 2-hour slots:**
+
+- `run_suite.sh` rewritten: fine-grained steps run in **priority order**; `SLOT_MINUTES` / `DEADLINE` → a step starts only if its estimate fits, every step has a timeout (2× estimate, capped by time left); the log ends with `DONE / FAILED / SKIPPED` so skipped steps carry over to the next slot; `EST_SCALE` rescales the T4-based estimates once the server is calibrated. New presets `slot1`, `slot2`; the attention probe is a suite step (`sdpa`).
+- `remote.sh`: generic `gpu` alias, `slot <preset> <min>` (one command per slot, in tmux), `watch <job>` (syncs results every 10 min until the job ends), `stop`, one-time key setup and a ControlMaster fallback if the server refuses keys.
+- Session guide renamed `notes/l40_sessions.md` → [notes/gpu_sessions.md](notes/gpu_sessions.md) and rewritten for 2-hour slots (slot-1 minute plan, following slots, failure playbook). Docs made hardware-neutral; card-specific numbers live in its §1 table.
+- **Dress rehearsal:** `SUITE=slot1 SLOT_MINUTES=100` started on the Colab T4 to test the new suite, deadline logic and `sdpa_probe.py` before any real slot.
+
+---
+
 ## 2026-10-11: T4 Nsight Compute at long context (decode step 512, 1080p input)
 
 **Goal:** close the two profiling gaps of 2026-10-07: decode cost late in a generation / at long context, and vision + prefill on the 9-tile 1080p input.

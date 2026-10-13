@@ -3,7 +3,7 @@
   python profiling/ncu/analyze_ncu.py profiling/reports/<run>/ncu_decode_metrics.csv [--steps N]
 
 Achieved bandwidth = DRAM bytes / kernel time. Compare with the GPU's peak (T4 ~320 GB/s,
-L40 ~864 GB/s) to see how far each kernel is from the memory roof.
+server: see `nvidia-smi` / preflight) to see how far each kernel is from the memory roof.
 """
 
 import argparse

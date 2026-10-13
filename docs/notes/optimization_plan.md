@@ -17,7 +17,7 @@ Code links point into `third_party/transformers` (v5.19.0), the baseline we opti
 | T4 Nsight Compute: one decode step (800 kernels), vision (433), prefill (500), full-set on 150 decode kernels | ✅ | `profiling/reports/20261007-1*_T4_ncu_*/ *_metrics.csv` |
 | T4 Nsight Compute on a **late** decode step (step 512) and at long context (img_fhd) | ✅ 2026-10-11 | decode +23 % GPU time and +0.93 GB DRAM/step at 2330 context, all attention-related (O1/O5) |
 | T4 Nsight Compute on **img_fhd** (9 tiles) vision + prefill, complete prefill for both inputs | ✅ 2026-10-11 | 1080p prefill: GEMMs 37 %, FP32 math-path attention 30 % (O5) |
-| **L40: same suite** (`scripts/run_suite.sh`), session 1 of [l40_sessions.md](l40_sessions.md) | ⬜ waiting for access details | needed for Eval 1 |
+| **Course GPU server (RTX 5000): same suite**, slots 1–2 of [gpu_sessions.md](gpu_sessions.md) | ⬜ waiting for the server address | needed for Eval 1 |
 | Reference baselines: `torch.compile`, `causal-conv1d` package, vLLM, llama.cpp | ⬜ | see O0 |
 
 ---
@@ -47,7 +47,7 @@ Nsight Compute: GEMVs run at **~89 % of peak DRAM bandwidth** (lm_head 96 %), so
 
 **Bounds for decode on the T4:** weights 2.34 GB/token ÷ 320 GB/s = **7.3 ms** floor. Current GEMVs ≈ 8.6–9.6 ms; total 20 ms. So:
 remove overhead (O1–O4) → ~9–10 ms/token (≈2×); then fewer bytes (O6, INT8 weights) → ~5 ms/token (≈4× total).
-L40: floor ≈ 2.7 ms/token (864 GB/s), so there the overhead share is even larger and O1 matters even more.
+Server GPU: floor 1.7–5.2 ms/token depending on the card (gpu_sessions.md §1); the overhead share is larger than on the T4 in every case, so O1 matters even more.
 
 ---
 
@@ -74,8 +74,8 @@ Common rules for every step:
 
 **Open questions**
 - Q0.1 Does `cache_implementation="static"` work for LFM2's conv + attention hybrid cache in transformers 5.19, and does `generate()` then auto-compile? (`_valid_auto_compile_criteria`, generation/utils.py L2418)
-- Q0.2 Does `causal-conv1d` build for sm_75 / sm_89 with torch 2.11 and the L40's CUDA version? Prebuilt wheel or source build (time)?
-- Q0.3 vLLM / llama.cpp: do they support LFM2.5-VL vision on T4 and on the L40 (sm_89)? Which versions?
+- Q0.2 Does `causal-conv1d` build for sm_75 / sm_89 with torch 2.11 and the server's CUDA version? Prebuilt wheel or source build (time)?
+- Q0.3 vLLM / llama.cpp: do they support LFM2.5-VL vision on T4 and on the server GPU? Which versions?
 - Q0.4 How do we make the comparison fair (same tokens, same image preprocessing, same dtype)?
 
 ---
@@ -96,7 +96,7 @@ Common rules for every step:
 5. Variant `cudagraph`.
 
 **Check:** token-identical to baseline (greedy); TPOT, GPU-busy % ≈ 100 % inside the step (nsys), J/token.
-**Expected:** T4 TPOT 20 → ~11–12 ms; bigger relative gain on the L40.
+**Expected:** T4 TPOT 20 → ~11–12 ms; bigger relative gain on the server GPU.
 
 - [ ] O1a: static KV + conv-state cache, in-place updates, token-identical eager run
 - [ ] O1b: graph capture of decode step, replay loop
@@ -192,7 +192,7 @@ Common rules for every step:
 - Decode: GQA-aware decode attention kernel (one block per KV head, 4 query heads share the loaded K/V, online softmax, split over sequence "flash-decoding" when context is long), reading the static cache with `seq_len` from device memory (CUDA-graph friendly, O1).
 - Prefill: causal attention without materialized mask (FlashAttention-style tiling, FP16 in / FP32 accumulate); on sm_80+ first check whether PyTorch's flash backend already does this when `is_causal=True` and no mask.
 
-- [ ] O5a: confirm on the L40 which SDPA backend is used (is the math fallback T4-only?): `profiling/sdpa_probe.py`, session 1
+- [ ] O5a: confirm on the server GPU which SDPA backend is used (is the math fallback T4-only?): `profiling/sdpa_probe.py`, session 1
 - [ ] O5b: decode attention kernel + test vs reference at context 16 … 4096
 - [ ] O5c: prefill path (own kernel on T4, or mask-free flash SDPA where available)
 
@@ -211,13 +211,13 @@ Common rules for every step:
 
 **How:** weight-only quantization, activations stay FP16/BF16:
 - INT8 per-channel (2× fewer bytes), INT4 group-wise (g=64/128, ~3.6× fewer bytes) with dequant in the GEMV inner loop (T4, Jetson);
-- FP8 (E4M3) on the L40 (Ada sm_89 tensor cores support FP8; NVFP4 is Blackwell-only, so out of scope).
+- FP8 (E4M3) if the server card is Ada or Blackwell; NVFP4 only if it is the RTX PRO 5000 Blackwell (decided after the first preflight).
 Own GEMV kernel (vectorized loads, warp-per-row reduction), compared against cuBLAS FP16 and against existing kernels (e.g. torchao / llama.cpp `mmvq`).
 
 - [ ] O6a: INT8 weight-only GEMV kernel + test + bandwidth (ncu)
 - [ ] O6b: quality: greedy-token agreement + a small VQA/OCR set (needs eval set, see G3)
 - [ ] O6c: INT4 group-wise
-- [ ] O6d: FP8 weights on the L40 (session 4)
+- [ ] O6d: FP8 (and NVFP4 if Blackwell) weights on the server GPU
 
 **Open questions**
 - Q6.1 Which layers tolerate quantization? (lm_head and the vision tower often hurt quality most; keep FP16 first)
@@ -235,7 +235,7 @@ Own GEMV kernel (vectorized loads, warp-per-row reduction), compared against cuB
 **How:** attention kernel specialized for head dim 72 (pad to 80/96 in registers, or flash-style tiling with dim 72), packed/unpadded tiles (varlen, like vLLM `lfm2_siglip2.py`), fused bias+GELU and LayerNorm; batch the projector over tiles.
 
 - [ ] O7a: understand why the FMHA kernel is at 24 % occupancy (registers? shared memory? head dim 72 alignment?) from the full ncu sections
-- [ ] O7b: try the PyTorch flash backend on the L40 for head dim 72
+- [ ] O7b: try the PyTorch flash backend on the server GPU for head dim 72
 - [ ] O7c: own attention kernel or tuned config; varlen packing
 - [ ] O7d: fused GELU/LayerNorm, batched projector
 
@@ -249,15 +249,16 @@ Own GEMV kernel (vectorized loads, warp-per-row reduction), compared against cuB
 
 All layers of one decode step in one kernel launch with grid-wide sync, weights streamed by SM. Only if O1–O6 are done and time remains. Course catalogue explicitly lists "Kernel Fusion & MegaKernels".
 
-**Open questions:** Q8.1 grid sync cost on T4 vs L40; Q8.2 is CUDA-graph + fused kernels already within ~10 % of the GEMV floor (then a megakernel is not worth it)?
+**Open questions:** Q8.1 grid sync cost on T4 vs the server GPU; Q8.2 is CUDA-graph + fused kernels already within ~10 % of the GEMV floor (then a megakernel is not worth it)?
 
 ---
 
 ## 3. Cross-cutting work
 
-### G1. L40 sessions (6 h/week over SSH)
-Full plan, rules, timings and failure playbook: [l40_sessions.md](l40_sessions.md).
-- [ ] Get access details (questions in l40_sessions.md §8), add the `l40` SSH alias, `remote.sh check`
+### G1. GPU-server slots (3 × 2 h/week over SSH)
+Full plan, rules, timings and failure playbook: [gpu_sessions.md](gpu_sessions.md).
+- [ ] Get the server address (questions in gpu_sessions.md §8), add the `gpu` SSH alias, `ssh-copy-id`, `remote.sh check`
+- [x] Deadline-aware slot presets (`SUITE=slot1|slot2`, `SLOT_MINUTES`), `remote.sh slot` / `watch` / `stop`
 - [x] Tooling: `scripts/remote/remote.sh` (push / setup / bg in tmux / log / sync), `scripts/preflight.sh`, driver-aware `setup_env.sh`, suite presets (`SUITE=timing|profile|ncu|variant`), ncu auto-skip without counter access
 - [ ] Session 1: baseline suite (BF16), `sdpa_probe.py` (Q5.1/O5a), O0 reference baselines
 - [ ] Sessions 2–5: optimization variants, ablation stack, FP8 (O6d), 3B, final numbers
@@ -273,20 +274,20 @@ Full plan, rules, timings and failure playbook: [l40_sessions.md](l40_sessions.m
 - [ ] Logit/perplexity difference for quantized variants
 
 ### G4. Generalization: LFM2.5-VL-3B
-- [ ] Run the final variant stack on the 3B (same kernels, more layers, 128k vocab) on the L40
+- [ ] Run the final variant stack on the 3B (same kernels, more layers, 128k vocab) on the server GPU
 
 ### G5. Report and evaluations
-- Eval 1 (week 5): baseline + profiling + bottleneck evidence (T4 ✅, L40 ⬜) + this plan
+- Eval 1 (week 5): baseline + profiling + bottleneck evidence (T4 ✅, server ⬜) + this plan
 - Eval 2 (week 7): O1–O3 working with before/after numbers
-- Final (week 9): O4–O7, quantization, cross-GPU (T4 / L40 / Jetson) + 3B, quality, demo
+- Final (week 9): O4–O7, quantization, cross-GPU (T4 / server RTX 5000 / Jetson) + 3B, quality, demo
 
 ---
 
 ## 4. Global open questions (for the team / TAs)
 
-1. L40 access: see G1 and l40_sessions.md §8.
+1. GPU-server access: see G1 and gpu_sessions.md §8.
 2. Is a custom decode runtime (O1) that reuses HF weights acceptable as "our system", with HF transformers as the baseline? (Course CO6 is about building exactly such a runtime.)
 3. Batch size focus: batch 1 (edge, interactive) as the main metric, batch sweep as a secondary result. Agree?
-4. Precision for the headline numbers: BF16 on the L40 / Jetson, FP16 on the T4. Agree?
+4. Precision for the headline numbers: BF16 on the server (if the card supports it) and Jetson, FP16 on the T4. Agree?
 5. Which input is the "headline" workload for the report: 1 tile (fast camera frames) or 9 tiles (documents/high-res)?
 6. Team split proposal: (A) runtime + CUDA graphs: O1, O4; (B) custom kernels: O2, O3; (C) attention + vision + quantization: O5, O6, O7. Who takes which?

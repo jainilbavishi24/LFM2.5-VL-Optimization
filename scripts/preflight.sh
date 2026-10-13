@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Preflight for a GPU session (~1 min): what machine are we on, and can we do everything the session needs?
-# Saves results/raw/preflight_<host>_<time>.txt. Run first in every L40 slot (scripts/remote/remote.sh setup).
+# Saves results/raw/preflight_<host>_<time>.txt. Run first in every GPU slot (scripts/remote/remote.sh setup).
 #
 # Checks: GPU + driver + max CUDA, other processes on the GPU (timing would be invalid), nvcc, python,
 # sudo/root, Nsight Compute counter permission (else ncu steps are skipped), internet (pip / HF),
