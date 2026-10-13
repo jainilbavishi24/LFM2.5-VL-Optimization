@@ -119,6 +119,38 @@ def _fused_w4(net, processor):
     return _fused_variant(net, "int4")
 
 
+def _vision_sdpa(net, backends):
+    """O7a: run the SigLIP2 vision tower's SDPA calls with a preferred backend order (HF's default picks the
+    sm80 memory-efficient kernel on Blackwell: ~1.1 ms per layer at 1080p, profiling/vision_attn_probe.py)."""
+    from torch.nn.attention import sdpa_kernel
+
+    vt = net.model.vision_tower
+    orig = vt.forward
+
+    def forward(*args, **kwargs):
+        with sdpa_kernel(backends, set_priority=True):
+            return orig(*args, **kwargs)
+
+    vt.forward = forward
+    return net
+
+
+@register("vision_cudnn")
+def _vision_cudnn(net, processor):
+    """O7a: SigLIP2 attention via cuDNN (Blackwell-native) first, then flash / efficient / math."""
+    from torch.nn.attention import SDPBackend
+
+    return _vision_sdpa(net, [SDPBackend.CUDNN_ATTENTION, SDPBackend.FLASH_ATTENTION,
+                              SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH])
+
+
+@register("fused_w8_vcudnn")
+def _fused_w8_vcudnn(net, processor):
+    """O1-O6 (INT8 decode) + O7a (cuDNN vision attention): the current best end-to-end configuration."""
+    _vision_cudnn(net, processor)
+    return _fused_variant(net, "int8")
+
+
 def apply_variant(name: str, net, processor):
     if name not in VARIANTS:
         raise KeyError(f"unknown variant {name!r}; available: {sorted(VARIANTS)}")

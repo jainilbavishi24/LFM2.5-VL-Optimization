@@ -35,7 +35,7 @@ def timed(fn, mats, reps=3):
 
 @torch.no_grad()
 def main():
-    print(f"{'matrix':14s} {'N x K':>12s} | {'cuBLAS bf16':>16s} | {'ours bf16 (auto)':>18s} | int8 rows=1 / 2 / 4 / auto | int4 (auto)")
+    print(f"{'matrix':14s} {'N x K':>12s} | {'cuBLAS bf16':>16s} | {'ours bf16 (auto)':>18s} | int8 shared(auto) / direct rows=1 / 2 / 4 | int4 (auto)")
     for name, (N, Kd) in SHAPES.items():
         n_mats = max(2, int(400e6 // (N * Kd * 2)) + 1)
         Ws = [torch.randn(N, Kd, device="cuda", dtype=torch.bfloat16) * 0.02 for _ in range(n_mats)]
@@ -53,7 +53,10 @@ def main():
         b = N * Kd * 2
         t_cub = timed(lambda W: F.linear(x, W), Ws)
         t_bf = timed(lambda W: K.gemv(W, None, x, y), Ws)
-        t_i8 = [timed(lambda q, r=r: K.gemv(q[0], q[1], x, y, r), qs) for r in (1, 2, 4, 0)]
+        K.set_gemv_impl(0)
+        t_i8 = [timed(lambda q: K.gemv(q[0], q[1], x, y), qs)]       # x staged in shared memory
+        K.set_gemv_impl(1)
+        t_i8 += [timed(lambda q, r=r: K.gemv(q[0], q[1], x, y, r), qs) for r in (1, 2, 4)]  # direct x loads
         t_i4 = timed(lambda q: K.gemv_w4(q[0], q[1], x, y), q4)
         tb = lambda t, nbytes: f"{t:6.1f}us {nbytes / t / 1e6:4.2f}TB/s"  # noqa: E731
         print(f"{name:14s} {N:>6d}x{Kd:<5d} | {tb(t_cub, b)} | {tb(t_bf, b):>18s} | "

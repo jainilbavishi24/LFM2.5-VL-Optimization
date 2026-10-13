@@ -12,6 +12,7 @@ void launch_decode_attention(const void* q, const void* kc, const void* vc, cons
                              int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st);
 void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st);
 void set_pdl(bool on);
+void set_gemv_impl(int impl);
 void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, cudaStream_t st);
 void launch_gemv_w4(const void* Wp, const float* S, const void* x, void* y, int N, int K, int group, int rows, cudaStream_t st);
 void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
@@ -100,5 +101,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("gemv", &gemv, "batch-1 GEMV, BF16 or INT8 weights", py::arg("W"), py::arg("scale"), py::arg("x"), py::arg("y"), py::arg("rows") = 0);
     m.def("gemv_w4", &gemv_w4, "batch-1 GEMV, INT4 weights (group 128)", py::arg("Wp"), py::arg("S"), py::arg("x"), py::arg("y"), py::arg("rows") = 0);
     m.def("set_pdl", &set_pdl, "enable/disable Programmatic Dependent Launch for our kernels (default on)");
+    m.def("set_gemv_impl", &set_gemv_impl, "GEMV implementation: 0 = x staged in shared memory, 1 = direct x loads");
     m.def("silu_mul", &silu_mul, "silu(a) * b on [a | b]");
 }
