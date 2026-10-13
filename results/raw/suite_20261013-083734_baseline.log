@@ -1,0 +1,140 @@
+[suite 08:37:34] suite 20261013-083734_baseline variant=baseline steps: sdpa_rkv bench_long bench_batch_big model_3b summarize
+[suite 08:37:34] deadline 10:02:33 (84 min), EST_SCALE=1.0
+name, driver_version, power.limit [W], clocks.max.sm [MHz], clocks.max.memory [MHz]
+Tesla T4, 580.82.07, 70.00 W, 1590 MHz, 5001 MHz
+[suite 08:37:34] START sdpa_rkv (est 6 min, limit 12 min)
+[bench] run 20261013-083743_T4_baseline_sdpa_rkv on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261013-083743_T4_baseline_sdpa_rkv
+[bench] idle power 14.4 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 6.5s
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     96.3 ms  E/run=   7.37 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   3191.6 ms  E/run= 211.72 J  mem=3.03 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1069.7 ms  E/run=  73.03 J  mem=4.68 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   4086.6 ms  E/run= 294.15 J  mem=4.68 GB
+[bench] variant=sdpa_repeat_kv dtype=fp16 attn=sdpa loaded in 5.0s
+[bench] sdpa_repeat_kv img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    101.3 ms  E/run=   6.53 J  mem=3.02 GB
+[bench] sdpa_repeat_kv img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   2918.3 ms  E/run= 203.94 J  mem=3.02 GB
+[bench] sdpa_repeat_kv   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    867.5 ms  E/run=  60.29 J  mem=3.26 GB
+[bench] sdpa_repeat_kv   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   3912.6 ms  E/run= 277.68 J  mem=3.26 GB
+[bench] done -> /content/PAA_Project/results/raw/20261013-083743_T4_baseline_sdpa_rkv
+[suite 08:40:02] END   sdpa_rkv rc=0 (2 min 28 s)
+[suite 08:40:02] START bench_long (est 10 min, limit 20 min)
+[bench] run 20261013-084012_T4_baseline_long on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261013-084012_T4_baseline_long
+[bench] idle power 13.3 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 5.8s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     63.8 ms  E/run=   3.05 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=1024 tiles=0  img_tok=0     wall=  26046.5 ms  E/run=1694.74 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    129.1 ms  E/run=   9.22 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=1024 tiles=1  img_tok=234   wall=  26163.5 ms  E/run=1721.62 J  mem=3.05 GB
+[bench] done -> /content/PAA_Project/results/raw/20261013-084012_T4_baseline_long
+[suite 08:46:22] END   bench_long rc=0 (6 min 20 s)
+[suite 08:46:22] START bench_batch_big (est 8 min, limit 16 min)
+[bench] run 20261013-084630_T4_baseline_batch_big on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261013-084630_T4_baseline_batch_big
+[bench] idle power 22.8 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 5.2s
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    110.5 ms  E/run=   8.63 J  mem=3.03 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   3079.8 ms  E/run= 224.40 J  mem=3.03 GB
+[bench]   baseline img_small bs=16  gen=1    tiles=1  img_tok=234   wall=   1926.2 ms  E/run= 125.21 J  mem=3.63 GB
+[bench]   baseline img_small bs=16  gen=128  tiles=1  img_tok=234   wall=   5793.5 ms  E/run= 378.43 J  mem=3.63 GB
+[bench]   baseline img_small bs=32  gen=1    tiles=1  img_tok=234   wall=   3714.1 ms  E/run= 244.52 J  mem=4.26 GB
+[bench]   baseline img_small bs=32  gen=128  tiles=1  img_tok=234   wall=   8604.8 ms  E/run= 558.04 J  mem=4.26 GB
+[bench]   baseline img_small bs=64  gen=1    tiles=1  img_tok=234   wall=   7837.9 ms  E/run= 507.79 J  mem=5.52 GB
+[bench]   baseline img_small bs=64  gen=128  tiles=1  img_tok=234   wall=  14638.7 ms  E/run= 955.96 J  mem=5.52 GB
+[bench] done -> /content/PAA_Project/results/raw/20261013-084630_T4_baseline_batch_big
+[suite 08:50:36] END   bench_batch_big rc=0 (4 min 14 s)
+[suite 08:50:36] START model_3b (est 25 min, limit 50 min)
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[bench] run 20261013-085045_T4_baseline_3b on Tesla T4 (sm_75), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /content/PAA_Project/results/raw/20261013-085045_T4_baseline_3b
+[bench] idle power 22.9 W
+[bench] variant=baseline dtype=fp16 attn=sdpa loaded in 88.4s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     65.4 ms  E/run=   3.67 J  mem=5.84 GB
+[bench]   baseline      text bs=1   gen=32   tiles=0  img_tok=0     wall=   1346.7 ms  E/run=  91.72 J  mem=5.84 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=   5899.7 ms  E/run= 398.18 J  mem=5.84 GB
+[bench]   baseline      text bs=1   gen=512  tiles=0  img_tok=0     wall=  23282.3 ms  E/run=1523.08 J  mem=5.86 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    174.8 ms  E/run=  11.99 J  mem=5.88 GB
+[bench]   baseline img_small bs=1   gen=32   tiles=1  img_tok=234   wall=   1489.4 ms  E/run= 106.53 J  mem=5.88 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   5886.0 ms  E/run= 388.19 J  mem=5.88 GB
+[bench]   baseline img_small bs=1   gen=512  tiles=1  img_tok=234   wall=  23489.3 ms  E/run=1546.17 J  mem=5.88 GB
+[bench]   baseline    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    588.8 ms  E/run=  39.87 J  mem=6.08 GB
+[bench]   baseline    img_hd bs=1   gen=32   tiles=3  img_tok=764   wall=   1917.5 ms  E/run= 133.82 J  mem=6.08 GB
+[bench]   baseline    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   6005.2 ms  E/run= 417.57 J  mem=6.08 GB
+[bench]   baseline    img_hd bs=1   gen=512  tiles=3  img_tok=764   wall=  23677.0 ms  E/run=1549.17 J  mem=6.08 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1834.8 ms  E/run= 119.87 J  mem=7.53 GB
+[bench]   baseline   img_fhd bs=1   gen=32   tiles=9  img_tok=2300  wall=   3153.8 ms  E/run= 225.53 J  mem=7.53 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   7835.4 ms  E/run= 506.33 J  mem=7.53 GB
+[bench]   baseline   img_fhd bs=1   gen=512  tiles=9  img_tok=2300  wall=  24531.8 ms  E/run=1608.71 J  mem=7.53 GB
+[bench] done -> /content/PAA_Project/results/raw/20261013-085045_T4_baseline_3b
+[suite 09:07:23] END   model_3b rc=0 (16 min 47 s)
+[suite 09:07:23] START summarize (est 1 min, limit 6 min)
+# 20261013-083743_T4_baseline_sdpa_rkv
+
+GPU: Tesla T4 (sm_75), driver 580.82.07, torch 2.11.0+cu130, transformers 5.19.0, causal_conv1d: False, idle power: 14.4 W
+
+| variant | workload | bs | gen | tiles | img tok | TTFT ms | vision ms | prefill ms | TPOT ms | tok/s | step host/gpu ms | J/run | J/tok (dyn) | avg W | min SM MHz | mem GB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | img_fhd | 1 | 1 | 9 | 2300 | 1069.7 | 535.5 | 511.9 | – | – | –/– | 73.03 | – (–) | 69.6 | 750 | 4.68 |
+| baseline | img_fhd | 1 | 128 | 9 | 2300 | 1069.7 | 538.7 | 522.2 | 23.76 | 42.1 | 23.18/21.31 | 294.15 | 1.741 (1.398) | 66.1 | 690 | 4.68 |
+| baseline | img_small | 1 | 1 | 1 | 234 | 96.3 | 51.1 | 30.4 | – | – | –/– | 7.37 | – (–) | 50.1 | 1020 | 3.03 |
+| baseline | img_small | 1 | 128 | 1 | 234 | 96.3 | 44.9 | 33.7 | 24.37 | 41.0 | 23.00/21.15 | 211.72 | 1.609 (1.257) | 63.4 | 870 | 3.03 |
+| sdpa_repeat_kv | img_fhd | 1 | 1 | 9 | 2300 | 867.5 | 551.7 | 292.5 | – | – | –/– | 60.29 | – (–) | 69.6 | 645 | 3.26 |
+| sdpa_repeat_kv | img_fhd | 1 | 128 | 9 | 2300 | 867.5 | 590.9 | 305.3 | 23.98 | 41.7 | 22.53/20.62 | 277.68 | 1.712 (1.366) | 65.8 | 600 | 3.26 |
+| sdpa_repeat_kv | img_small | 1 | 1 | 1 | 234 | 101.3 | 55.4 | 29.3 | – | – | –/– | 6.53 | – (–) | 69.0 | 825 | 3.02 |
+| sdpa_repeat_kv | img_small | 1 | 128 | 1 | 234 | 101.3 | 47.5 | 31.2 | 22.18 | 45.1 | 21.59/19.78 | 203.94 | 1.554 (1.234) | 67.2 | 720 | 3.02 |
+
+# 20261013-084012_T4_baseline_long
+
+GPU: Tesla T4 (sm_75), driver 580.82.07, torch 2.11.0+cu130, transformers 5.19.0, causal_conv1d: False, idle power: 13.3 W
+
+| variant | workload | bs | gen | tiles | img tok | TTFT ms | vision ms | prefill ms | TPOT ms | tok/s | step host/gpu ms | J/run | J/tok (dyn) | avg W | min SM MHz | mem GB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | img_small | 1 | 1 | 1 | 234 | 129.1 | 56.2 | 48.0 | – | – | –/– | 9.22 | – (–) | 59.5 | 690 | 3.03 |
+| baseline | img_small | 1 | 1024 | 1 | 234 | 129.1 | 50.8 | 43.3 | 25.45 | 39.3 | 23.14/21.23 | 1721.62 | 1.674 (1.336) | 65.1 | 600 | 3.05 |
+| baseline | text | 1 | 1 | 0 | 0 | 63.8 | 0.0 | 43.5 | – | – | –/– | 3.05 | – (–) | 36.7 | 585 | 2.99 |
+| baseline | text | 1 | 1024 | 0 | 0 | 63.8 | 0.0 | 22.1 | 25.40 | 39.4 | 22.99/21.10 | 1694.74 | 1.654 (1.316) | 65.0 | 1200 | 3.03 |
+
+# 20261013-084630_T4_baseline_batch_big
+
+GPU: Tesla T4 (sm_75), driver 580.82.07, torch 2.11.0+cu130, transformers 5.19.0, causal_conv1d: False, idle power: 22.8 W
+
+| variant | workload | bs | gen | tiles | img tok | TTFT ms | vision ms | prefill ms | TPOT ms | tok/s | step host/gpu ms | J/run | J/tok (dyn) | avg W | min SM MHz | mem GB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | img_small | 1 | 1 | 1 | 234 | 110.5 | 60.2 | 34.7 | – | – | –/– | 8.63 | – (–) | 62.4 | 645 | 3.03 |
+| baseline | img_small | 1 | 128 | 1 | 234 | 110.5 | 49.0 | 43.4 | 23.38 | 42.8 | 23.11/21.21 | 224.40 | 1.699 (1.166) | 65.1 | 615 | 3.03 |
+| baseline | img_small | 16 | 1 | 1 | 234 | 1926.2 | 1235.5 | 651.1 | – | – | –/– | 125.21 | – (–) | 65.1 | 480 | 3.63 |
+| baseline | img_small | 16 | 128 | 1 | 234 | 1926.2 | 1269.1 | 670.9 | 30.45 | 525.4 | 26.61/24.69 | 378.43 | 0.125 (0.081) | 64.6 | 465 | 3.63 |
+| baseline | img_small | 32 | 1 | 1 | 234 | 3714.1 | 2429.6 | 1238.5 | – | – | –/– | 244.52 | – (–) | 65.7 | 525 | 4.26 |
+| baseline | img_small | 32 | 128 | 1 | 234 | 3714.1 | 2425.2 | 1226.4 | 38.51 | 831.0 | 36.31/33.81 | 558.04 | 0.077 (0.050) | 65.8 | 525 | 4.26 |
+| baseline | img_small | 64 | 1 | 1 | 234 | 7837.9 | 5133.4 | 2633.1 | – | – | –/– | 507.79 | – (–) | 64.7 | 450 | 5.52 |
+| baseline | img_small | 64 | 128 | 1 | 234 | 7837.9 | 5013.6 | 2565.8 | 53.55 | 1195.1 | 54.82/51.77 | 955.96 | 0.055 (0.036) | 65.1 | 450 | 5.52 |
+
+# 20261013-085045_T4_baseline_3b
+
+GPU: Tesla T4 (sm_75), driver 580.82.07, torch 2.11.0+cu130, transformers 5.19.0, causal_conv1d: False, idle power: 22.9 W
+
+| variant | workload | bs | gen | tiles | img tok | TTFT ms | vision ms | prefill ms | TPOT ms | tok/s | step host/gpu ms | J/run | J/tok (dyn) | avg W | min SM MHz | mem GB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | img_fhd | 1 | 1 | 9 | 2300 | 1834.8 | 660.6 | 1149.3 | – | – | –/– | 119.87 | – (–) | 65.7 | 525 | 7.53 |
+| baseline | img_fhd | 1 | 32 | 9 | 2300 | 1834.8 | 654.1 | 1148.2 | 42.55 | 23.5 | 43.84/40.67 | 225.53 | 3.409 (2.434) | 65.4 | 525 | 7.53 |
+| baseline | img_fhd | 1 | 128 | 9 | 2300 | 1834.8 | 654.1 | 1151.3 | 47.25 | 21.2 | 41.35/38.52 | 506.33 | 3.043 (1.961) | 64.9 | 525 | 7.53 |
+| baseline | img_fhd | 1 | 512 | 9 | 2300 | 1834.8 | 659.8 | 1151.0 | 44.42 | 22.5 | 40.43/37.66 | 1608.71 | 2.914 (1.897) | 65.2 | 525 | 7.53 |
+| baseline | img_hd | 1 | 1 | 3 | 764 | 588.8 | 222.1 | 337.4 | – | – | –/– | 39.87 | – (–) | 62.2 | 495 | 6.08 |
+| baseline | img_hd | 1 | 32 | 3 | 764 | 588.8 | 222.9 | 340.0 | 42.86 | 23.3 | 41.89/39.07 | 133.82 | 3.031 (2.049) | 66.0 | 480 | 6.08 |
+| baseline | img_hd | 1 | 128 | 3 | 764 | 588.8 | 222.0 | 348.4 | 42.65 | 23.4 | 41.32/38.54 | 417.57 | 2.974 (1.998) | 65.3 | 480 | 6.08 |
+| baseline | img_hd | 1 | 512 | 3 | 764 | 588.8 | 220.4 | 345.8 | 45.18 | 22.1 | 40.81/38.03 | 1549.17 | 2.954 (1.919) | 65.1 | 495 | 6.08 |
+| baseline | img_small | 1 | 1 | 1 | 234 | 174.8 | 64.5 | 91.8 | – | – | –/– | 11.99 | – (–) | 65.2 | 540 | 5.88 |
+| baseline | img_small | 1 | 32 | 1 | 234 | 174.8 | 53.8 | 100.1 | 42.41 | 23.6 | 41.62/38.75 | 106.53 | 3.050 (2.079) | 64.2 | 525 | 5.88 |
+| baseline | img_small | 1 | 128 | 1 | 234 | 174.8 | 54.4 | 99.1 | 44.97 | 22.2 | 41.29/38.49 | 388.19 | 2.962 (1.933) | 65.5 | 510 | 5.88 |
+| baseline | img_small | 1 | 512 | 1 | 234 | 174.8 | 53.8 | 99.1 | 45.63 | 21.9 | 41.35/38.53 | 1546.17 | 3.002 (1.958) | 65.4 | 525 | 5.88 |
+| baseline | text | 1 | 1 | 0 | 0 | 65.4 | 0.0 | 49.2 | – | – | –/– | 3.67 | – (–) | 45.7 | 585 | 5.84 |
+| baseline | text | 1 | 32 | 0 | 0 | 65.4 | 0.0 | 41.0 | 41.33 | 24.2 | 40.27/37.61 | 91.72 | 2.840 (1.894) | 66.5 | 1320 | 5.84 |
+| baseline | text | 1 | 128 | 0 | 0 | 65.4 | 0.0 | 43.4 | 45.94 | 21.8 | 41.53/38.70 | 398.18 | 3.106 (2.054) | 66.8 | 1215 | 5.84 |
+| baseline | text | 1 | 512 | 0 | 0 | 65.4 | 0.0 | 41.2 | 45.43 | 22.0 | 41.02/38.22 | 1523.08 | 2.973 (1.933) | 65.7 | 1080 | 5.86 |
+
+[suite 09:07:24] END   summarize rc=0 (0 min 1 s)
+[suite 09:07:24] DONE:    sdpa_rkv bench_long bench_batch_big model_3b summarize
+[suite 09:07:24] FAILED:  none
+[suite 09:07:24] SKIPPED: none
+[suite 09:07:24] suite 20261013-083734_baseline done; log: results/raw/suite_20261013-083734_baseline.log

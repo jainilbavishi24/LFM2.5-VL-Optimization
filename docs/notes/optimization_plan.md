@@ -193,7 +193,8 @@ Common rules for every step:
 - Prefill: causal attention without materialized mask (FlashAttention-style tiling, FP16 in / FP32 accumulate); on sm_80+ first check whether PyTorch's flash backend already does this when `is_causal=True` and no mask.
 
 - [x] O5a (T4): `enable_gqa` → math path; `repeat_kv` + mem-efficient is 3.6–23× faster (decode 2304: 0.63 → 0.18 ms; prefill 2327: 45.6 → 1.9 ms)
-- [ ] O5a (server): same probe in slot 1; quick-win variant `sdpa_repeat_kv` if the server also falls back to math
+- [x] Quick-win variant `sdpa_repeat_kv` (variants.py): T4 img_fhd LM prefill 512 → 293 ms (−43 %), TTFT −19 %, outputs token-identical
+- [ ] O5a (server): probe + `sdpa_rkv` backlog step in slot 1
 - [ ] O5b: decode attention kernel + test vs reference at context 16 … 4096
 - [ ] O5c: prefill path (own kernel on T4, or mask-free flash SDPA where available)
 

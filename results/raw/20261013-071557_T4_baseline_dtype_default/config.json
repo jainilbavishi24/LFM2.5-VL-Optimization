@@ -1,0 +1,16 @@
+{
+  "preset": null,
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variants": "baseline",
+  "workloads": "text,img_small",
+  "gen_lens": "64",
+  "batch_sizes": "1",
+  "warmup": 1,
+  "repeats": 1,
+  "idle_seconds": 5.0,
+  "no_phases": false,
+  "tag": "baseline_dtype_default",
+  "out": "/content/PAA_Project/results/raw"
+}

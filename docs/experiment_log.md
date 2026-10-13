@@ -15,6 +15,28 @@ Entry template:
 
 ---
 
+## 2026-10-13: Dress rehearsals for the first server slot (Colab T4) + backlog results
+
+**Goal:** run everything tonight's slot will run, end to end, before touching the server.
+
+**Rehearsal 1, `SUITE=slot1 SLOT_MINUTES=100`:** all 11 steps DONE, none failed or skipped, 98 of 100 min. Step times (T4): timing block 22 min, PyTorch profiler 2.5, Nsight Systems 1.2, attention probe 0.6, ncu decode 28.5, ncu vision 15.5, ncu prefill 27.7 (its timeout was correctly capped to the 29 min left).
+
+**Rehearsal 2:** (a) the no-root Nsight 2026.3 install (`dpkg -x` into a user folder) profiles kernels with both `ncu` and `nsys`; (b) a too-short deadline correctly SKIPs `bench_full` and continues; (c) an epoch `DEADLINE` (what `remote.sh slot` passes) works; (d) all backlog steps run: `sdpa_rkv` 2.5 min, `bench_long` 6.3, `bench_batch_big` 4.2, `model_3b` 16.8 (incl. 6.2 GB download). Raw: `results/raw/20261013-*_T4_*`.
+
+**New results from the backlog runs (T4, FP16; this VM was ~10–15 % slower than the 7 Oct one, so compare only within a run):**
+
+| Experiment | Result |
+| --- | --- |
+| `sdpa_repeat_kv` vs baseline, img_fhd | LM prefill 512 → 293 ms (−43 %), TTFT 1070 → 868 ms (−19 %); TPOT unchanged (decode is overhead-bound); **outputs token-identical** (4/4) |
+| `sdpa_repeat_kv`, img_small | prefill 34 → 31 ms; TPOT 24.4 → 22.2 ms; outputs identical |
+| 1024-token answers | TPOT averages 25.4 ms over 1024 tokens vs ~21–23 ms over 128 → decode slows as the context grows |
+| Batch 1 / 16 / 32 / 64 | 43 / 525 / 831 / 1195 tok/s; no OOM at 64 |
+| LFM2.5-VL-3B baseline | TPOT 42–47 ms (≈ 2× the 1.6B: 30 layers → more launches per token); TTFT img_fhd 1835 ms (LM prefill 1149 ms) |
+
+**Takeaway:** the slot-1 job and its backlog are rehearsed end to end. The O5 quick win is real for long prompts (−43 % prefill at 2300 tokens) and doesn't change outputs.
+
+---
+
 ## 2026-10-13: Attention-path probe on the T4 corrects our explanation of the FP32 math path
 
 **Setup:** `profiling/sdpa_probe.py`, first run (inside the Colab dress rehearsal of `slot1`), T4, FP16. Raw: `results/raw/20261013-*_T4_sdpa_probe.json` (on Colab; pulled with the rehearsal).
