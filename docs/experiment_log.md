@@ -48,6 +48,16 @@ From batch 8–16 the GEMV becomes compute-bound (INT8→FP32 conversion and FMA
 
 **`torch.compile` on the vision tower (O7c, `fused_w8_vcompile`): rejected.** 1080p TTFT 97.8 → 118 ms (img_small 15.8 → 18.4), outputs identical: inside the compiled graph Inductor's GEMMs and its SDPA choice lose to cuBLAS + cuDNN.
 
+**Error bars (02:46–03:46, `plan_refs.sh` filler cycling the three headline variants, 13–14 full grids each, same code; `python benchmarks/aggregate_runs.py --after 20261014-0225`), all in `.venv-ref`:**
+
+| variant | TPOT text | TPOT img_fhd | J/token text | TTFT img_fhd |
+| --- | --- | --- | --- | --- |
+| HF eager | 3.716 ± 0.039 ms | 3.694 ± 0.046 | 0.882 ± 0.029 | 118.9 ± 0.2 ms |
+| `fused_gemv` (BF16) | **2.078 ± 0.001** (1.79×) | 2.141 ± 0.001 | 0.594 ± 0.010 | 118.7 ± 0.2 |
+| `fused_w8` (INT8) | **1.110 ± 0.001** (3.35×) | 1.188 ± 0.001 | **0.334 ± 0.005** (2.6× less) | 118.2 ± 0.2 |
+
+Our CUDA-graph runtime is also ~40× more repeatable than eager HF (σ 0.001 vs 0.04 ms): no Python/launch jitter in the decode loop.
+
 **Night summary:** batch-1 decode on the Blackwell went from 3.83 ms (HF eager) to 2.08 ms in BF16 (1.84×, beats vLLM 2.36 and llama.cpp BF16 2.26), and to 1.11 ms with INT8 weights (3.45×, beats llama.cpp Q8_0 1.45; 98.7 % teacher-forced agreement). 1080p TTFT 116 → 102 ms. All of it is CUDA graphs plus our own kernels (fused elementwise/norm/conv/RoPE/attention, BF16/INT8/INT4 GEMV, PDL).
 
 ---
