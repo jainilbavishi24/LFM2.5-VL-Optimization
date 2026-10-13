@@ -19,7 +19,8 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 
 
 class StaticDecoder:
-    def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16):
+    def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16,
+                 gemv: str = "cublas"):
         self.net = net
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
@@ -42,6 +43,7 @@ class StaticDecoder:
         self.eos = torch.tensor(eos, dtype=torch.long, device=self.device)
         self.fused = fused
         self.attn_splits = attn_splits  # fused path: flash-decoding splits over positions (0 = one block per head)
+        self.gemv = gemv  # fused path, batch 1: "cublas" (F.linear), "bf16" (our GEMV) or "int8" (O6: W8A16 GEMV)
         if fused:
             self._prepare_fused()
 
@@ -137,6 +139,35 @@ class StaticDecoder:
             f = layer.feed_forward
             self.w_13[i] = torch.cat([f.w1.weight, f.w3.weight], 0).contiguous()
         self.norm_w = [l.operator_norm.weight for l in self.layers] + [self.lm.embedding_norm.weight]
+        # every decode GEMV weight, by key; O6 replaces them by INT8 + per-row scale
+        self.lin = {}
+        for i, layer in enumerate(self.layers):
+            if self.is_attn[i]:
+                self.lin[("qkv", i)] = self.w_qkv[i]
+                self.lin[("o", i)] = layer.self_attn.out_proj.weight
+            else:
+                self.lin[("in", i)] = layer.conv.in_proj.weight
+                self.lin[("out", i)] = layer.conv.out_proj.weight
+            self.lin[("w13", i)] = self.w_13[i]
+            self.lin[("w2", i)] = layer.feed_forward.w2.weight
+        self.lin[("head", 0)] = self.lm_head.weight
+        self.lin_scale = {}
+        if self.gemv == "int8":
+            for key, w in self.lin.items():
+                scale = (w.float().abs().amax(1) / 127).clamp_min(1e-12)
+                self.lin[key] = torch.round(w.float() / scale[:, None]).clamp(-127, 127).to(torch.int8).contiguous()
+                self.lin_scale[key] = scale.contiguous()
+
+    def _linear(self, x, key, bias=None):
+        """Decode GEMV for weight `key`: cuBLAS (F.linear) or our BF16 / INT8 kernel (batch 1 only)."""
+        if self.gemv == "cublas" or x.shape[0] != 1:
+            w = self.lin[key]
+            if w.dtype == torch.int8:  # batch > 1 with quantized weights: dequantize (slow path, correctness only)
+                w = (w.float() * self.lin_scale[key][:, None]).to(x.dtype)
+            return F.linear(x, w, bias)
+        y = torch.empty(1, self.lin[key].shape[0], device=x.device, dtype=x.dtype)
+        self.K.gemv(self.lin[key], self.lin_scale.get(key), x, y)
+        return y if bias is None else y + bias
 
     @torch.no_grad()
     def _step_fused(self, s):
@@ -147,7 +178,7 @@ class StaticDecoder:
         for i, layer in enumerate(self.layers):
             if self.is_attn[i]:
                 a = layer.self_attn
-                qkv = F.linear(x, self.w_qkv[i])                                  # [B, (32+8+8)*64]
+                qkv = self._linear(x, ("qkv", i))                                 # [B, (32+8+8)*64]
                 q = torch.empty(B, self.n_heads, self.head_dim, device=h.device, dtype=h.dtype)
                 K.qk_norm_rope_kv(qkv, a.q_layernorm.weight, a.k_layernorm.weight, self.inv_freq,
                                   self.rope_scaling, pos, q, s["k"][i], s["v"][i], self.eps)
@@ -157,20 +188,20 @@ class StaticDecoder:
                     K.decode_attention_split(q, s["k"][i], s["v"][i], pos, o, ws, a.scaling)
                 else:
                     K.decode_attention(q, s["k"][i], s["v"][i], pos, o, a.scaling)
-                y = F.linear(o.view(B, -1), a.out_proj.weight)
+                y = self._linear(o.view(B, -1), ("o", i))
             else:
                 c = layer.conv
-                bcx = F.linear(x, c.in_proj.weight, c.in_proj.bias)               # [B, 3H]
+                bcx = self._linear(x, ("in", i), c.in_proj.bias)                  # [B, 3H]
                 cy = torch.empty(B, H, device=h.device, dtype=h.dtype)
                 K.shortconv_step(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy)
-                y = F.linear(cy, c.out_proj.weight, c.out_proj.bias)
+                y = self._linear(cy, ("out", i), c.out_proj.bias)
             K.add_rmsnorm(h, y, layer.ffn_norm.weight, x, self.eps)               # h += mixer; x = ffn_norm(h)
-            g = F.linear(x, self.w_13[i])                                         # [B, 2I]
+            g = self._linear(x, ("w13", i))                                       # [B, 2I]
             act = torch.empty(B, g.shape[-1] // 2, device=h.device, dtype=h.dtype)
             K.silu_mul(g, act)
-            y = F.linear(act, layer.feed_forward.w2.weight)
+            y = self._linear(act, ("w2", i))
             K.add_rmsnorm(h, y, self.norm_w[i + 1], x, self.eps)                  # h += mlp; x = next norm(h)
-        logits = F.linear(x, self.lm_head.weight)                                 # x = embedding_norm(h)
+        logits = self._linear(x, ("head", 0))                                     # x = embedding_norm(h)
         if self.keep_logits:
             s["logits"].copy_(logits)
         if self.eos.numel():

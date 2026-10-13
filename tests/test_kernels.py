@@ -124,8 +124,22 @@ def test_silu_mul(B=2):
     report("silu_mul", y, ref)
 
 
+def test_gemv():
+    for N, Kd in [(3072, 2048), (6144, 2048), (2048, 2048), (16384, 2048), (2048, 8192), (65536, 2048)]:
+        W = torch.randn(N, Kd, device=dev, dtype=bf) * 0.02
+        x = torch.randn(1, Kd, device=dev, dtype=bf)
+        y = torch.empty(1, N, device=dev, dtype=bf)
+        K.gemv(W, None, x, y)
+        report(f"gemv bf16 [{N}x{Kd}]", y, F.linear(x, W))
+        scale = W.float().abs().amax(1) / 127
+        Wq = torch.round(W.float() / scale[:, None]).clamp(-127, 127).to(torch.int8)
+        K.gemv(Wq, scale, x, y)
+        ref = F.linear(x.float(), Wq.float() * scale[:, None]).to(bf)
+        report(f"gemv int8 [{N}x{Kd}]", y, ref)
+
+
 if __name__ == "__main__":
-    for t in (test_add_rmsnorm, test_shortconv, test_qk_rope_kv, test_attention, test_silu_mul):
+    for t in (test_add_rmsnorm, test_shortconv, test_qk_rope_kv, test_attention, test_silu_mul, test_gemv):
         t()
     print(f"{sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)

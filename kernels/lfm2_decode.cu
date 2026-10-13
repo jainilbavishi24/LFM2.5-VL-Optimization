@@ -11,6 +11,7 @@
 //   decode_attention softmax(q K^T * scale) V over cache[0..pos], GQA      [SDPA, q_len = 1]
 //   decode_attention_split  same, flash-decoding (split over positions + combine) for long contexts
 //   silu_mul         silu(a) * b on the merged w1|w3 projection            [Lfm2MLP]
+//   gemv             batch-1 y = W x, W in BF16 or INT8 (+ per-row scale)    [nn.Linear, O6]
 #include <cstdint>
 #include <cuda_runtime.h>
 #include <cuda_bf16.h>
@@ -298,6 +299,72 @@ void launch_decode_attention_split(const void* q, const void* kc, const void* vc
     decode_attention_split_kernel<<<grid, SPLIT_WARPS * 32, 0, st>>>((const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, ws,
                                                                      NQ, NKV, max_len, S, scale);
     attn_combine_kernel<<<B * NQ, 64, 0, st>>>(ws, (bf16*)out, S);
+}
+
+// ------------------------------------------------------------------------------------------------ gemv (O6)
+// y[n] = scale[n] * sum_k W[n, k] * x[k] for batch-1 decode. W is BF16 or INT8 (weight-only, symmetric
+// per-output-row scale), row-major [N, K]. One warp per output row (8 rows per block); x lives in shared
+// memory as FP32; each lane streams 16-byte chunks of its row (8 BF16 or 16 INT8 weights) with no-L1-allocate
+// loads, UNROLL chunks in flight per lane to keep enough bytes outstanding to saturate DRAM.
+constexpr int GEMV_WARPS = 8;
+__device__ __forceinline__ uint4 ld_stream(const uint4* p) {
+    uint4 r;
+    asm volatile("ld.global.nc.L1::no_allocate.v4.u32 {%0,%1,%2,%3}, [%4];"
+                 : "=r"(r.x), "=r"(r.y), "=r"(r.z), "=r"(r.w) : "l"(p));
+    return r;
+}
+template <typename WT> struct WTraits;
+template <> struct WTraits<bf16> {
+    static constexpr int PER = 8;  // weights per 16-byte chunk
+    __device__ static float dot(const uint4& c, const float* xs) {
+        const __nv_bfloat162* w = reinterpret_cast<const __nv_bfloat162*>(&c);
+        float a = 0.f;
+#pragma unroll
+        for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(w[j]); a += f.x * xs[2 * j] + f.y * xs[2 * j + 1]; }
+        return a;
+    }
+};
+template <> struct WTraits<int8_t> {
+    static constexpr int PER = 16;
+    __device__ static float dot(const uint4& c, const float* xs) {
+        const int8_t* w = reinterpret_cast<const int8_t*>(&c);
+        float a = 0.f;
+#pragma unroll
+        for (int j = 0; j < 16; ++j) a += (float)w[j] * xs[j];
+        return a;
+    }
+};
+template <typename WT, int UNROLL>
+__global__ void gemv_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
+                            bf16* __restrict__ y, int N, int K) {
+    extern __shared__ float xs[];
+    for (int k = threadIdx.x; k < K; k += blockDim.x) xs[k] = B2F(x[k]);
+    __syncthreads();
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const int n = blockIdx.x * GEMV_WARPS + warp;
+    if (n >= N) return;
+    constexpr int PER = WTraits<WT>::PER;
+    const int chunks = K / PER;                             // K is a multiple of 32 * PER for all LFM2 matrices
+    const uint4* row = reinterpret_cast<const uint4*>(W + (size_t)n * K);
+    float acc = 0.f;
+    int c = lane;
+    for (; c + 32 * (UNROLL - 1) < chunks; c += 32 * UNROLL) {
+        uint4 buf[UNROLL];
+#pragma unroll
+        for (int u = 0; u < UNROLL; ++u) buf[u] = ld_stream(row + c + 32 * u);
+#pragma unroll
+        for (int u = 0; u < UNROLL; ++u) acc += WTraits<WT>::dot(buf[u], xs + (c + 32 * u) * PER);
+    }
+    for (; c < chunks; c += 32) acc += WTraits<WT>::dot(ld_stream(row + c), xs + c * PER);
+    acc = warp_sum(acc);
+    if (lane == 0) y[n] = F2B(scale ? acc * scale[n] : acc);
+}
+
+void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, cudaStream_t st) {
+    const dim3 grid((N + GEMV_WARPS - 1) / GEMV_WARPS);
+    const size_t sm = (size_t)K * sizeof(float);
+    if (int8) gemv_kernel<int8_t, 4><<<grid, GEMV_WARPS * 32, sm, st>>>((const int8_t*)W, scale, (const bf16*)x, (bf16*)y, N, K);
+    else gemv_kernel<bf16, 4><<<grid, GEMV_WARPS * 32, sm, st>>>((const bf16*)W, scale, (const bf16*)x, (bf16*)y, N, K);
 }
 
 // ------------------------------------------------------------------------------------------------ silu_mul

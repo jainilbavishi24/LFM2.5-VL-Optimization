@@ -11,6 +11,7 @@ void launch_qk_norm_rope_kv(const void* qkv, const void* qw, const void* kw, con
 void launch_decode_attention(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out,
                              int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st);
 void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st);
+void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, cudaStream_t st);
 void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
                                    int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st);
 
@@ -57,6 +58,19 @@ void decode_attention_split(torch::Tensor q, torch::Tensor kc, torch::Tensor vc,
                                   ws.data_ptr<float>(), q.size(0), q.size(1), kc.size(1), kc.size(2), ws.size(2), (float)scale, stream());
 }
 
+// y [1, N] = x [1, K] @ W^T, W [N, K] BF16 or INT8 (then scale [N] fp32 is required)
+void gemv(torch::Tensor W, c10::optional<torch::Tensor> scale, torch::Tensor x, torch::Tensor y) {
+    CHECK_BF16(x); CHECK_BF16(y);
+    TORCH_CHECK(W.is_cuda() && W.is_contiguous() && W.dim() == 2, "W must be a contiguous CUDA matrix");
+    const bool int8 = W.scalar_type() == at::kChar;
+    TORCH_CHECK(int8 || W.scalar_type() == at::kBFloat16, "W must be bf16 or int8");
+    TORCH_CHECK(!int8 || (scale.has_value() && scale->scalar_type() == at::kFloat), "int8 W needs fp32 scale");
+    const int N = W.size(0), K = W.size(1);
+    TORCH_CHECK(x.numel() == K && y.numel() == N, "batch 1 only");
+    TORCH_CHECK(K % (32 * (int8 ? 16 : 8)) == 0, "K must be a multiple of 256 (bf16) / 512 (int8)");
+    launch_gemv(W.data_ptr(), int8, scale.has_value() ? scale->data_ptr<float>() : nullptr, x.data_ptr(), y.data_ptr(), N, K, stream());
+}
+
 void silu_mul(torch::Tensor g, torch::Tensor y) {
     CHECK_BF16(g); CHECK_BF16(y);
     launch_silu_mul(g.data_ptr(), y.data_ptr(), g.size(0), g.size(-1) / 2, stream());
@@ -68,5 +82,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("qk_norm_rope_kv", &qk_norm_rope_kv, "q/k head RMSNorm + RoPE, k/v into the static cache at pos");
     m.def("decode_attention", &decode_attention, "GQA decode attention over cache[0..pos]");
     m.def("decode_attention_split", &decode_attention_split, "GQA decode attention, split over positions (flash-decoding)");
+    m.def("gemv", &gemv, "batch-1 GEMV, BF16 or INT8 weights");
     m.def("silu_mul", &silu_mul, "silu(a) * b on [a | b]");
 }

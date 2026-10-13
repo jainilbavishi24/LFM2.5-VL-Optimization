@@ -30,10 +30,11 @@ def main():
     ap.add_argument("--gen", type=int, default=128)
     ap.add_argument("--out", default=None)
     ap.add_argument("--fused", action="store_true", help="check the fused-kernel runtime (O2-O4)")
+    ap.add_argument("--gemv", default="cublas", choices=["cublas", "bf16", "int8"], help="fused path GEMV (O6: int8)")
     args = ap.parse_args()
 
     net, processor = load()
-    dec = StaticDecoder(net, keep_logits=True, fused=args.fused)
+    dec = StaticDecoder(net, keep_logits=True, fused=args.fused or args.gemv != "cublas", gemv=args.gemv)
     report = {}
     for name in args.workloads.split(","):
         wl = WORKLOADS[name]

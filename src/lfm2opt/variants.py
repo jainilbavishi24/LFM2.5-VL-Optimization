@@ -78,13 +78,12 @@ def _cudagraph(net, processor):
     return net
 
 
-@register("fused")
-def _fused(net, processor):
+def _fused_variant(net, gemv):
     """O1 + O2-O4: the CUDA-graph decode runtime with our fused kernels (kernels/lfm2_decode.cu) and merged
     q|k|v and w1|w3 projections: ~140 kernels per step instead of ~700. Needs the CUDA extension (.venv-ref)."""
     from .runtime import StaticDecoder
 
-    dec = StaticDecoder(net, fused=True)
+    dec = StaticDecoder(net, fused=True, gemv=gemv)
 
     def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
                  pad_token_id=None, **model_inputs):
@@ -94,6 +93,24 @@ def _fused(net, processor):
     net.generate = generate
     net._static_decoder = dec
     return net
+
+
+@register("fused")
+def _fused(net, processor):
+    """O1 + O2-O4 with cuBLAS GEMVs."""
+    return _fused_variant(net, "cublas")
+
+
+@register("fused_gemv")
+def _fused_gemv(net, processor):
+    """O1-O4 + our BF16 GEMV kernel (batch 1)."""
+    return _fused_variant(net, "bf16")
+
+
+@register("fused_w8")
+def _fused_w8(net, processor):
+    """O1-O4 + O6: INT8 weight-only (per-row scale) GEMV for every decode projection incl. lm_head (batch 1)."""
+    return _fused_variant(net, "int8")
 
 
 def apply_variant(name: str, net, processor):
