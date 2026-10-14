@@ -7,6 +7,7 @@ Benchmarks (test/val parquet files from scripts/download_eval_data.sh, under dat
   ocrbench  1000 OCR questions (text recognition, scene/doc VQA, KIE, formulas)  OCRBench score (substring match)
   chartqa   2500 chart questions                                      relaxed accuracy (5 % numeric tolerance)
   textvqa   val shard 0 (~1670 scene-text questions)                  VQA accuracy (min(#humans agreeing / 3, 1))
+  textvqa_full  all 5000 TextVQA val questions (3 shards)
 
     python benchmarks/eval_quality.py --variants baseline,fused_gemv_vcudnn+gpuprep [--limit pope=3000]
     python benchmarks/eval_compare.py results/eval/<run>      # paired comparison + McNemar test
@@ -73,8 +74,9 @@ def load_bench(name):
         for i, r in enumerate(_rows("chartqa_test.parquet")):
             items.append(dict(id=f"chartqa/{i}", image=_img(r["image"]), prompt=r["question"] + SHORT, max_new=16,
                               gt=r["answer"], cat=r.get("type")))
-    elif name == "textvqa":
-        for r in _rows("textvqa_val0.parquet"):
+    elif name in ("textvqa", "textvqa_full"):
+        shards = ["textvqa_val0.parquet"] + (["textvqa_val1.parquet", "textvqa_val2.parquet"] if name == "textvqa_full" else [])
+        for r in (r for sh in shards for r in _rows(sh)):
             items.append(dict(id=f"textvqa/{r['question_id']}", image=_img(r["image"]), prompt=r["question"] + SHORT,
                               max_new=16, gt=list(r["answers"]), cat=None))
     else:
@@ -168,7 +170,7 @@ def score(bench, item, pred):
         return score_ocrbench(pred, item["gt"], item["cat"])
     if bench == "chartqa":
         return score_chartqa(pred, item["gt"])
-    return score_textvqa(pred, item["gt"])
+    return score_textvqa(pred, item["gt"])  # textvqa, textvqa_full
 
 
 def bench_metrics(bench, rows):

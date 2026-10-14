@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Download the VLM quality benchmarks (test parquet files from the Hugging Face Hub) into data/eval/.
 # The server's internet is throttled per connection, so each file is fetched with parallel range requests (8 MB chunks).
-#   MMStar (1500 multiple-choice), OCRBench (1000), POPE (3 x 3000 yes/no), ChartQA test (2500), TextVQA val shard 0 (~1670)
+#   MMStar (1500 multiple-choice), OCRBench (1000), POPE (3 x 3000 yes/no), ChartQA test (2500), TextVQA val (3 shards, 5000)
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${OUT:-$ROOT/data/eval}"
@@ -36,5 +36,7 @@ lmms-lab-encoder/POPE Full/adversarial-00000-of-00001.parquet 85007167 pope_adve
 lmms-lab-encoder/POPE Full/popular-00000-of-00001.parquet 85003430 pope_popular.parquet
 lmms-lab-encoder/POPE Full/random-00000-of-00001.parquet 85012317 pope_random.parquet
 lmms-lab-encoder/textvqa data/validation-00000-of-00003.parquet 310398494 textvqa_val0.parquet
+lmms-lab-encoder/textvqa data/validation-00001-of-00003.parquet 311190265 textvqa_val1.parquet
+lmms-lab-encoder/textvqa data/validation-00002-of-00003.parquet 298732781 textvqa_val2.parquet
 EOF
 ls -la "$OUT"

@@ -15,7 +15,29 @@ Entry template:
 
 ---
 
-## 2026-10-14 (slot 2, 16:00–18:00): GPU image preprocessing (P1), quality evaluation on 5 VLM benchmarks (Q1), fused vision encoder (O7d), fused LM prefill (O3b)  (Claude)
+## 2026-10-14 (slot 3, 18:00–20:00): how far is the first token from the hardware limit; full-size quality eval  (Claude)
+
+**GEMM efficiency of the first token** ([profiling/gemm_efficiency.py](../profiling/gemm_efficiency.py); every GEMM shape of a 1080p request, cuBLAS via `F.linear` as our fused paths call it, with biases only where the model has them, CUDA events):
+
+| GEMM (M×K×N) | ms | TFLOPS | % of best square GEMM | per request (ms) |
+| --- | --- | --- | --- | --- |
+| vision qkv 9216×1152×3456 | 0.362 | 203 | 93 % | 27 × → 9.8 |
+| vision out 9216×1152×1152 | 0.119 | 206 | 94 % | 3.2 |
+| vision fc1 + GELU epilogue 9216×1152×4304 | 0.477 | 192 | 88 % | 12.9 |
+| vision fc2 9216×4304×1152 | 0.476 | 192 | 88 % | 12.9 |
+| LM w1\|w3 2327×2048×16384 | 0.804 | 194 | 89 % | 16 × → 12.9 |
+| LM w2 2327×8192×2048 | 0.429 | 182 | 83 % | 6.9 |
+| LM attn/conv projections | 0.11–0.34 | 170–181 | 78–83 % | 6.1 |
+| **all** | | **192** | **88 %** | **64.5 ms** |
+
+- The best square GEMM reaches 219 TFLOPS (4096³). Longer ones throttle at the 300 W board limit: 8192³ gets 142–190 TFLOPS.
+- **So 64.5 of the 87 ms 1080p first token is GEMMs at 88 % of the achievable BF16 tensor-core rate.** The rest is attention (~8 ms) and elementwise work.
+- Further BF16 gains on the first token are therefore small. FP8 GEMMs would be the next step, but that is quantization (an extension, and the rejected O7b showed it needs fused activation quantization).
+- Pitfalls:
+  - A bias on a GEMM matters: with a bias, cuBLAS uses its bias-epilogue path. For the LM's 2327×8192×2048 that is 149 instead of 203 TFLOPS, and the LFM2 LM has no biases.
+  - `preferred_blas_library("cublaslt")` and a pre-transposed weight layout did not help (±2 %, or worse).
+
+: GPU image preprocessing (P1), quality evaluation on 5 VLM benchmarks (Q1), fused vision encoder (O7d), fused LM prefill (O3b)  (Claude)
 
 **Direction (decided with the team this morning):** the main results are lossless BF16 GPU/CUDA optimizations. Quantization (INT8) is only an extension, evaluated separately; INT4 is dropped. Every variant is graded on standard VLM benchmarks (accuracy) next to latency and energy.
 
