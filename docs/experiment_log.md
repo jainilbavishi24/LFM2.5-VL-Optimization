@@ -15,7 +15,38 @@ Entry template:
 
 ---
 
-## 2026-10-14 (slot 3, 18:00–20:00): how far is the first token from the hardware limit; full-size quality eval  (Claude)
+## 2026-10-14 (evening, Colab T4): does everything reproduce on a Tesla T4?  (Claude)
+
+**Porting** (sm_75: no PDL, no flash/cuDNN attention, no native BF16):
+- PDL is now compiled and enabled only on sm_90+.
+- The padding-free vision attention falls back to the memory-efficient or math kernel.
+- `LFM2_DTYPE=bf16` forces BF16. Our kernels are BF16-only, and `auto` picks FP16 on a T4; BF16 is emulated there.
+
+**Correctness on the T4: everything reproduces.**
+- `tests/test_kernels.py` 109/109, including the bit-exact GEMV epilogues.
+- `tests/test_preprocess.py` 0 failures (bit-exact).
+- Fused decode + prefill vs HF: first token matches, 127/127 on text and VGA, 125/127 at 1080p (flips only at exact ties).
+- Fused vision vs FP32: 3.9 / 3.9 / 5.0 % relative error vs HF BF16's 4.0 / 3.7 / 4.9 %.
+
+**Speed** (`results/raw/20261014-155605..160247_T4_t4_*`, 5 repeats, 128 tokens):
+
+| Configuration | TPOT text / VGA / 1080p | J/token | TTFT text / VGA / 1080p |
+| --- | --- | --- | --- |
+| HF FP16 (native T4 baseline) | 21.6 / 21.1 / 21.2 ms | 1.41–1.48 | 33 / 111 / 1148 ms |
+| HF BF16 (emulated) | 21.3 / 20.8 / 21.8 | 1.40–1.45 | 64 / 717 / 6443 |
+| **ours, BF16 stack** | **9.0 / 9.3 / 9.2** (2.3×) | **0.59–0.62** | 51 / 659 / 6447 |
+| INT8 extension | 5.1 / 5.3 / 4.9 (4.2×) | 0.30–0.34 | 51 / 662 / 6470 |
+
+- **Decode reproduces, and the gain is larger than on Blackwell:** 2.3× (Blackwell 1.75×), and 9.0 ms is 1.24× the T4's weight-read floor (7.3 ms at 320 GB/s). HF on the T4 is even more launch-bound. Energy per token −58 % (INT8 −77 %).
+- **The first token does not reproduce in BF16.** The T4 has no BF16 tensor cores, so every prefill/vision GEMM runs on the emulated BF16 path. Ours ≈ HF BF16, but about 6× slower than HF FP16 (1080p 6.4 s vs 1.15 s).
+- To keep the first-token gains on a T4, our kernels need an FP16 version (templated element type). The math is unchanged; the vision/prefill GEMMs would then use FP16 tensor cores.
+- End to end with 128 tokens, BF16 ours vs HF FP16:
+  - text 2.78 → 1.20 s (2.3×)
+  - VGA 2.79 → 1.84 s (1.5×)
+  - 1080p 3.83 → 7.61 s (2× slower, dominated by the emulated-BF16 first token)
+- GPU preprocessing on the T4: 1080p 98 → 10 ms (VGA 7.9 → 2.3).
+
+: how far is the first token from the hardware limit; full-size quality eval  (Claude)
 
 **GEMM efficiency of the first token** ([profiling/gemm_efficiency.py](../profiling/gemm_efficiency.py); every GEMM shape of a 1080p request, cuBLAS via `F.linear` as our fused paths call it, with biases only where the model has them, CUDA events):
 

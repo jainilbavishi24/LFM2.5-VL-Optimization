@@ -1,0 +1,17 @@
+{
+  "preset": null,
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "fp16",
+  "attn": "sdpa",
+  "variants": "baseline",
+  "workloads": "text,img_small,img_fhd",
+  "gen_lens": "1,128",
+  "batch_sizes": "1",
+  "warmup": 2,
+  "repeats": 5,
+  "idle_seconds": 2.0,
+  "preprocess": "cpu",
+  "no_phases": true,
+  "tag": "t4_base_fp16",
+  "out": "/content/PAA_Project/results/raw"
+}
