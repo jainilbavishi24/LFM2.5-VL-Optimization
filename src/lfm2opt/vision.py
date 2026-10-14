@@ -61,7 +61,10 @@ class FusedSiglip2Encoder:
             with sdpa_kernel([SDPBackend.CUDNN_ATTENTION, SDPBackend.EFFICIENT_ATTENTION], set_priority=True):
                 o = F.scaled_dot_product_attention(q, k, v, attn_mask=self._mask, scale=self.scale)
             return o.transpose(1, 2).reshape(T, L, -1)
-        backend = [SDPBackend.CUDNN_ATTENTION if self.attn == "cudnn_varlen" else SDPBackend.FLASH_ATTENTION]
+        # flash needs sm_80+: older GPUs run the same padding-free runs on the memory-efficient kernel, or (BF16 on a
+        # T4, which neither supports) on the math path
+        backend = [SDPBackend.CUDNN_ATTENTION if self.attn == "cudnn_varlen" else SDPBackend.FLASH_ATTENTION,
+                   SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]
         if len(runs) == 1 and runs[0][2] == L:  # every tile full: no copy of the output
             q, k, v = (qkv5[:, :, j].transpose(1, 2) for j in range(3))
             with sdpa_kernel(backend):

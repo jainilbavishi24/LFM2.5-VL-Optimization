@@ -1,5 +1,6 @@
 """Load LFM2.5-VL and build model inputs for a workload."""
 
+import os
 from pathlib import Path
 
 import torch
@@ -19,7 +20,10 @@ DTYPES = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
 
 
 def resolve_dtype(name: str) -> torch.dtype:
-    """'auto' = bf16 where the GPU has native BF16 (sm_80+), else fp16 (e.g. T4)."""
+    """'auto' = bf16 where the GPU has native BF16 (sm_80+), else fp16 (e.g. T4). LFM2_DTYPE overrides 'auto'
+    (e.g. LFM2_DTYPE=bf16 on a T4: our CUDA kernels are BF16-only; BF16 is emulated there)."""
+    if name == "auto" and os.environ.get("LFM2_DTYPE"):
+        name = os.environ["LFM2_DTYPE"]
     if name == "auto":
         if torch.cuda.is_available() and torch.cuda.is_bf16_supported(including_emulation=False):
             return torch.bfloat16

@@ -25,10 +25,24 @@ __device__ __forceinline__ float rbf(float x) { return B2F(F2B(x)); }  // round 
 // kernel can start while this one drains. Contract: before pdl_wait() a kernel may only read immutable data
 // (weights) and must not write anything; pdl_wait() returns once the previous grid has completed and its writes are
 // visible. pdl_trigger() lets the next kernel launch early. Both are no-ops for launches without the attribute.
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
 __device__ __forceinline__ void pdl_wait() { asm volatile("griddepcontrol.wait;" ::: "memory"); }
 __device__ __forceinline__ void pdl_trigger() { asm volatile("griddepcontrol.launch_dependents;"); }
+#else  // pre-Hopper (e.g. T4, A100): no PDL, kernels simply run in stream order
+__device__ __forceinline__ void pdl_wait() {}
+__device__ __forceinline__ void pdl_trigger() {}
+#endif
 static bool g_pdl = true;
 void set_pdl(bool on) { g_pdl = on; }
+static bool pdl_supported() {  // the launch attribute needs compute capability 9.0+
+    static int major = -1;
+    if (major < 0) {
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
+    }
+    return major >= 9;
+}
 template <typename... KArgs, typename... Args>
 static void launch_k(void (*kernel)(KArgs...), dim3 grid, dim3 block, size_t smem, cudaStream_t st, Args... args) {
     cudaLaunchConfig_t cfg = {};
@@ -38,9 +52,9 @@ static void launch_k(void (*kernel)(KArgs...), dim3 grid, dim3 block, size_t sme
     cfg.stream = st;
     cudaLaunchAttribute attr;
     attr.id = cudaLaunchAttributeProgrammaticStreamSerialization;
-    attr.val.programmaticStreamSerializationAllowed = g_pdl ? 1 : 0;
+    attr.val.programmaticStreamSerializationAllowed = 1;
     cfg.attrs = &attr;
-    cfg.numAttrs = 1;
+    cfg.numAttrs = (g_pdl && pdl_supported()) ? 1 : 0;
     cudaLaunchKernelEx(&cfg, kernel, static_cast<KArgs>(args)...);
 }
 
