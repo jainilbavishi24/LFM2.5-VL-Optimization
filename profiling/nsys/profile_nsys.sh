@@ -6,6 +6,7 @@
 #
 # Writes profiling/reports/<run_id>/{*.nsys-rep, *_cuda_gpu_kern_sum.csv, *_nvtx_sum.csv, *_cuda_api_sum.csv}
 # The .nsys-rep (git-ignored) opens in the Nsight Systems GUI on any laptop, no GPU needed.
+# Our CUDA-extension variants need a Python with headers: PYTHON=.venv-ref/bin/python bash profiling/nsys/profile_nsys.sh ...
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/setup_profilers.sh" >/dev/null
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -20,7 +21,7 @@ nsys profile \
     --sample=none --cpuctxsw=none \
     --capture-range=cudaProfilerApi --capture-range-end=stop \
     --force-overwrite=true -o "$REP" \
-    python "$ROOT/profiling/run_once.py" --workload "$WL" --gen-len "$GEN" "$@"
+    "${PYTHON:-python}" "$ROOT/profiling/run_once.py" --workload "$WL" --gen-len "$GEN" "$@"
 
 nsys stats --force-export=true --format csv \
     --report cuda_gpu_kern_sum --report nvtx_sum --report cuda_api_sum \
