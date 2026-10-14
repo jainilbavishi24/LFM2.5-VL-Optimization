@@ -68,6 +68,15 @@ The same kernels, unchanged, keep the 3B's quality, at 1.6–2.6× less time per
 - 154 have the same score: format only ("61" vs "61."; "A" vs "A: Stage"; "The word "GAMBOA" is written…" vs "GAMBOA").
 - The rest flip **35× in our favour and 30× against**. That is BF16 rounding noise at near-ties (different summation order in our kernels, cuDNN/flash attention and the GELU epilogue), not a systematic loss.
 
+**Kernel breakdown of the final 1080p first token** ([profiling/ttft_kernels.py](../profiling/ttft_kernels.py), PyTorch profiler, PDL off; GPU preprocessing + vision + prefill + first token):
+- Totals: 616 kernels, 79.3 ms kernel time (86.7 ms wall).
+- GEMMs: 62.1 ms (78 %), already at 88 % of peak.
+- Flash attention: 10.3 ms (13 %), 27 vision layers + 6 LM layers.
+- Our fused kernels (preprocessing, add+LayerNorm, add+RMSNorm, SwiGLU, short-conv, qk-norm/RoPE): 5.6 ms (7 %).
+- PyTorch glue (copies, embedding scatter, position-embedding resize): 1.3 ms (1.6 %).
+
+Nothing large is left that a BF16 kernel could remove. The remaining options change the arithmetic (FP8 GEMMs/attention = quantization) or the model (fewer tiles/tokens).
+
 - Pitfalls:
   - A bias on a GEMM matters: with a bias, cuBLAS uses its bias-epilogue path. For the LM's 2327×8192×2048 that is 149 instead of 203 TFLOPS, and the LFM2 LM has no biases.
   - `preferred_blas_library("cublaslt")` and a pre-transposed weight layout did not help (±2 %, or worse).
