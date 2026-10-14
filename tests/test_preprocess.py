@@ -1,8 +1,9 @@
 """GPU image preprocessing (lfm2opt.preprocess) vs the HF CPU processor: same tokens, same pixel_values.
 
-    python tests/test_preprocess.py          # exit code 1 on any mismatch beyond the tolerance
+    python tests/test_preprocess.py [--model LiquidAI/LFM2.5-VL-3B]   # exit code 1 on any mismatch beyond the tolerance
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -22,7 +23,10 @@ SIZES = [(640, 480), (1280, 720), (1920, 1080), (200, 150), (64, 64), (512, 512)
 
 
 def main():
-    path, rev = resolve_model_path("LiquidAI/LFM2.5-VL-1.6B")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default="LiquidAI/LFM2.5-VL-1.6B", help="the 3B's processor resizes bicubic")
+    args = ap.parse_args()
+    path, rev = resolve_model_path(args.model)
     proc = AutoProcessor.from_pretrained(path, revision=rev)
     gproc = GpuImageProcessor.wrap(proc)
     src = Image.open(SOURCE_IMAGE).convert("RGB")

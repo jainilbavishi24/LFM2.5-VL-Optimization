@@ -23,18 +23,19 @@ LFM2_PDL=0 ncu --target-processes all --kernel-name "$KERNELS" --launch-count "$
 ncu --import "$OUT/ncu_ours.ncu-rep" --csv --page raw --metrics "$METRICS" > "$OUT/ncu_ours_metrics.csv"
 python3 - "$OUT/ncu_ours_metrics.csv" <<'PY'
 import csv, sys, collections
-rows = list(csv.DictReader(open(sys.argv[1])))[1:]  # first data row holds the units
+rows = list(csv.DictReader(open(sys.argv[1])))
+units, rows = rows[0], rows[1:]                       # first data row holds the units
+to_us = {"ns": 1e-3, "us": 1.0, "usecond": 1.0, "ms": 1e3, "msecond": 1e3}.get(units["gpu__time_duration.sum"], 1.0)
 agg = collections.defaultdict(list)
 for r in rows:
-    name = r["Kernel Name"].split("(")[0].split("<")[0]
-    agg[(name, r["launch__grid_size"])].append(r)
-f = lambda r, k: float(r[k].replace(",", "")) if r.get(k) not in (None, "", "n/a") else float("nan")
-print(f"{'kernel':<34}{'grid':>8}{'n':>4}{'us':>9}{'DRAM %':>8}{'mem %':>8}{'SM %':>7}{'GB/s':>8}")
-for (name, grid), rs in sorted(agg.items(), key=lambda kv: -sum(f(r, 'gpu__time_duration.sum') for r in kv[1])):
-    us = sum(f(r, "gpu__time_duration.sum") for r in rs) / len(rs) / 1e3
-    by = sum(f(r, "dram__bytes_read.sum") + f(r, "dram__bytes_write.sum") for r in rs) / len(rs)
-    print(f"{name[:33]:<34}{grid:>8}{len(rs):>4}{us:>9.2f}{sum(f(r,'dram__throughput.avg.pct_of_peak_sustained_elapsed') for r in rs)/len(rs):>8.1f}"
-          f"{sum(f(r,'gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed') for r in rs)/len(rs):>8.1f}"
-          f"{sum(f(r,'sm__throughput.avg.pct_of_peak_sustained_elapsed') for r in rs)/len(rs):>7.1f}{by/us/1e3:>8.0f}")
+    agg[(r["Kernel Name"].split("(")[0].replace("void ", ""), r["launch__grid_size"])].append(r)
+avg = lambda rs, k: sum(float(r[k].replace(",", "")) for r in rs) / len(rs)
+print(f"{'kernel':<58}{'grid':>8}{'n':>5}{'us':>9}{'DRAM %':>8}{'mem %':>8}{'SM %':>7}{'occ %':>7}")
+for (name, grid), rs in sorted(agg.items(), key=lambda kv: -avg(kv[1], "gpu__time_duration.sum") * len(kv[1])):
+    print(f"{name[:57]:<58}{grid:>8}{len(rs):>5}{avg(rs, 'gpu__time_duration.sum') * to_us:>9.2f}"
+          f"{avg(rs, 'dram__throughput.avg.pct_of_peak_sustained_elapsed'):>8.1f}"
+          f"{avg(rs, 'gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed'):>8.1f}"
+          f"{avg(rs, 'sm__throughput.avg.pct_of_peak_sustained_elapsed'):>7.1f}"
+          f"{avg(rs, 'sm__warps_active.avg.pct_of_peak_sustained_active'):>7.1f}")
 PY
 echo "-> $OUT"

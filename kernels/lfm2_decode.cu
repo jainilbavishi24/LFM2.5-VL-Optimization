@@ -548,8 +548,10 @@ void launch_gemv(const void* W, bool int8, const float* scale, const void* x, vo
 }
 
 // ------------------------------------------------------------------------------------------------ gemv + epilogue (O2d)
-// Batch-1 GEMV whose warp computes NR rows that belong together (row n of each of the NR stacked [S, K] blocks of W)
-// and applies the next op itself, so the separate elementwise kernel (and its launch) disappears. Same accumulation
+constexpr int EPI_RPB = 4;  // output rows per block
+// Batch-1 GEMV over NR stacked [S, K] blocks of W: the NR rows that belong together (row n of each block) are computed
+// by different warps of one block, meet in shared memory, and the next op is applied there, so the separate
+// elementwise kernel (and its launch) disappears. Same accumulation
 // order and BF16 rounding points as gemv_direct_kernel + silu_mul / shortconv_step: bit-identical results.
 //   EPI 0 (NR 2): W = w1|w3 [2I, K]           -> y[n] = bf16(bf16(silu(g)) * u)
 //   EPI 1 (NR 3): W = in_proj (B|C|x) [3H, K] -> conv-state shift + depthwise conv3 + C gate -> y[n] (shortconv_step)
@@ -557,26 +559,23 @@ template <typename WT, int NR, int EPI>
 __global__ void gemv_epi_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
                                 bf16* __restrict__ y, int S, int K, bf16* __restrict__ state, const bf16* __restrict__ cw,
                                 const bf16* __restrict__ cbias) {
+    // block = NR * EPI_RPB warps; warp w computes row (n0 + w % EPI_RPB) of part w / EPI_RPB, exactly like
+    // gemv_direct_kernel<WT, 1, 4, 1> (1 row per warp, 4 chunks in flight); the parts meet in shared memory.
     pdl_trigger();
-    constexpr int PER = WTraits<WT>::PER, UNROLL = 2;
+    constexpr int PER = WTraits<WT>::PER, UNROLL = 4;
+    __shared__ float part[NR][EPI_RPB];
     const int chunks = K / PER;
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
-    const int n = blockIdx.x * GEMV_WARPS + warp;
-    if (n >= S) return;
-    const uint4* rows[NR];
-#pragma unroll
-    for (int r = 0; r < NR; ++r) rows[r] = reinterpret_cast<const uint4*>(W + (size_t)(n + r * S) * K);
-    float acc[NR];
-#pragma unroll
-    for (int r = 0; r < NR; ++r) acc[r] = 0.f;
+    const int r = warp / EPI_RPB, j = warp % EPI_RPB, n = blockIdx.x * EPI_RPB + j;
+    const bool active = n < S;
+    const uint4* row = reinterpret_cast<const uint4*>(W + (size_t)(min(n, S - 1) + r * S) * K);
+    float acc = 0.f;
     int c = lane;
-    uint4 buf[NR][UNROLL];
-    bool more = c + 32 * (UNROLL - 1) < chunks;
+    uint4 buf[UNROLL];
+    bool more = active && c + 32 * (UNROLL - 1) < chunks;
     if (more) {
 #pragma unroll
-        for (int u = 0; u < UNROLL; ++u)
-#pragma unroll
-            for (int r = 0; r < NR; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+        for (int u = 0; u < UNROLL; ++u) buf[u] = ld_stream(row + c + 32 * u);
     }
     pdl_wait();
     while (more) {
@@ -584,51 +583,49 @@ __global__ void gemv_epi_kernel(const WT* __restrict__ W, const float* __restric
         for (int u = 0; u < UNROLL; ++u) {
             float xv[PER];
             load_x<PER>(x, c + 32 * u, xv);
-#pragma unroll
-            for (int r = 0; r < NR; ++r) acc[r] += WTraits<WT>::dot(buf[r][u], xv, 1);
+            acc += WTraits<WT>::dot(buf[u], xv, 1);
         }
         c += 32 * UNROLL;
         more = c + 32 * (UNROLL - 1) < chunks;
         if (more) {
 #pragma unroll
-            for (int u = 0; u < UNROLL; ++u)
-#pragma unroll
-                for (int r = 0; r < NR; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+            for (int u = 0; u < UNROLL; ++u) buf[u] = ld_stream(row + c + 32 * u);
         }
     }
-    for (; c < chunks; c += 32) {
-        float xv[PER];
-        load_x<PER>(x, c, xv);
-#pragma unroll
-        for (int r = 0; r < NR; ++r) acc[r] += WTraits<WT>::dot(ld_stream(rows[r] + c), xv, 1);
+    if (active) {
+        for (; c < chunks; c += 32) {
+            float xv[PER];
+            load_x<PER>(x, c, xv);
+            acc += WTraits<WT>::dot(ld_stream(row + c), xv, 1);
+        }
     }
-    float a[NR];
-#pragma unroll
-    for (int r = 0; r < NR; ++r) {
-        const float v = warp_sum(acc[r]);
-        a[r] = rbf(scale ? v * scale[n + r * S] : v);  // = the BF16 value the plain GEMV would have stored
-    }
-    if (lane != 0) return;
+    const float v = warp_sum(acc);
+    if (lane == 0) part[r][j] = rbf(scale && active ? v * scale[n + r * S] : v);  // = the BF16 the plain GEMV stores
+    __syncthreads();
+    if (threadIdx.x >= EPI_RPB) return;
+    const int t = threadIdx.x, m = blockIdx.x * EPI_RPB + t;
+    if (m >= S) return;
     if constexpr (EPI == 0) {
-        y[n] = F2B(rbf(a[0] / (1.f + __expf(-a[0]))) * a[1]);
+        const float g = part[0][t], u = part[1][t];
+        y[m] = F2B(rbf(g / (1.f + __expf(-g))) * u);
     } else {
         constexpr int L = 3;
-        const float bx = rbf(a[0] * a[2]);
-        bf16* st = state + (size_t)n * L;
+        const float bx = rbf(part[0][t] * part[2][t]);
+        bf16* st = state + (size_t)m * L;
         const float s1 = B2F(st[1]), s2 = B2F(st[2]);
         st[0] = st[1]; st[1] = st[2]; st[2] = F2B(bx);
-        float acc2 = B2F(cw[n * L + 0]) * s1 + B2F(cw[n * L + 1]) * s2 + B2F(cw[n * L + 2]) * bx;
-        if (cbias) acc2 += B2F(cbias[n]);
-        y[n] = F2B(a[1] * rbf(acc2));
+        float acc2 = B2F(cw[m * L + 0]) * s1 + B2F(cw[m * L + 1]) * s2 + B2F(cw[m * L + 2]) * bx;
+        if (cbias) acc2 += B2F(cbias[m]);
+        y[m] = F2B(part[1][t] * rbf(acc2));
     }
 }
 
 template <typename WT>
 static void gemv_epi_dispatch(int epi, const WT* W, const float* scale, const bf16* x, bf16* y, int S, int K, bf16* state,
                               const bf16* cw, const bf16* cbias, cudaStream_t st) {
-    const dim3 grid((S + GEMV_WARPS - 1) / GEMV_WARPS);
-    if (epi == 0) launch_k(gemv_epi_kernel<WT, 2, 0>, grid, GEMV_WARPS * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
-    else launch_k(gemv_epi_kernel<WT, 3, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
+    const dim3 grid((S + EPI_RPB - 1) / EPI_RPB);
+    if (epi == 0) launch_k(gemv_epi_kernel<WT, 2, 0>, grid, 2 * EPI_RPB * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
+    else launch_k(gemv_epi_kernel<WT, 3, 1>, grid, 3 * EPI_RPB * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
 }
 
 void launch_gemv_epi(int epi, const void* W, bool int8, const float* scale, const void* x, void* y, int S, int K, void* state,

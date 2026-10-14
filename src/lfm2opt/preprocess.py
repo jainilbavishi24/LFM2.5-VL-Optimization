@@ -4,7 +4,8 @@ HF's processor resizes, tiles, normalizes and patchifies on the CPU (69 ms for a
 Core Ultra 9, more than the whole vision tower). Here the uint8 image is copied to the GPU once and two kernels
 (kernels/image_prep.cu) produce the padded `pixel_values` directly: an antialiased bilinear horizontal pass into a uint8
 buffer, then the vertical pass fused with rescale/normalize, tile split and 16x16 patchify. The int16 fixed-point
-weights are computed here with the same formula as ATen's uint8 resize, so the output is bit-identical to the CPU path.
+weights (bilinear for the 1.6B, bicubic for the 3B) are computed here with the same formula as ATen's uint8 resize,
+so the output is bit-identical to the CPU path.
 
     processor = GpuImageProcessor.wrap(processor)   # same call signature, pixel_values come back on the GPU
 """
@@ -21,14 +22,31 @@ from transformers.models.lfm2_vl.image_processing_lfm2_vl import Lfm2VlImageProc
 from .kernels import prep_ext
 
 
-def aa_bilinear_weights(in_size: int, out_size: int):
-    """ATen's antialiased bilinear weights (uint8 path): per output index (xmin, xsize) and int16 weights.
+def _bilinear(x):
+    return max(0.0, 1.0 - abs(x))
 
-    Mirrors HelperInterpLinear::_compute_index_ranges_weights<double> + _compute_index_ranges_int16_weights
+
+def _bicubic(x, a=-0.5):  # Keys cubic convolution, a = -0.5 for antialiased bicubic (Pillow compatible)
+    x = abs(x)
+    if x < 1.0:
+        return ((a + 2) * x - (a + 3)) * x * x + 1
+    if x < 2.0:
+        return ((a * x - 5 * a) * x + 8 * a) * x - 4 * a
+    return 0.0
+
+
+FILTERS = {2: (_bilinear, 2), 3: (_bicubic, 4)}  # PIL resample id -> (filter, interp_size)
+
+
+def aa_weights(in_size: int, out_size: int, resample: int = 2):
+    """ATen's antialiased bilinear / bicubic weights (uint8 path): per output index (xmin, xsize) and int16 weights.
+
+    Mirrors HelperInterpLinear/Cubic::_compute_index_ranges_weights<double> + _compute_index_ranges_int16_weights
     (aten/src/ATen/native/cpu/UpSampleKernel.cpp), which follows Pillow's resample.
     """
+    filt, interp_size = FILTERS[resample]
     scale = in_size / out_size
-    support = scale if scale >= 1.0 else 1.0  # interp_size (2) * 0.5 * scale
+    support = interp_size * 0.5 * scale if scale >= 1.0 else interp_size * 0.5
     invscale = 1.0 / scale if scale >= 1.0 else 1.0
     max_interp = int(math.ceil(support)) * 2 + 1
     bounds = np.zeros((out_size, 2), np.int32)
@@ -38,7 +56,7 @@ def aa_bilinear_weights(in_size: int, out_size: int):
         center = scale * (i + 0.5)
         xmin = max(int(center - support + 0.5), 0)
         xsize = min(max(min(int(center + support + 0.5), in_size) - xmin, 0), max_interp)
-        ws = [max(0.0, 1.0 - abs((j + xmin - center + 0.5) * invscale)) for j in range(xsize)]
+        ws = [filt((j + xmin - center + 0.5) * invscale) for j in range(xsize)]
         total = sum(ws)
         if total != 0.0:
             ws = [w / total for w in ws]
@@ -54,8 +72,8 @@ def aa_bilinear_weights(in_size: int, out_size: int):
 
 
 @lru_cache(maxsize=64)
-def _weights_on_gpu(in_size: int, out_size: int):
-    bounds, w, prec = aa_bilinear_weights(in_size, out_size)
+def _weights_on_gpu(in_size: int, out_size: int, resample: int = 2):
+    bounds, w, prec = aa_weights(in_size, out_size, resample)
     return torch.from_numpy(bounds).cuda(), torch.from_numpy(w).cuda(), prec
 
 
@@ -107,7 +125,8 @@ class GpuImageProcessor(Lfm2VlImageProcessor):
         return [(new_h, new_w, new_h, new_w, 1, 1)], 1, 1, [new_h, new_w]
 
     def __call__(self, images, **kwargs):
-        assert self.resample in (2, None) and self.do_rescale and self.do_normalize and self.do_pad
+        resample = 2 if self.resample is None else int(self.resample)
+        assert resample in FILTERS and self.do_rescale and self.do_normalize and self.do_pad
         flat = [im for sub in images for im in sub] if isinstance(images, (list, tuple)) and images and \
             isinstance(images[0], (list, tuple)) else list(images if isinstance(images, (list, tuple)) else [images])
         ps = self.encoder_patch_size
@@ -129,8 +148,8 @@ class GpuImageProcessor(Lfm2VlImageProcessor):
         for img, h, w, jobs, rows, cols, size in plans:
             dev = self._upload(img)
             for oh, ow, tile_h, tile_w, tiles_x, ntiles in jobs:
-                hb, hw, hp = _weights_on_gpu(w, ow)
-                vb, vw, vp = _weights_on_gpu(h, oh)
+                hb, hw, hp = _weights_on_gpu(w, ow, resample)
+                vb, vw, vp = _weights_on_gpu(h, oh, resample)
                 tmp = torch.empty((h, ow, 3), dtype=torch.uint8, device="cuda")
                 ext.resize_h(dev, tmp, hb, hw, hp)
                 ext.resize_v_patchify(tmp, out, vb, vw, vp, oh, tile_h, tile_w, tiles_x, t0, mean, std)

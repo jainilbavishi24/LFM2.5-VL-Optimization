@@ -127,6 +127,41 @@ Entry template:
 
   Per question it is 2.0–3.1× faster and uses 29–41 % less GPU energy, with no measurable change in quality.
 
+**GPU preprocessing for the 3B:** the 3B's processor resizes with antialiased *bicubic* (`resample: 3`), so the first 3B stack run stopped at our assertion. Added the Keys (a = −0.5) cubic filter to the host-side weight computation (same ATen/Pillow uint8 scheme; negative weights, saturating). The kernels are unchanged. Bit-exact on all 28 cases for the 3B processor too (`tests/test_preprocess.py --model LiquidAI/LFM2.5-VL-3B`).
+
+**O2d, decode GEMV with fused epilogue: first version slower.**
+- What it does: the w1\|w3 GEMV computes SwiGLU itself, and the in_proj GEMV does the short-conv step and state update itself. That removes 26 elementwise launches per token, and the result is bit-identical (`tests/test_kernels.py` 109/109).
+- Result: TPOT **2.10 → 2.16 ms** (128 tokens: 268.3 → 276.8 ms on text, 282.9 → 291.5 on img_small; same in both of two alternating rounds).
+- Why: in the first version each warp computed the 2 (or 3) paired rows with 2 chunks in flight per row. That halves the number of warps and changes the load pattern, which loses more bandwidth than the saved launches gain. ncu: w1\|w3 + SwiGLU 56.6 µs at 92.6 % of DRAM peak; in_proj + conv 23.3 µs at 84.5 %.
+- **Second version (kept, on by default; `LFM2_EPI=0` disables it):**
+  - The paired rows are computed by different warps of one block, each exactly like the fast GEMV (1 row per warp, 4 chunks in flight). They meet in shared memory, where 4 threads apply the epilogue.
+  - Still bit-identical (109/109).
+  - Text 128 tokens 268.3 → 267.1 / 267.0 ms, img_small 282.9 → 282.3 / 282.3 ms (two alternating rounds): TPOT 2.096 → 2.087 ms, about 10 µs per token.
+  - That is small, as expected: the BF16 step is already at about 1.09× its weight-read floor.
+
+**ncu of our kernels** ([profiling/ncu/profile_ours.sh](../profiling/ncu/profile_ours.sh), 1080p request of the full stack, PDL off; `profiling/reports/20261014-171411_*_ncu_ours_stack_fhd_all`):
+
+| Kernel | Phase | µs | DRAM % of peak | Note |
+| --- | --- | --- | --- | --- |
+| `gemv_direct` lm_head [65536×2048] | decode | 223 | 95.2 | |
+| `gemv_epi` w1\|w3 + SwiGLU (first version) | decode | 56.7 | 92.4 | |
+| `gemv_epi` in_proj + conv (first version) | decode | 23.3 | 84.4 | |
+| `gemv_direct` [2048×2048] / [2048×3072] | decode | 20.8 / 13.4 | 74.7 / 73.4 | |
+| `add_rmsnorm`, `qk_norm_rope_kv`, `attn_combine` | decode | 2.6–3.7 | <1 | latency-bound, a few µs each |
+| `decode_attention_split` | decode, 2.3 k context | 7.9 | 4.4 | |
+| `add_layernorm` [9216×1152] | vision | 49.9 | 72.0 | partly served from L2 (the GEMM output is still there) |
+| `silu_mul` [2327×16384] | prefill | 92.4 | 72.4 | about 1.24 TB/s effective, at the roof |
+| `add_rmsnorm` [2327×2048] | prefill | 21.5 | 69.3 | |
+| `shortconv_prefill` | prefill | 30.1 | 74.2 | |
+| `qk_norm_rope_kv_prefill` | prefill | **116** | **9.6** | 112 k blocks of 64 threads: too small; next to fix (about 0.7 ms per 1080p prefill) |
+
+**3B generalization of the full BF16 stack** (`results/raw/20261014-1712*_3b_base`, `…-1718*_3b_stack_bf16`, 5 repeats):
+- Text: first token 9.8 → 5.7 ms; 128 tokens 836 → 594 ms.
+- img_small: first token 25.8 → 17.5 ms; 128 tokens 855 → 608 ms.
+- 1080p with preprocessing: first token 184 → 130 ms; 128 tokens 1009 → 727 ms.
+- Energy for 128 tokens: 219 → 167 J (text), 277 → 209 J (1080p).
+- The 3B decode (4.6 ms/token) is close to its BF16 weight-read floor (~4.2 ms), so the remaining 3B gain in BF16 is small.
+
  of the night's best variants, 3B, batching, FP8 vision (rejected)  (Claude)
 
 **Full grids** (`bench.py --preset full --no-phases`, 10 repeats; `results/raw/20261014-022*`; TPOT at 128 new tokens, J/token dynamic in parentheses):
