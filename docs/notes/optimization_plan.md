@@ -293,3 +293,21 @@ Full plan, rules, timings and failure playbook: [gpu_sessions.md](gpu_sessions.m
 4. Precision for the headline numbers: BF16 on the RTX PRO 5000 and Jetson, FP16 on the T4. Agree?
 5. Which input is the "headline" workload for the report: 1 tile (fast camera frames) or 9 tiles (documents/high-res)?
 6. Team split proposal: (A) runtime + CUDA graphs: O1, O4; (B) custom kernels: O2, O3; (C) attention + vision + quantization: O5, O6, O7. Who takes which?
+
+---
+
+## 5. Direction after the first optimization night (decided 2026-10-14)
+
+**Quality first.** The main result is GPU/CUDA-level optimizations that keep the model's BF16 math (CUDA graphs, fused kernels, our GEMV, attention, preprocessing). Quantization is **not** counted as an optimization; INT8 is shown only as a separate extension with measured benchmark accuracy (fine-tuning only if it ever drops, mindful of GPU time). INT4 is dropped.
+
+**Main benchmark = quality + speed + energy** on standard VLM benchmarks, run by our own eval script (official scoring, identical prompts, greedy) for baseline vs our BF16 (vs INT8): MMStar (1500), POPE (~1000 subset), OCRBench (1000), ChartQA or TextVQA (~500–1000 subset). Report accuracy, number of changed answers + McNemar test, TTFT/TPOT/energy over the dataset. Every new optimization must pass it.
+
+**Next GPU work, in order:**
+- [ ] Q1: eval harness + datasets (downloaded on the server with parallel range requests)
+- [ ] P1: GPU image preprocessing kernel (resize + normalize + tile/patchify); CPU preprocessing is 58 ms at 1080p and 32 ms at 720p, outside our TTFT numbers (end-to-end 1080p ≈ 160 ms)
+- [ ] O7d: vision encoder: padding-free attention (flash 287 vs cuDNN 419 µs/layer), fused LayerNorm and bias+GELU
+- [ ] O3b: LM prefill fusion: multi-row add_rmsnorm / silu_mul, prefill short-conv kernel
+- [ ] O2d: decode GEMV epilogue fusion (w1|w3 + silu_mul, in_proj + short-conv): ~149 → ~120 kernels
+- [ ] ncu of our own kernels (bandwidth / occupancy table for the report)
+
+Target: 1080p end-to-end latency ≈ 160 → 95–100 ms, with unchanged benchmark accuracy.
