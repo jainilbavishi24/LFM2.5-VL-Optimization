@@ -45,6 +45,7 @@ Entry template:
   - VGA 2.79 → 1.84 s (1.5×)
   - 1080p 3.83 → 7.61 s (2× slower, dominated by the emulated-BF16 first token)
 - GPU preprocessing on the T4: 1080p 98 → 10 ms (VGA 7.9 → 2.3).
+- **T4 quality eval stopped** after 912/1000 baseline questions: with emulated BF16 each question takes about 10 s (multi-tile prefill), so the pair would need about 5 h of Colab. It would also only test a configuration nobody would deploy on a T4. The correctness checks above already show the same behaviour as on Blackwell. Redo it after the FP16 port, where it is meaningful and fast.
 
 : how far is the first token from the hardware limit; full-size quality eval  (Claude)
 
