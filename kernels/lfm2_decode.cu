@@ -736,43 +736,49 @@ void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st) {
 // ================================================================================================ prefill (O3b)
 // The same per-token math as the decode kernels, for all T prompt tokens at once (positions 0..T-1, no padding).
 
-// qkv [B*T, (NQ + 2*NKV) * D] -> q_out [B, NQ, T, D] (SDPA layout); k, v -> cache[b, kv_head, t] for t < T.
-template <int D>
-__global__ void qk_norm_rope_kv_prefill_kernel(const bf16* __restrict__ qkv, const bf16* __restrict__ qw, const bf16* __restrict__ kw,
-                                               const float* __restrict__ inv_freq, float scaling, bf16* __restrict__ q_out,
-                                               bf16* __restrict__ kc, bf16* __restrict__ vc, int T, int NQ, int NKV,
-                                               int max_len, float eps) {
+// qkv [B*T, (NQ + 2*NKV) * 64] -> q_out [B, NQ, T, 64] (SDPA layout); k, v -> cache[b, kv_head, t] for t < T.
+// One block per token, one warp per head (a first version with one 64-thread block per (token, head) ran at ~10 % of
+// DRAM peak in ncu), 2 elements per lane (d = 2*lane, 2*lane+1); the RoPE partner d +- 32 lives in lane +- 16 (shuffle, no smem).
+constexpr int QKP_WARPS = 8;
+__global__ void qk_norm_rope_kv_prefill_warp_kernel(const bf16* __restrict__ qkv, const bf16* __restrict__ qw,
+                                                    const bf16* __restrict__ kw, const float* __restrict__ inv_freq,
+                                                    float scaling, bf16* __restrict__ q_out, bf16* __restrict__ kc,
+                                                    bf16* __restrict__ vc, int T, int NQ, int NKV, int max_len, float eps) {
     pdl_trigger();
     pdl_wait();
-    __shared__ float xs[D];
-    __shared__ float red[D / 32];
-    const int bt = blockIdx.x, b = bt / T, t = bt - b * T, head = blockIdx.y, d = threadIdx.x;
+    constexpr int D = 64, HALF = 32;
+    const int bt = blockIdx.x, b = bt / T, t = bt - b * T;
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, d = 2 * lane;
     const int NH = NQ + 2 * NKV;
-    float x = B2F(qkv[((size_t)bt * NH + head) * D + d]);
-    if (head >= NQ + NKV) {
-        vc[(((size_t)b * NKV + (head - NQ - NKV)) * max_len + t) * D + d] = F2B(x);
-        return;
+    for (int head = warp; head < NH; head += QKP_WARPS) {
+        const float2 xf = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(qkv + ((size_t)bt * NH + head) * D + d));
+        if (head >= NQ + NKV) {
+            *reinterpret_cast<__nv_bfloat162*>(vc + (((size_t)b * NKV + (head - NQ - NKV)) * max_len + t) * D + d) =
+                __floats2bfloat162_rn(xf.x, xf.y);
+            continue;
+        }
+        const bool is_q = head < NQ;
+        const float ss = warp_sum(xf.x * xf.x + xf.y * xf.y);
+        const float r = rsqrtf(ss / D + eps);
+        const bf16* wv = is_q ? qw : kw;
+        const float x0 = rbf(B2F(wv[d]) * rbf(xf.x * r)), x1 = rbf(B2F(wv[d + 1]) * rbf(xf.y * r));
+        const float p0 = __shfl_xor_sync(0xffffffffu, x0, 16), p1 = __shfl_xor_sync(0xffffffffu, x1, 16);
+        const float rot0 = d < HALF ? -p0 : p0, rot1 = d < HALF ? -p1 : p1;
+        const float f0 = (float)t * inv_freq[d % HALF], f1 = (float)t * inv_freq[(d + 1) % HALF];
+        const float c0 = rbf(cosf(f0) * scaling), s0 = rbf(sinf(f0) * scaling);
+        const float c1 = rbf(cosf(f1) * scaling), s1 = rbf(sinf(f1) * scaling);
+        const __nv_bfloat162 out = __floats2bfloat162_rn(rbf(x0 * c0) + rbf(rot0 * s0), rbf(x1 * c1) + rbf(rot1 * s1));
+        bf16* dst = is_q ? q_out + (((size_t)b * NQ + head) * T + t) * D + d
+                         : kc + (((size_t)b * NKV + (head - NQ)) * max_len + t) * D + d;
+        *reinterpret_cast<__nv_bfloat162*>(dst) = out;
     }
-    const bool is_q = head < NQ;
-    const float ss = block_sum<D / 32>(x * x, red);
-    x = rbf(B2F((is_q ? qw : kw)[d]) * rbf(x * rsqrtf(ss / D + eps)));
-    xs[d] = x;
-    __syncthreads();
-    const int half = D / 2;
-    const float rot = d < half ? -xs[d + half] : xs[d - half];
-    const float f = (float)t * inv_freq[d % half];
-    const float c = rbf(cosf(f) * scaling), s = rbf(sinf(f) * scaling);
-    const bf16 out = F2B(rbf(x * c) + rbf(rot * s));
-    if (is_q) q_out[(((size_t)b * NQ + head) * T + t) * D + d] = out;
-    else kc[(((size_t)b * NKV + (head - NQ)) * max_len + t) * D + d] = out;
 }
 
 void launch_qk_norm_rope_kv_prefill(const void* qkv, const void* qw, const void* kw, const float* inv_freq, float scaling,
                                     void* q_out, void* kc, void* vc, int B, int T, int NQ, int NKV, int max_len, float eps,
                                     cudaStream_t st) {
-    dim3 grid(B * T, NQ + 2 * NKV);
-    launch_k(qk_norm_rope_kv_prefill_kernel<64>, grid, 64, 0, st, (const bf16*)qkv, (const bf16*)qw, (const bf16*)kw,
-             inv_freq, scaling, (bf16*)q_out, (bf16*)kc, (bf16*)vc, T, NQ, NKV, max_len, eps);
+    launch_k(qk_norm_rope_kv_prefill_warp_kernel, dim3(B * T), QKP_WARPS * 32, 0, st, (const bf16*)qkv, (const bf16*)qw,
+             (const bf16*)kw, inv_freq, scaling, (bf16*)q_out, (bf16*)kc, (bf16*)vc, T, NQ, NKV, max_len, eps);
 }
 
 // bcx [B*T, 3H] = (B | C | x) per token. HF prefill: bx = bf16(B*x); conv = bf16(causal depthwise conv3(bx) (+bias));
