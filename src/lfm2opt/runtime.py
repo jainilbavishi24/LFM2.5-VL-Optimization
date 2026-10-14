@@ -13,6 +13,8 @@ The math is the same as transformers' modeling_lfm2.py (eager path); only the ca
 kernel (plain matmul-softmax-matmul over the static cache instead of SDPA) differ.
 """
 
+import os
+
 import torch
 import torch.nn.functional as F
 from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
@@ -24,6 +26,7 @@ class StaticDecoder:
                  calib: dict | None = None, fused_prefill: bool = False):
         self.net = net
         self.fused_prefill = fused_prefill  # O3b: prompt through our kernels straight into the static buffers
+        self.epilogue_fusion = os.environ.get("LFM2_EPI", "1") != "0"  # O2d (decode, batch 1, our GEMV)
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
         cfg = self.lm.config
@@ -173,6 +176,11 @@ class StaticDecoder:
                     self.lin[key], self.lin_scale[key] = quantize_int4(self.lin[key], self.w4_group, self.w4_clip)
             torch.cuda.empty_cache()
 
+    def _epi_ok(self, B, key):
+        """O2d epilogue-fused GEMV: batch 1, our BF16 / INT8 kernel (LFM2_EPI=0 to compare without it)."""
+        return B == 1 and self.lin[key].dtype in (torch.bfloat16, torch.int8) and self.gemv in ("bf16", "int8") \
+            and self.epilogue_fusion
+
     def _linear(self, x, key, bias=None):
         """Decode GEMV for weight `key`: cuBLAS (F.linear) or our BF16 / INT8 kernel (batch 1 only)."""
         w = self.lin[key]
@@ -215,14 +223,21 @@ class StaticDecoder:
                 y = self._linear(o.view(B, -1), ("o", i))
             else:
                 c = layer.conv
-                bcx = self._linear(x, ("in", i), c.in_proj.bias)                  # [B, 3H]
                 cy = torch.empty(B, H, device=h.device, dtype=h.dtype)
-                K.shortconv_step(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy)
+                if self._epi_ok(B, ("in", i)) and c.in_proj.bias is None:        # O2d: in_proj GEMV + conv step
+                    K.gemv_epi(1, self.lin[("in", i)], self.lin_scale.get(("in", i)), x, cy, s["conv"][i],
+                               self.conv_w[i], c.conv.bias)
+                else:
+                    bcx = self._linear(x, ("in", i), c.in_proj.bias)              # [B, 3H]
+                    K.shortconv_step(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy)
                 y = self._linear(cy, ("out", i), c.out_proj.bias)
             K.add_rmsnorm(h, y, layer.ffn_norm.weight, x, self.eps)               # h += mixer; x = ffn_norm(h)
-            g = self._linear(x, ("w13", i))                                       # [B, 2I]
-            act = torch.empty(B, g.shape[-1] // 2, device=h.device, dtype=h.dtype)
-            K.silu_mul(g, act)
+            act = torch.empty(B, self.lin[("w13", i)].shape[0] // 2, device=h.device, dtype=h.dtype)
+            if self._epi_ok(B, ("w13", i)):                                       # O2d: w1|w3 GEMV + SwiGLU
+                K.gemv_epi(0, self.lin[("w13", i)], self.lin_scale.get(("w13", i)), x, act)
+            else:
+                g = self._linear(x, ("w13", i))                                   # [B, 2I]
+                K.silu_mul(g, act)
             y = self._linear(act, ("w2", i))
             K.add_rmsnorm(h, y, self.norm_w[i + 1], x, self.eps)                  # h += mlp; x = next norm(h)
         logits = self._linear(x, ("head", 0))                                     # x = embedding_norm(h)

@@ -547,6 +547,98 @@ void launch_gemv(const void* W, bool int8, const float* scale, const void* x, vo
     else gemv_dispatch<bf16>((const bf16*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, B, st);
 }
 
+// ------------------------------------------------------------------------------------------------ gemv + epilogue (O2d)
+// Batch-1 GEMV whose warp computes NR rows that belong together (row n of each of the NR stacked [S, K] blocks of W)
+// and applies the next op itself, so the separate elementwise kernel (and its launch) disappears. Same accumulation
+// order and BF16 rounding points as gemv_direct_kernel + silu_mul / shortconv_step: bit-identical results.
+//   EPI 0 (NR 2): W = w1|w3 [2I, K]           -> y[n] = bf16(bf16(silu(g)) * u)
+//   EPI 1 (NR 3): W = in_proj (B|C|x) [3H, K] -> conv-state shift + depthwise conv3 + C gate -> y[n] (shortconv_step)
+template <typename WT, int NR, int EPI>
+__global__ void gemv_epi_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
+                                bf16* __restrict__ y, int S, int K, bf16* __restrict__ state, const bf16* __restrict__ cw,
+                                const bf16* __restrict__ cbias) {
+    pdl_trigger();
+    constexpr int PER = WTraits<WT>::PER, UNROLL = 2;
+    const int chunks = K / PER;
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const int n = blockIdx.x * GEMV_WARPS + warp;
+    if (n >= S) return;
+    const uint4* rows[NR];
+#pragma unroll
+    for (int r = 0; r < NR; ++r) rows[r] = reinterpret_cast<const uint4*>(W + (size_t)(n + r * S) * K);
+    float acc[NR];
+#pragma unroll
+    for (int r = 0; r < NR; ++r) acc[r] = 0.f;
+    int c = lane;
+    uint4 buf[NR][UNROLL];
+    bool more = c + 32 * (UNROLL - 1) < chunks;
+    if (more) {
+#pragma unroll
+        for (int u = 0; u < UNROLL; ++u)
+#pragma unroll
+            for (int r = 0; r < NR; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+    }
+    pdl_wait();
+    while (more) {
+#pragma unroll
+        for (int u = 0; u < UNROLL; ++u) {
+            float xv[PER];
+            load_x<PER>(x, c + 32 * u, xv);
+#pragma unroll
+            for (int r = 0; r < NR; ++r) acc[r] += WTraits<WT>::dot(buf[r][u], xv, 1);
+        }
+        c += 32 * UNROLL;
+        more = c + 32 * (UNROLL - 1) < chunks;
+        if (more) {
+#pragma unroll
+            for (int u = 0; u < UNROLL; ++u)
+#pragma unroll
+                for (int r = 0; r < NR; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+        }
+    }
+    for (; c < chunks; c += 32) {
+        float xv[PER];
+        load_x<PER>(x, c, xv);
+#pragma unroll
+        for (int r = 0; r < NR; ++r) acc[r] += WTraits<WT>::dot(ld_stream(rows[r] + c), xv, 1);
+    }
+    float a[NR];
+#pragma unroll
+    for (int r = 0; r < NR; ++r) {
+        const float v = warp_sum(acc[r]);
+        a[r] = rbf(scale ? v * scale[n + r * S] : v);  // = the BF16 value the plain GEMV would have stored
+    }
+    if (lane != 0) return;
+    if constexpr (EPI == 0) {
+        y[n] = F2B(rbf(a[0] / (1.f + __expf(-a[0]))) * a[1]);
+    } else {
+        constexpr int L = 3;
+        const float bx = rbf(a[0] * a[2]);
+        bf16* st = state + (size_t)n * L;
+        const float s1 = B2F(st[1]), s2 = B2F(st[2]);
+        st[0] = st[1]; st[1] = st[2]; st[2] = F2B(bx);
+        float acc2 = B2F(cw[n * L + 0]) * s1 + B2F(cw[n * L + 1]) * s2 + B2F(cw[n * L + 2]) * bx;
+        if (cbias) acc2 += B2F(cbias[n]);
+        y[n] = F2B(a[1] * rbf(acc2));
+    }
+}
+
+template <typename WT>
+static void gemv_epi_dispatch(int epi, const WT* W, const float* scale, const bf16* x, bf16* y, int S, int K, bf16* state,
+                              const bf16* cw, const bf16* cbias, cudaStream_t st) {
+    const dim3 grid((S + GEMV_WARPS - 1) / GEMV_WARPS);
+    if (epi == 0) launch_k(gemv_epi_kernel<WT, 2, 0>, grid, GEMV_WARPS * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
+    else launch_k(gemv_epi_kernel<WT, 3, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
+}
+
+void launch_gemv_epi(int epi, const void* W, bool int8, const float* scale, const void* x, void* y, int S, int K, void* state,
+                     const void* cw, const void* cbias, cudaStream_t st) {
+    if (int8) gemv_epi_dispatch<int8_t>(epi, (const int8_t*)W, scale, (const bf16*)x, (bf16*)y, S, K, (bf16*)state,
+                                        (const bf16*)cw, (const bf16*)cbias, st);
+    else gemv_epi_dispatch<bf16>(epi, (const bf16*)W, scale, (const bf16*)x, (bf16*)y, S, K, (bf16*)state,
+                                 (const bf16*)cw, (const bf16*)cbias, st);
+}
+
 // ------------------------------------------------------------------------------------------------ gemv_w4 (O6b)
 // INT4 weight-only GEMV, symmetric scale per group of `group` (multiple of 32, default 128) along K. Wp [N, K/2] bytes: element 2j in the low
 // nibble, 2j+1 in the high nibble, stored as q + 8 (q in [-8, 7]); S [N, K/128] fp32 scales. Each lane streams

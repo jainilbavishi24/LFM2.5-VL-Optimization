@@ -150,8 +150,44 @@ def test_gemv():
         report(f"gemv int4 [{N}x{Kd}]", y, F.linear(x.float(), dequantize_int4(Wp, S4)).to(bf))
 
 
+def test_gemv_epi():
+    """O2d: GEMV + fused epilogue must be bit-identical to GEMV followed by silu_mul / shortconv_step."""
+    torch.manual_seed(5)
+    H, I = 2048, 8192
+    x = torch.randn(1, H, device=dev, dtype=bf)
+    for wt in ("bf16", "int8"):
+        for epi, rows in ((0, 2 * I), (1, 3 * H)):
+            W = (torch.randn(rows, H, device=dev) * 0.02).to(bf)
+            scale = None
+            if wt == "int8":
+                scale = W.float().abs().amax(1) / 127
+                W = torch.round(W.float() / scale[:, None]).clamp(-127, 127).to(torch.int8)
+            g = torch.empty(1, rows, device=dev, dtype=bf)
+            K.gemv(W, scale, x, g)
+            if epi == 0:
+                ref = torch.empty(1, I, device=dev, dtype=bf)
+                K.silu_mul(g, ref)
+                out = torch.empty_like(ref)
+                K.gemv_epi(0, W, scale, x, out)
+                ok = torch.equal(out, ref)
+                name = f"gemv_epi swiglu {wt} [{rows}x{H}]"
+            else:
+                cw = (torch.randn(H, 3, device=dev) * 0.5).to(bf)
+                cb = (torch.randn(H, device=dev) * 0.1).to(bf)
+                st0 = torch.randn(1, H, 3, device=dev).to(bf)
+                st_ref, st_out = st0.clone(), st0.clone()
+                ref = torch.empty(1, H, device=dev, dtype=bf)
+                K.shortconv_step(g, st_ref, cw, cb, ref)
+                out = torch.empty_like(ref)
+                K.gemv_epi(1, W, scale, x, out, st_out, cw, cb)
+                ok = torch.equal(out, ref) and torch.equal(st_out, st_ref)
+                name = f"gemv_epi shortconv {wt} [{rows}x{H}] (+state)"
+            results.append(ok)
+            print(f"{'PASS' if ok else 'FAIL'}  {name}  bit-identical={ok}  max|err| {(out.float() - ref.float()).abs().max():.3g}")
+
+
 if __name__ == "__main__":
-    for t in (test_add_rmsnorm, test_shortconv, test_qk_rope_kv, test_attention, test_silu_mul, test_gemv):
+    for t in (test_add_rmsnorm, test_shortconv, test_qk_rope_kv, test_attention, test_silu_mul, test_gemv, test_gemv_epi):
         t()
     print(f"{sum(results)}/{len(results)} passed")
     sys.exit(0 if all(results) else 1)

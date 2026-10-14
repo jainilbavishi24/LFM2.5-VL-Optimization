@@ -24,6 +24,9 @@ void launch_qk_norm_rope_kv_prefill(const void* qkv, const void* qw, const void*
 void launch_shortconv_prefill(const void* bcx, void* state, const void* w, const void* bias, void* y, int B, int T, int H,
                               cudaStream_t st);
 
+void launch_gemv_epi(int epi, const void* W, bool int8, const float* scale, const void* x, void* y, int S, int K, void* state,
+                     const void* cw, const void* cbias, cudaStream_t st);
+
 #define CHECK_BF16(t) TORCH_CHECK(t.is_cuda() && t.scalar_type() == at::kBFloat16 && t.is_contiguous(), #t " must be contiguous CUDA bf16")
 static inline cudaStream_t stream() { return at::cuda::getCurrentCUDAStream(); }
 
@@ -122,7 +125,34 @@ void shortconv_prefill(torch::Tensor bcx, torch::Tensor state, torch::Tensor w, 
                              y.data_ptr(), B, T, H, stream());
 }
 
+// O2d, batch 1. epi 0: W = w1|w3 [2S, K] -> y [1, S] = silu(w1 x) * (w3 x)
+//              epi 1: W = in_proj [3S, K] -> y [1, S] = shortconv_step(in_proj x) with the conv state updated in place
+void gemv_epi(int64_t epi, torch::Tensor W, c10::optional<torch::Tensor> scale, torch::Tensor x, torch::Tensor y,
+              c10::optional<torch::Tensor> state, c10::optional<torch::Tensor> cw, c10::optional<torch::Tensor> cbias) {
+    CHECK_BF16(x); CHECK_BF16(y);
+    TORCH_CHECK(W.is_cuda() && W.is_contiguous() && W.dim() == 2, "W must be a contiguous CUDA matrix");
+    const bool int8 = W.scalar_type() == at::kChar;
+    TORCH_CHECK(int8 || W.scalar_type() == at::kBFloat16, "W must be bf16 or int8");
+    TORCH_CHECK(!int8 || (scale.has_value() && scale->scalar_type() == at::kFloat), "int8 W needs fp32 scale");
+    TORCH_CHECK(epi == 0 || epi == 1, "epi 0 (swiglu) or 1 (shortconv)");
+    const int NR = epi == 0 ? 2 : 3, K = W.size(1), S = W.size(0) / NR;
+    TORCH_CHECK(W.size(0) == (int64_t)NR * S && x.numel() == K && y.numel() == S, "batch 1: x [1, K], y [1, S]");
+    TORCH_CHECK(K % (32 * (int8 ? 16 : 8)) == 0, "K must be a multiple of 256 (bf16) / 512 (int8)");
+    if (epi == 1) {
+        TORCH_CHECK(state.has_value() && cw.has_value(), "shortconv epilogue needs state and conv weight");
+        CHECK_BF16((*state)); CHECK_BF16((*cw));
+        TORCH_CHECK(state->numel() == (int64_t)S * 3 && cw->numel() == (int64_t)S * 3, "state [1, S, 3], cw [S, 3]");
+        if (cbias.has_value()) CHECK_BF16((*cbias));
+    }
+    launch_gemv_epi((int)epi, W.data_ptr(), int8, scale.has_value() ? scale->data_ptr<float>() : nullptr, x.data_ptr(),
+                    y.data_ptr(), S, K, epi == 1 ? state->data_ptr() : nullptr, epi == 1 ? cw->data_ptr() : nullptr,
+                    (epi == 1 && cbias.has_value()) ? cbias->data_ptr() : nullptr, stream());
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("gemv_epi", &gemv_epi, "batch-1 GEMV + fused epilogue (0: SwiGLU on w1|w3, 1: short-conv step on in_proj)",
+          py::arg("epi"), py::arg("W"), py::arg("scale"), py::arg("x"), py::arg("y"), py::arg("state") = py::none(),
+          py::arg("cw") = py::none(), py::arg("cbias") = py::none());
     m.def("qk_norm_rope_kv_prefill", &qk_norm_rope_kv_prefill, "prefill: q/k RMSNorm + RoPE (pos 0..T-1), k/v into the cache");
     m.def("shortconv_prefill", &shortconv_prefill, "prefill: LFM2 gated short-conv over T tokens + decode conv state");
     m.def("add_rmsnorm", &add_rmsnorm, "h += y (optional); x = w * rmsnorm(h)");

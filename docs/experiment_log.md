@@ -115,6 +115,17 @@ Entry template:
 
 - At 1080p, 128 tokens take 582 → **352 ms**.
 - With preprocessing included, 1080p is **136.5 → 89 ms to the first token (1.53×)** and **608 → 356 ms for 128 tokens (1.71×)**.
+- **Quality of the full stack** (`results/eval/20261014-170352_*_stack_bf16`, same protocol):
+
+  | Benchmark | Score % | Δ vs baseline (pp) | Same answer % | McNemar p | ms/question | J/question |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | MMStar | 49.27 | +0.20 | 97.1 | 0.69 | 60.2 → 21.9 | 10.0 → 6.8 |
+  | POPE | 89.67 | −0.07 | 99.6 | 0.69 | 51.0 → 16.3 | 8.9 → 5.3 |
+  | OCRBench | 80.00 | +0.30 | 94.4 | 0.55 | 117 → 60 | 25.9 → 18.5 |
+  | ChartQA | 80.28 | +0.08 | 96.3 | 0.77 | 74 → 31 | 15.6 → 10.1 |
+  | TextVQA | 82.05 | −0.02 | 99.0 | 1.00 | 137 → 74 | 34.8 → 22.9 |
+
+  Per question it is 2.0–3.1× faster and uses 29–41 % less GPU energy, with no measurable change in quality.
 
  of the night's best variants, 3B, batching, FP8 vision (rejected)  (Claude)
 
