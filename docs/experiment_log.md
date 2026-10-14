@@ -183,6 +183,20 @@ Entry template:
 
 **Nsight Systems timelines** (1080p, 32 tokens; `profiling/reports/20261014-1730*` baseline, `…-173136*` full stack; `PYTHON=.venv-ref/bin/python bash profiling/nsys/profile_nsys.sh img_fhd 32 --variant fused_gemv_pf_vfused`). The kernel times in the stack's CSV are inflated because PDL lets kernels start early and wait. Use `LFM2_PDL=0` for per-kernel numbers; the timeline is for the picture.
 
+**Batched decode with the full stack** (img_small, `results/raw/*_batch_stack`, 5 repeats):
+
+| Batch | TPOT | Decode throughput | J/token |
+| --- | --- | --- | --- |
+| 1 | 2.08 ms | 481 tok/s | 0.52 |
+| 2 | 2.13 ms | 938 tok/s | 0.30 |
+| 4 | 2.18 ms | 1833 tok/s | 0.17 |
+| 8 | 2.60 ms | 3073 tok/s | 0.082 |
+| 16 | 2.64 ms | **6058 tok/s** | 0.045 |
+
+- HF at batch 16 reaches 3972 tok/s.
+- The fused prefill handles batches without padding; batches of 8 and more decode through cuBLAS.
+- First token grows linearly with the batch (16 images = 16 vision tiles: 155 ms).
+
 **Figures** ([benchmarks/plot_results.py](../benchmarks/plot_results.py) → `report/figures/`):
 - `decode_tpot.png`: now with the final stack; INT4 dropped; INT8 labelled as an extension.
 - `ttft_breakdown.png`: first token including preprocessing, HF vs ours.

@@ -180,7 +180,9 @@ def fig_quality():
 def fig_batch():
     rs = rows("batch_sweep_final")
     fig, ax = plt.subplots(figsize=(7, 4))
-    for var, label in (("baseline", "HF eager"), ("fused_gemv", "O1-O4 fused (BF16)"), ("fused_w8", "O1-O6 INT8")):
+    rs = rs + rows("batch_stack")
+    for var, label in (("baseline", "HF eager"), ("fused_gemv", "O1-O4 fused (BF16)"),
+                       ("fused_gemv_pf_vfused", "ours: full BF16 stack"), ("fused_w8", "ext.: INT8 weights")):
         pts = sorted((int(r["batch_size"]), float(r["decode_tok_s"])) for r in rs
                      if r["variant"] == var and int(r["gen_len"]) == 128 and r["decode_tok_s"])
         if pts:
