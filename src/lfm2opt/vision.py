@@ -25,6 +25,8 @@ from .kernels import vision_ext
 
 class FusedSiglip2Encoder:
     def __init__(self, vt, attn: str = "flash_varlen", gelu_epilogue: bool = True, fuse_ln: bool = True):
+        """attn: "flash_varlen" (default) / "cudnn_varlen": padding-free runs on the flash / cuDNN kernel without a mask;
+        "cudnn_mask": HF semantics (padding mask), for ablation."""
         self.vt = vt
         self.attn, self.gelu_epilogue, self.fuse_ln = attn, gelu_epilogue, fuse_ln
         cfg = vt.config
@@ -59,15 +61,16 @@ class FusedSiglip2Encoder:
             with sdpa_kernel([SDPBackend.CUDNN_ATTENTION, SDPBackend.EFFICIENT_ATTENTION], set_priority=True):
                 o = F.scaled_dot_product_attention(q, k, v, attn_mask=self._mask, scale=self.scale)
             return o.transpose(1, 2).reshape(T, L, -1)
+        backend = [SDPBackend.CUDNN_ATTENTION if self.attn == "cudnn_varlen" else SDPBackend.FLASH_ATTENTION]
         if len(runs) == 1 and runs[0][2] == L:  # every tile full: no copy of the output
             q, k, v = (qkv5[:, :, j].transpose(1, 2) for j in range(3))
-            with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
+            with sdpa_kernel(backend):
                 o = F.scaled_dot_product_attention(q, k, v, scale=self.scale)
             return o.transpose(1, 2).reshape(T, L, -1)
         out = torch.empty(T, L, self.H, self.Dh, dtype=qkv.dtype, device=qkv.device)
         for a, b, n in runs:
             q, k, v = (qkv5[a:b, :n, j].transpose(1, 2) for j in range(3))
-            with sdpa_kernel([SDPBackend.FLASH_ATTENTION]):
+            with sdpa_kernel(backend):
                 o = F.scaled_dot_product_attention(q, k, v, scale=self.scale)
             out[a:b, :n] = o.transpose(1, 2)
             if n < L:
