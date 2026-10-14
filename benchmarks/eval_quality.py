@@ -224,6 +224,11 @@ def main():
             for need in range(dec.bucket, 4097, dec.bucket):
                 dec._get(1, need, max_new - 1)
         eos = net.generation_config.eos_token_id
+        eos = set([eos] if isinstance(eos, int) else eos)  # the 3B's config has a list
+        cfg_path = out / "config.json"
+        cfg = json.loads(cfg_path.read_text())
+        cfg["eos_ids"] = sorted(eos)
+        cfg_path.write_text(json.dumps(cfg, indent=2))
         rows_f = open(out / f"{variant}.jsonl", "a")
         for bench, items in benches.items():
             def run(item, img):
@@ -237,8 +242,9 @@ def main():
                 torch.cuda.synchronize()
                 t2 = time.perf_counter()
                 ids = o[0, inputs["input_ids"].shape[1]:].tolist()
-                if eos in ids:
-                    ids = ids[: ids.index(eos)]
+                cut = next((j for j, t in enumerate(ids) if t in eos), None)
+                if cut is not None:  # tokens after a row's EOS are junk (our runtime checks EOS in chunks)
+                    ids = ids[:cut]
                 return ids, (t1 - t0) * 1e3, (t2 - t1) * 1e3, int(inputs["input_ids"].shape[1])
 
             for item in items[: args.warmup]:

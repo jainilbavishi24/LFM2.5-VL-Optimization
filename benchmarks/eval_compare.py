@@ -30,6 +30,8 @@ def main():
     ap.add_argument("runs", nargs="+")
     ap.add_argument("--ref", default="baseline")
     ap.add_argument("--md", action="store_true", help="markdown table")
+    ap.add_argument("--eos", default="7", help="EOS token ids (comma-separated) for runs whose config.json has no "
+                    "eos_ids: token_ids are cut at the first EOS before comparing (1.6B: 7, 3B: 124900)")
     args = ap.parse_args()
 
     # rows[variant][bench][id] = row ; later runs override earlier ones
@@ -37,6 +39,8 @@ def main():
     summ = {}
     for run in args.runs:
         run = Path(run)
+        cfg = json.loads((run / "config.json").read_text()) if (run / "config.json").exists() else {}
+        eos = set(cfg.get("eos_ids") or [int(t) for t in args.eos.split(",")])
         for f in sorted(run.glob("*.jsonl")):
             if f.name == "summary.jsonl":
                 for line in f.read_text().splitlines():
@@ -45,6 +49,8 @@ def main():
                 continue
             for line in f.read_text().splitlines():
                 r = json.loads(line)
+                ids = r["token_ids"]
+                r["token_ids"] = ids[: next((j for j, t in enumerate(ids) if t in eos), len(ids))]
                 rows[f.stem][r["bench"]][r["id"]] = r
 
     ref = rows.get(args.ref)

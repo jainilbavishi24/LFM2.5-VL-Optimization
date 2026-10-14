@@ -45,6 +45,22 @@ Entry template:
 - Per question: 65 → 22, 53 → 16, 119 → 61, 76 → 32 and 137 → 74 ms; GPU energy 31–42 % lower.
 - MMStar for the stack moved from 49.27 (afternoon) to 48.80 after the O2d v2 / prefill-kernel changes. A handful of near-tie flips, within noise, and both are within ±0.3 pp of the baseline.
 
+**3B generalization of quality** (LFM2.5-VL-3B, baseline vs `fused_gemv_pf_vfused` + GPU preprocessing, 500 questions per benchmark, POPE 1500; `results/eval/*_3b_subset`):
+
+| Benchmark | Baseline | Ours | Δ (pp) | Same answer % | McNemar p | ms/question |
+| --- | --- | --- | --- | --- | --- | --- |
+| MMStar | 61.60 | 61.20 | −0.40 | 99.2 | 0.50 | 75.5 → 29.3 |
+| POPE | 89.47 | 89.60 | +0.13 | 99.9 | 0.50 | 65.0 → 25.7 |
+| OCRBench | 81.80 | 81.80 | 0.00 | 96.6 | 1.00 | 156 → 99 |
+| ChartQA | 83.00 | 82.60 | −0.40 | 99.0 | 0.50 | 96.9 → 50.1 |
+| TextVQA | 85.76 | 85.72 | −0.04 | 99.4 | 1.00 | 185 → 113 |
+
+The same kernels, unchanged, keep the 3B's quality, at 1.6–2.6× less time per question.
+- Bug found on the way: the 3B's `generation_config.eos_token_id` is a list (`[124900]`).
+  - `eval_quality.py` only cut at an int EOS, so our runtime's answers kept the EOS plus one junk token (it checks EOS in chunks), e.g. "centre\n" vs "centre".
+  - Scores were unaffected (all scorers strip), but "same answer" read 31–73 %.
+  - Fixed: `eval_quality.py` cuts at the first of any EOS ids and stores them in config.json; `eval_compare.py` cuts token ids at EOS (`--eos` for older runs). The 1.6B results are unchanged.
+
 **Vision attention backend:** cuDNN (no mask) instead of flash for the padding-free runs is slower (VGA 8.00 → 8.49, 1080p 53.6 → 56.0 ms), so flash stays.
 
 **What the differing answers look like** (baseline vs full BF16 stack, 9667 questions of the first eval):

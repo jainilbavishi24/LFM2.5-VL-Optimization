@@ -291,7 +291,7 @@ How close to the limit is this? At 1080p, 64.5 of the 87 ms first token are cuBL
 | ChartQA (test) | 2500 | 80.20 | 80.20 | 0.00 | 1.00 | 76 → 32 ms | 15.7 → 10.2 J |
 | TextVQA (val) | 5000 | 81.11 | 81.12 | +0.01 | 1.00 | 137 → 74 ms | 34.9 → 23.1 J |
 
-No difference is significant, and 94.7–99.7 % of the answers are word-for-word identical. The rest are BF16 near-ties that flip both ways equally often. The INT8 extension is also within ±0.4 pp (McNemar p ≥ 0.26).
+No difference is significant, and 94.7–99.7 % of the answers are word-for-word identical. The rest are BF16 near-ties that flip both ways equally often. The INT8 extension is also within ±0.4 pp (McNemar p ≥ 0.26). On LFM2.5-VL-3B (subset of 500 per benchmark) the same stack is also within ±0.4 pp, with 96.6–99.9 % identical answers.
 
 The fused BF16 step is 94 % GEMV at ~90 % of the measured DRAM read roof (1.23 TB/s), so BF16 is close to its floor (~1.9 ms); the remaining wins come from fewer weight bytes (INT8/INT4) and from prefill/vision (TTFT is still HF's: 116 ms at 1080p).
 
