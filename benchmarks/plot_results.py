@@ -154,7 +154,7 @@ def fig_quality():
     for f in sorted(EVAL.glob(f"*_{GPU}_*/summary.jsonl")):
         for line in open(f):
             r = json.loads(line)
-            scores[(r["variant"].split("+")[0], r["bench"])] = 100 * r["score"]
+            scores[(r["variant"].split("+")[0], r["bench"].replace("_full", ""))] = 100 * r["score"]  # newest run wins
     series = [("HF eager", "baseline", "tab:blue"), ("ours: full BF16 stack", "fused_gemv_pf_vfused", "tab:green"),
               ("ext.: INT8 weights", "fused_w8_pf_vfused", "tab:olive")]
     series = [s for s in series if any((s[1], b) in scores for b in BENCH_LABELS)]
@@ -171,7 +171,7 @@ def fig_quality():
     ax.set_xticklabels(list(BENCH_LABELS.values()))
     ax.set_ylabel("score (%)")
     ax.set_ylim(0, 100)
-    ax.set_title("Output quality is unchanged (all differences within ±0.3 pp, McNemar p > 0.3)")
+    ax.set_title("Output quality is unchanged (full test sets; all differences within ±0.4 pp, McNemar p > 0.25)")
     ax.legend(fontsize=8, loc="lower right")
     fig.tight_layout()
     fig.savefig(OUT / "quality.png", dpi=160)
