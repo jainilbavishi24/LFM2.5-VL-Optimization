@@ -243,6 +243,7 @@ Full grids from the night of 13–14 Oct; details, correctness checks and pitfal
 | llama.cpp BF16 / Q8_0 (O0d) | GGUF, CUDA backend | 2.26 ; 1.45 | 1.7× ; 2.6× | | — |
 | **O1** `cudagraph` | our static decode loop, one CUDA graph per token | 2.91 / 2.94 | 1.3× | | 99 % |
 | **O1–O4** `fused_gemv` | + fused kernels (norm, conv, RoPE/KV, split-K attention, SwiGLU), merged projections, our BF16 GEMV — 149 kernels/step instead of ~700 | **2.08 / 2.14** | **1.84×** | 0.61–0.63 | 99 % |
+| **ours: full BF16 stack** `fused_gemv_pf_vfused` | + GEMV with fused SwiGLU / short-conv epilogues (O2d, 123 kernels/step), fused prefill (O3b) and vision (O7d) | **2.07 / 2.12** (3 repeats, baseline 3.70 / 3.69) | **1.75–1.78×** | **0.58–0.63** | 99 %; benchmarks ±0.3 pp |
 
 **Extension: weight quantization.** It changes the model, so it is not counted as one of our optimizations. It is evaluated separately on the quality benchmarks.
 
