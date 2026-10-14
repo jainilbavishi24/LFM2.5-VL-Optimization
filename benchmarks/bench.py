@@ -60,6 +60,8 @@ def parse_args():
     p.add_argument("--warmup", type=int)
     p.add_argument("--repeats", type=int)
     p.add_argument("--idle-seconds", type=float, default=5.0, help="idle-power measurement before the run")
+    p.add_argument("--preprocess", default="cpu", choices=["cpu", "gpu"],
+                   help="image preprocessing: HF processor on the CPU, or our fused CUDA kernels (lfm2opt.preprocess)")
     p.add_argument("--no-phases", action="store_true", help="disable hook instrumentation (to check its overhead)")
     p.add_argument("--tag", default="", help="free-text label added to the run id")
     p.add_argument("--out", default=str(REPO_ROOT / "results" / "raw"))
@@ -116,6 +118,9 @@ def main():
         t_load = time.perf_counter()
         net, processor = load(args.model, args.dtype, args.attn)
         net = apply_variant(variant, net, processor)
+        if args.preprocess == "gpu":
+            from lfm2opt.preprocess import GpuImageProcessor
+            processor = GpuImageProcessor.wrap(processor)
         load_s = time.perf_counter() - t_load
         dtype = dtype_name(next(net.parameters()).dtype)
         pad_id = processor.tokenizer.pad_token_id
@@ -140,6 +145,7 @@ def main():
 
                 for n_new in csv_ints(args.gen_lens):
                     cfg = dict(variant=variant, workload=wl.name, batch_size=bs, gen_len=n_new, dtype=dtype,
+                               preprocess=args.preprocess,
                                attn=args.attn, **{k: v for k, v in shape.items() if k != "batch_size"})
                     try:
                         with torch.inference_mode():

@@ -38,10 +38,12 @@ class StaticDecoder:
         self.dtype = next(net.parameters()).dtype
         self.device = next(net.parameters()).device
         self.graphs = {}  # (B, max_len) -> state dict incl. the captured graph
-        # Fixed-length generation = HF's min_new_tokens: EOS can never be chosen (its logits are masked)
+        # Fixed-length generation = HF's min_new_tokens: EOS can never be chosen (its logits get -inf added).
+        # The bias lives on the device, so captured graphs read it at replay: generate(stop_at_eos=True) zeroes it.
         eos = net.generation_config.eos_token_id
         eos = [eos] if isinstance(eos, int) else list(eos or [])
         self.eos = torch.tensor(eos, dtype=torch.long, device=self.device)
+        self.eos_bias = torch.full((1, len(eos)), float("-inf"), dtype=self.dtype, device=self.device)
         self.fused = fused
         self.attn_splits = attn_splits  # fused path: flash-decoding splits over positions (0 = one block per head)
         self.w4_group, self.w4_clip, self.w4_keep_int8 = w4_group, w4_clip, set(w4_keep_int8)  # int4 options
@@ -116,7 +118,7 @@ class StaticDecoder:
         if self.keep_logits:
             s["logits"].copy_(logits)
         if self.eos.numel():
-            logits.index_fill_(1, self.eos, float("-inf"))
+            logits.index_add_(1, self.eos, self.eos_bias.to(logits.dtype).expand(B, -1))
         nxt = torch.argmax(logits, dim=-1)                                       # greedy
         s["out"].index_copy_(1, s["step"], nxt.view(B, 1))
         s["tok"].copy_(nxt.view(B, 1))
@@ -226,7 +228,7 @@ class StaticDecoder:
         if self.keep_logits:
             s["logits"].copy_(logits)
         if self.eos.numel():
-            logits.index_fill_(1, self.eos, float("-inf"))
+            logits.index_add_(1, self.eos, self.eos_bias.to(logits.dtype).expand(B, -1))
         nxt = torch.argmax(logits, dim=-1)
         s["out"].index_copy_(1, s["step"], nxt.view(B, 1))
         s["tok"].copy_(nxt.view(B, 1))
@@ -264,7 +266,7 @@ class StaticDecoder:
                        **model_inputs)
         logits = out.logits[:, -1]
         if self.eos.numel():
-            logits = logits.index_fill(1, self.eos, float("-inf"))
+            logits = logits.index_add(1, self.eos, self.eos_bias.to(logits.dtype).expand(B, -1))
         first = logits.argmax(-1)                                                # token 1 (from prefill)
         if max_new_tokens <= 1:
             return first, None
@@ -284,15 +286,30 @@ class StaticDecoder:
         return first, s
 
     @torch.no_grad()
-    def generate(self, input_ids, max_new_tokens: int, attention_mask=None, **model_inputs):
-        """Greedy, fixed length (EOS ignored) like the benchmark. Returns [B, prompt + new] token ids."""
+    def generate(self, input_ids, max_new_tokens: int, attention_mask=None, stop_at_eos: bool = False,
+                 check_every: int = 16, **model_inputs):
+        """Greedy. Default: fixed length (EOS masked) like the benchmark. stop_at_eos=True: EOS allowed, and the replay
+        loop stops once every row has produced one (checked after 1, 2, 4, ... steps, then every `check_every`: each
+        check is a host sync; tokens after a row's EOS are junk, cut them like HF does). Returns [B, prompt + new] ids."""
         B = input_ids.shape[0]
+        self.eos_bias.fill_(0.0 if stop_at_eos else float("-inf"))
         first, s = self.prefill(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
         if s is None:
             return torch.cat([input_ids, first.view(B, 1)], dim=1)
-        for _ in range(max_new_tokens - 1):
-            s["graph"].replay()
-        new = torch.cat([first.view(B, 1), s["out"][:, : max_new_tokens - 1]], dim=1)
+        n = max_new_tokens - 1
+        if stop_at_eos and bool(torch.isin(first, self.eos).all()):
+            n = 0
+        done, chunk = 0, 1
+        while done < n:
+            k = min(chunk, n - done) if stop_at_eos else n
+            chunk = min(2 * chunk, check_every)
+            for _ in range(k):
+                s["graph"].replay()
+            done += k
+            if stop_at_eos and done < n and bool(
+                    (torch.isin(first, self.eos) | torch.isin(s["out"][:, :done], self.eos).any(1)).all()):
+                break
+        new = torch.cat([first.view(B, 1), s["out"][:, :done]], dim=1)
         return torch.cat([input_ids, new], dim=1)
 
 

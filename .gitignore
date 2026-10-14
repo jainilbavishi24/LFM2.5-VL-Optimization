@@ -45,3 +45,6 @@ report/*.synctex.gz
 .vscode/
 .idea/
 .git_commit
+
+# Benchmark datasets (downloaded on the server by scripts/download_eval_data.sh)
+data/

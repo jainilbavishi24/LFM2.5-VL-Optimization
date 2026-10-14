@@ -73,7 +73,8 @@ def _cudagraph(net, processor):
     def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
                  pad_token_id=None, **model_inputs):
         assert not do_sample, "cudagraph runtime is greedy only"
-        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
+        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask,
+                            stop_at_eos=(min_new_tokens or 0) < max_new_tokens, **model_inputs)
 
     net.generate = generate
     net._static_decoder = dec
@@ -90,7 +91,8 @@ def _fused_variant(net, gemv):
     def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
                  pad_token_id=None, **model_inputs):
         assert not do_sample, "fused runtime is greedy only"
-        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
+        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask,
+                            stop_at_eos=(min_new_tokens or 0) < max_new_tokens, **model_inputs)
 
     net.generate = generate
     net._static_decoder = dec
@@ -215,7 +217,8 @@ def _fused_w4_awq(net, processor):
 
     def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
                  pad_token_id=None, **model_inputs):
-        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
+        return dec.generate(input_ids, max_new_tokens, attention_mask=attention_mask,
+                            stop_at_eos=(min_new_tokens or 0) < max_new_tokens, **model_inputs)
 
     net.generate = generate
     net._static_decoder = dec
@@ -236,6 +239,13 @@ def _fused_w8_vcudnn(net, processor):
     """O1-O6 (INT8 decode) + O7a (cuDNN vision attention): the current best end-to-end configuration."""
     _vision_cudnn(net, processor)
     return _fused_variant(net, "int8")
+
+
+@register("fused_gemv_vcudnn")
+def _fused_gemv_vcudnn(net, processor):
+    """O1-O6 (BF16 decode, our GEMV) + O7a (cuDNN vision attention): the best configuration without quantization."""
+    _vision_cudnn(net, processor)
+    return _fused_variant(net, "bf16")
 
 
 def apply_variant(name: str, net, processor):
