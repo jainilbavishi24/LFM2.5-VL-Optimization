@@ -197,6 +197,11 @@ Entry template:
 - The fused prefill handles batches without padding; batches of 8 and more decode through cuBLAS.
 - First token grows linearly with the batch (16 images = 16 vision tiles: 155 ms).
 
+**Long generation** (1024 new tokens, 3 repeats; `results/raw/*_long_base`, `*_long_stack`): TPOT averaged over the 1024 tokens.
+- Text: 3.70 → **2.10 ms**.
+- 1080p (context grows to 3.3 k tokens): 3.70 → **2.18 ms**. The split-K decode attention keeps TPOT almost flat as the context grows.
+- GPU energy per request: 798 → 585 J (text), 877 → 635 J (1080p), i.e. −27 %.
+
 **Figures** ([benchmarks/plot_results.py](../benchmarks/plot_results.py) → `report/figures/`):
 - `decode_tpot.png`: now with the final stack; INT4 dropped; INT8 labelled as an extension.
 - `ttft_breakdown.png`: first token including preprocessing, HF vs ours.
