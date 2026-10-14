@@ -18,6 +18,12 @@ void launch_gemv_w4(const void* Wp, const float* S, const void* x, void* y, int 
 void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
                                    int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st);
 
+void launch_qk_norm_rope_kv_prefill(const void* qkv, const void* qw, const void* kw, const float* inv_freq, float scaling,
+                                    void* q_out, void* kc, void* vc, int B, int T, int NQ, int NKV, int max_len, float eps,
+                                    cudaStream_t st);
+void launch_shortconv_prefill(const void* bcx, void* state, const void* w, const void* bias, void* y, int B, int T, int H,
+                              cudaStream_t st);
+
 #define CHECK_BF16(t) TORCH_CHECK(t.is_cuda() && t.scalar_type() == at::kBFloat16 && t.is_contiguous(), #t " must be contiguous CUDA bf16")
 static inline cudaStream_t stream() { return at::cuda::getCurrentCUDAStream(); }
 
@@ -93,7 +99,32 @@ void silu_mul(torch::Tensor g, torch::Tensor y) {
     launch_silu_mul(g.data_ptr(), y.data_ptr(), g.size(0), g.size(-1) / 2, stream());
 }
 
+// prefill: qkv [B*T, NH*64] -> q_out [B, NQ, T, 64]; k, v -> caches [B, NKV, max_len, 64] at t = 0..T-1
+void qk_norm_rope_kv_prefill(torch::Tensor qkv, torch::Tensor qw, torch::Tensor kw, torch::Tensor inv_freq, double scaling,
+                             torch::Tensor q_out, torch::Tensor kc, torch::Tensor vc, double eps) {
+    CHECK_BF16(qkv); CHECK_BF16(qw); CHECK_BF16(kw); CHECK_BF16(q_out); CHECK_BF16(kc); CHECK_BF16(vc);
+    TORCH_CHECK(inv_freq.scalar_type() == at::kFloat, "inv_freq fp32");
+    TORCH_CHECK(kc.size(3) == 64 && q_out.dim() == 4 && q_out.size(3) == 64, "head_dim 64 only");
+    const int B = q_out.size(0), NQ = q_out.size(1), T = q_out.size(2), NKV = kc.size(1);
+    TORCH_CHECK(qkv.numel() == (int64_t)B * T * (NQ + 2 * NKV) * 64 && T <= kc.size(2) && kc.size(0) == B, "shapes");
+    launch_qk_norm_rope_kv_prefill(qkv.data_ptr(), qw.data_ptr(), kw.data_ptr(), inv_freq.data_ptr<float>(), (float)scaling,
+                                   q_out.data_ptr(), kc.data_ptr(), vc.data_ptr(), B, T, NQ, NKV, kc.size(2), (float)eps, stream());
+}
+
+// prefill: bcx [B*T, 3H] -> y [B*T, H]; state [B, H, 3] = last 3 columns of B*x
+void shortconv_prefill(torch::Tensor bcx, torch::Tensor state, torch::Tensor w, c10::optional<torch::Tensor> bias,
+                       torch::Tensor y, int64_t T) {
+    CHECK_BF16(bcx); CHECK_BF16(state); CHECK_BF16(w); CHECK_BF16(y);
+    TORCH_CHECK(state.size(-1) == 3, "conv state length must be 3");
+    const int B = state.size(0), H = state.size(1);
+    TORCH_CHECK(bcx.numel() == (int64_t)B * T * 3 * H && y.numel() == (int64_t)B * T * H, "shapes");
+    launch_shortconv_prefill(bcx.data_ptr(), state.data_ptr(), w.data_ptr(), bias.has_value() ? bias->data_ptr() : nullptr,
+                             y.data_ptr(), B, T, H, stream());
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("qk_norm_rope_kv_prefill", &qk_norm_rope_kv_prefill, "prefill: q/k RMSNorm + RoPE (pos 0..T-1), k/v into the cache");
+    m.def("shortconv_prefill", &shortconv_prefill, "prefill: LFM2 gated short-conv over T tokens + decode conv state");
     m.def("add_rmsnorm", &add_rmsnorm, "h += y (optional); x = w * rmsnorm(h)");
     m.def("shortconv_step", &shortconv_step, "LFM2 gated short-conv decode step");
     m.def("qk_norm_rope_kv", &qk_norm_rope_kv, "q/k head RMSNorm + RoPE, k/v into the static cache at pos");

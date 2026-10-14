@@ -32,22 +32,32 @@ def ext():
     return _EXT
 
 
-_PREP = None
+
+_EXTS = {}
 
 
-def prep_ext():
-    """GPU image preprocessing kernels (kernels/image_prep.cu), used by lfm2opt.preprocess."""
-    global _PREP
-    if _PREP is None:
+def _build(name: str, stem: str):
+    """JIT-build kernels/<stem>.cpp + kernels/<stem>.cu once per process (cached on disk by torch)."""
+    if name not in _EXTS:
         from torch.utils.cpp_extension import load
 
         if "TORCH_CUDA_ARCH_LIST" not in os.environ and torch.cuda.is_available():
             major, minor = torch.cuda.get_device_capability()
             os.environ["TORCH_CUDA_ARCH_LIST"] = f"{major}.{minor}"
-        _PREP = load(
-            name="lfm2_image_prep",
-            sources=[str(REPO_ROOT / "kernels" / "image_prep.cpp"), str(REPO_ROOT / "kernels" / "image_prep.cu")],
+        _EXTS[name] = load(
+            name=name,
+            sources=[str(REPO_ROOT / "kernels" / f"{stem}.cpp"), str(REPO_ROOT / "kernels" / f"{stem}.cu")],
             extra_cuda_cflags=["-O3", "-lineinfo"],
             verbose=False,
         )
-    return _PREP
+    return _EXTS[name]
+
+
+def prep_ext():
+    """GPU image preprocessing kernels (kernels/image_prep.cu), used by lfm2opt.preprocess."""
+    return _build("lfm2_image_prep", "image_prep")
+
+
+def vision_ext():
+    """Vision-encoder kernels (kernels/vision_ops.cu), used by lfm2opt.vision."""
+    return _build("lfm2_vision_ops", "vision_ops")

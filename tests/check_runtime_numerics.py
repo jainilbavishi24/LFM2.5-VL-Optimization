@@ -34,6 +34,8 @@ def main():
     ap.add_argument("--w4-group", type=int, default=128)
     ap.add_argument("--w4-clip", action="store_true", help="int4: per-group clipping search")
     ap.add_argument("--w4-int8", default="", help="int4: weight kinds kept in INT8 (qkv,o,in,out,w13,w2,head)")
+    ap.add_argument("--fused-prefill", action="store_true", help="prompt through our prefill kernels (O3b)")
+    ap.add_argument("--vision-fused", action="store_true", help="fused SigLIP2 encoder (O7d)")
     ap.add_argument("--awq", action="store_true", help="int4: AWQ scales calibrated on variants.CALIB_PROMPTS")
     args = ap.parse_args()
 
@@ -48,7 +50,11 @@ def main():
                                           for i, p in enumerate(CALIB_PROMPTS)])
     dec = StaticDecoder(net, keep_logits=True, fused=args.fused or args.gemv != "cublas", gemv=args.gemv,
                         w4_group=args.w4_group, w4_clip=args.w4_clip,
-                        w4_keep_int8=tuple(k for k in args.w4_int8.split(",") if k), calib=calib)
+                        w4_keep_int8=tuple(k for k in args.w4_int8.split(",") if k), calib=calib,
+                        fused_prefill=args.fused_prefill)
+    if args.vision_fused:  # HF reference keeps HF's vision tower: compare to an unpatched copy of the forward
+        from lfm2opt.vision import FusedSiglip2Encoder
+        venc = FusedSiglip2Encoder(net.model.vision_tower)
     report = {}
     for name in args.workloads.split(","):
         wl = WORKLOADS[name]
@@ -61,8 +67,15 @@ def main():
         hf_logits = torch.stack(hf.logits, dim=1)[0].float()        # [gen, V] raw logits per step
 
         model_inputs = {k: v for k, v in inputs.items() if k not in ("input_ids", "attention_mask")}
+        if args.vision_fused:
+            vt = net.model.vision_tower
+            orig, vt.forward = vt.forward, venc
         first, s = dec.prefill(inputs["input_ids"], args.gen, attention_mask=inputs.get("attention_mask"),
                                **model_inputs)
+        if args.vision_fused:
+            vt.forward = orig
+        first_diff = (dec.last_prefill_logits[0].float() - hf_logits[0]).abs().max().item() \
+            if getattr(dec, "last_prefill_logits", None) is not None else float("nan")
         diffs, agree, flips = [], 0, []
         for t in range(1, args.gen):
             s["tok"].copy_(seq[:, t - 1 : t])                       # force HF's token as this step's input
@@ -78,9 +91,11 @@ def main():
         d = torch.tensor(diffs)
         report[name] = dict(prompt_tokens=T, steps=args.gen - 1, argmax_agree=agree,
                             max_abs_logit_diff=d.max().item(), median_abs_logit_diff=d.median().item(),
-                            first_token_match=bool(first[0] == seq[0, 0]), flips=flips)
+                            first_token_match=bool(first[0] == seq[0, 0]), first_max_abs_logit_diff=first_diff,
+                            flips=flips)
         print(f"{name:9s} T={T:5d}  argmax agree {agree}/{args.gen - 1}  max|dlogit| {d.max():.3f}  "
-              f"median {d.median():.3f}  flips at near-ties: {[round(f['hf_margin'], 3) for f in flips]}")
+              f"median {d.median():.3f}  first token {'ok' if first[0] == seq[0, 0] else 'DIFF'} "
+              f"(max|dlogit| {first_diff:.3f})  flips at near-ties: {[round(f['hf_margin'], 3) for f in flips]}")
     if args.out:
         Path(args.out).write_text(json.dumps(report, indent=2))
 

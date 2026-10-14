@@ -21,8 +21,9 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 class StaticDecoder:
     def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16,
                  gemv: str = "cublas", w4_group: int = 128, w4_clip: bool = False, w4_keep_int8: tuple = (),
-                 calib: dict | None = None):
+                 calib: dict | None = None, fused_prefill: bool = False):
         self.net = net
+        self.fused_prefill = fused_prefill  # O3b: prompt through our kernels straight into the static buffers
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
         cfg = self.lm.config
@@ -257,11 +258,71 @@ class StaticDecoder:
             self.graphs[key] = s
         return self.graphs[key]
 
+    # ---------------------------------------------------------------- prefill through our kernels (O3b)
+    def _embed(self, input_ids, pixel_values=None, spatial_shapes=None, pixel_attention_mask=None, **_):
+        """Token embeddings with the image features scattered in (= Lfm2VlModel.forward before the LM)."""
+        m = self.net.model
+        emb = m.get_input_embeddings()(input_ids)
+        if pixel_values is not None:
+            feats = m.get_image_features(pixel_values=pixel_values, spatial_shapes=spatial_shapes,
+                                         pixel_attention_mask=pixel_attention_mask, return_dict=True).pooler_output
+            feats = torch.cat(feats, dim=0).to(emb.dtype)
+            emb = emb.masked_scatter((input_ids == m.config.image_token_id).unsqueeze(-1), feats)
+        return emb
+
+    def _wbf16(self, key):
+        return self.lin_bf16[key] if key in self.lin_scale else self.lin[key]
+
+    @torch.no_grad()
+    def _prefill_fused(self, input_ids, s, **model_inputs):
+        """All prompt tokens at once: cuBLAS GEMMs on the merged BF16 weights + our fused kernels, k/v and conv state
+        written straight into the static buffers. Returns the last position's logits [B, V]."""
+        K, H = self.K, self.cfg.hidden_size
+        B, T = input_ids.shape
+        h = self._embed(input_ids, **model_inputs).reshape(B * T, H).contiguous()   # residual stream
+        x = torch.empty_like(h)
+        K.add_rmsnorm(h, None, self.norm_w[0], x, self.eps)
+        for i, layer in enumerate(self.layers):
+            if self.is_attn[i]:
+                a = layer.self_attn
+                qkv = F.linear(x, self._wbf16(("qkv", i)))
+                q = torch.empty(B, self.n_heads, T, self.head_dim, device=h.device, dtype=h.dtype)
+                K.qk_norm_rope_kv_prefill(qkv, a.q_layernorm.weight, a.k_layernorm.weight, self.inv_freq,
+                                          self.rope_scaling, q, s["k"][i], s["v"][i], self.eps)
+                o = F.scaled_dot_product_attention(q, s["k"][i][:, :, :T], s["v"][i][:, :, :T], is_causal=True,
+                                                   scale=a.scaling, enable_gqa=True)
+                y = F.linear(o.transpose(1, 2).reshape(B * T, -1), self._wbf16(("o", i)))
+            else:
+                c = layer.conv
+                bcx = F.linear(x, self._wbf16(("in", i)), c.in_proj.bias)
+                cy = torch.empty(B * T, H, device=h.device, dtype=h.dtype)
+                K.shortconv_prefill(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy, T)
+                y = F.linear(cy, self._wbf16(("out", i)), c.out_proj.bias)
+            K.add_rmsnorm(h, y, layer.ffn_norm.weight, x, self.eps)
+            g = F.linear(x, self._wbf16(("w13", i)))
+            act = torch.empty(B * T, g.shape[-1] // 2, device=h.device, dtype=h.dtype)
+            K.silu_mul(g, act)
+            K.add_rmsnorm(h, F.linear(act, self._wbf16(("w2", i))), self.norm_w[i + 1], x, self.eps)
+        return F.linear(x.view(B, T, H)[:, -1], self._wbf16(("head", 0)))                # x = embedding_norm(h)
+
     # ---------------------------------------------------------------- request
     @torch.no_grad()
     def prefill(self, input_ids, max_new_tokens: int, attention_mask=None, **model_inputs):
-        """HF prefill, then load its KV / conv state into our static buffers. Returns (first token [B], state)."""
+        """HF prefill, then load its KV / conv state into our static buffers (or, with fused_prefill, our own prefill
+        straight into them). Returns (first token [B], state)."""
         B, T = input_ids.shape
+        if self.fused and self.fused_prefill and (attention_mask is None or bool(attention_mask.all())):
+            s = self._get(B, T + max(max_new_tokens, 1), max(max_new_tokens - 1, 1))
+            logits = self._prefill_fused(input_ids, s, **model_inputs)
+            if self.keep_logits:
+                self.last_prefill_logits = logits.float()
+            if self.eos.numel():
+                logits = logits.index_add(1, self.eos, self.eos_bias.to(logits.dtype).expand(B, -1))
+            first = logits.argmax(-1)
+            s["tok"].copy_(first.view(B, 1))
+            s["pos"].fill_(T)
+            s["step"].zero_()
+            return first, (s if max_new_tokens > 1 else None)
         out = self.net(input_ids=input_ids, attention_mask=attention_mask, use_cache=True, logits_to_keep=1,
                        **model_inputs)
         logits = out.logits[:, -1]

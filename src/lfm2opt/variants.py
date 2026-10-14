@@ -81,12 +81,12 @@ def _cudagraph(net, processor):
     return net
 
 
-def _fused_variant(net, gemv):
+def _fused_variant(net, gemv, fused_prefill=False):
     """O1 + O2-O4: the CUDA-graph decode runtime with our fused kernels (kernels/lfm2_decode.cu) and merged
     q|k|v and w1|w3 projections: ~140 kernels per step instead of ~700. Needs the CUDA extension (.venv-ref)."""
     from .runtime import StaticDecoder
 
-    dec = StaticDecoder(net, fused=True, gemv=gemv)
+    dec = StaticDecoder(net, fused=True, gemv=gemv, fused_prefill=fused_prefill)
 
     def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
                  pad_token_id=None, **model_inputs):
@@ -246,6 +246,35 @@ def _fused_gemv_vcudnn(net, processor):
     """O1-O6 (BF16 decode, our GEMV) + O7a (cuDNN vision attention): the best configuration without quantization."""
     _vision_cudnn(net, processor)
     return _fused_variant(net, "bf16")
+
+
+@register("vision_fused")
+def _vision_fused(net, processor):
+    """O7d: fused SigLIP2 encoder (merged qkv GEMM, padding-free flash attention, GELU in the fc1 epilogue,
+    residual add + LayerNorm kernel), HF eager LM. See lfm2opt/vision.py."""
+    from .vision import patch_vision_tower
+
+    return patch_vision_tower(net)
+
+
+@register("fused_gemv_vfused")
+def _fused_gemv_vfused(net, processor):
+    """O1-O6 BF16 decode + O7d fused vision encoder: best configuration without quantization."""
+    _vision_fused(net, processor)
+    return _fused_variant(net, "bf16")
+
+
+@register("fused_gemv_pf")
+def _fused_gemv_pf(net, processor):
+    """O1-O6 BF16 decode + O3b fused prefill (our kernels for norms, conv, qk-norm/RoPE/KV, SwiGLU in the prompt)."""
+    return _fused_variant(net, "bf16", fused_prefill=True)
+
+
+@register("fused_gemv_pf_vfused")
+def _fused_gemv_pf_vfused(net, processor):
+    """O1-O6 BF16 decode + O3b fused prefill + O7d fused vision encoder: all our BF16 GPU work, no quantization."""
+    _vision_fused(net, processor)
+    return _fused_variant(net, "bf16", fused_prefill=True)
 
 
 def apply_variant(name: str, net, processor):

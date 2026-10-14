@@ -303,10 +303,10 @@ Full plan, rules, timings and failure playbook: [gpu_sessions.md](gpu_sessions.m
 **Main benchmark = quality + speed + energy** on standard VLM benchmarks, run by our own eval script (official scoring, identical prompts, greedy) for baseline vs our BF16 (vs INT8): MMStar (1500), POPE (~1000 subset), OCRBench (1000), ChartQA or TextVQA (~500–1000 subset). Report accuracy, number of changed answers + McNemar test, TTFT/TPOT/energy over the dataset. Every new optimization must pass it.
 
 **Next GPU work, in order:**
-- [ ] Q1: eval harness + datasets (downloaded on the server with parallel range requests)
-- [ ] P1: GPU image preprocessing kernel (resize + normalize + tile/patchify); CPU preprocessing is 58 ms at 1080p and 32 ms at 720p, outside our TTFT numbers (end-to-end 1080p ≈ 160 ms)
-- [ ] O7d: vision encoder: padding-free attention (flash 287 vs cuDNN 419 µs/layer), fused LayerNorm and bias+GELU
-- [ ] O3b: LM prefill fusion: multi-row add_rmsnorm / silu_mul, prefill short-conv kernel
+- [x] Q1: eval harness + datasets (downloaded on the server with parallel range requests). 14 Oct: BF16 stack and INT8 within ±0.3 pp on all 5 benchmarks, McNemar p ≥ 0.39
+- [x] P1 (14 Oct, bit-exact, 1080p 25–69 → 1.5 ms): GPU image preprocessing kernel (resize + normalize + tile/patchify); CPU preprocessing is 58 ms at 1080p and 32 ms at 720p, outside our TTFT numbers (end-to-end 1080p ≈ 160 ms)
+- [x] O7d (14 Oct, 1080p vision 61.7 → 53.9 ms vs cuDNN): vision encoder: padding-free attention (flash 287 vs cuDNN 419 µs/layer), fused LayerNorm and bias+GELU
+- [x] O3b (14 Oct, 1080p LM prefill 37.0 → 31.8 ms): LM prefill fusion: multi-row add_rmsnorm / silu_mul, prefill short-conv kernel
 - [ ] O2d: decode GEMV epilogue fusion (w1|w3 + silu_mul, in_proj + short-conv): ~149 → ~120 kernels
 - [ ] ncu of our own kernels (bandwidth / occupancy table for the report)
 

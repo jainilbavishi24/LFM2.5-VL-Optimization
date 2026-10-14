@@ -643,3 +643,77 @@ void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st) {
     dim3 grid((I + 255) / 256, B);
     launch_k(silu_mul_kernel, grid, 256, 0, st, (const bf16*)g, (bf16*)y, I);
 }
+
+// ================================================================================================ prefill (O3b)
+// The same per-token math as the decode kernels, for all T prompt tokens at once (positions 0..T-1, no padding).
+
+// qkv [B*T, (NQ + 2*NKV) * D] -> q_out [B, NQ, T, D] (SDPA layout); k, v -> cache[b, kv_head, t] for t < T.
+template <int D>
+__global__ void qk_norm_rope_kv_prefill_kernel(const bf16* __restrict__ qkv, const bf16* __restrict__ qw, const bf16* __restrict__ kw,
+                                               const float* __restrict__ inv_freq, float scaling, bf16* __restrict__ q_out,
+                                               bf16* __restrict__ kc, bf16* __restrict__ vc, int T, int NQ, int NKV,
+                                               int max_len, float eps) {
+    pdl_trigger();
+    pdl_wait();
+    __shared__ float xs[D];
+    __shared__ float red[D / 32];
+    const int bt = blockIdx.x, b = bt / T, t = bt - b * T, head = blockIdx.y, d = threadIdx.x;
+    const int NH = NQ + 2 * NKV;
+    float x = B2F(qkv[((size_t)bt * NH + head) * D + d]);
+    if (head >= NQ + NKV) {
+        vc[(((size_t)b * NKV + (head - NQ - NKV)) * max_len + t) * D + d] = F2B(x);
+        return;
+    }
+    const bool is_q = head < NQ;
+    const float ss = block_sum<D / 32>(x * x, red);
+    x = rbf(B2F((is_q ? qw : kw)[d]) * rbf(x * rsqrtf(ss / D + eps)));
+    xs[d] = x;
+    __syncthreads();
+    const int half = D / 2;
+    const float rot = d < half ? -xs[d + half] : xs[d - half];
+    const float f = (float)t * inv_freq[d % half];
+    const float c = rbf(cosf(f) * scaling), s = rbf(sinf(f) * scaling);
+    const bf16 out = F2B(rbf(x * c) + rbf(rot * s));
+    if (is_q) q_out[(((size_t)b * NQ + head) * T + t) * D + d] = out;
+    else kc[(((size_t)b * NKV + (head - NQ)) * max_len + t) * D + d] = out;
+}
+
+void launch_qk_norm_rope_kv_prefill(const void* qkv, const void* qw, const void* kw, const float* inv_freq, float scaling,
+                                    void* q_out, void* kc, void* vc, int B, int T, int NQ, int NKV, int max_len, float eps,
+                                    cudaStream_t st) {
+    dim3 grid(B * T, NQ + 2 * NKV);
+    launch_k(qk_norm_rope_kv_prefill_kernel<64>, grid, 64, 0, st, (const bf16*)qkv, (const bf16*)qw, (const bf16*)kw,
+             inv_freq, scaling, (bf16*)q_out, (bf16*)kc, (bf16*)vc, T, NQ, NKV, max_len, eps);
+}
+
+// bcx [B*T, 3H] = (B | C | x) per token. HF prefill: bx = bf16(B*x); conv = bf16(causal depthwise conv3(bx) (+bias));
+// y = bf16(C * conv). The decode state gets the last 3 bx columns (left zero-padded when T < 3).
+__global__ void shortconv_prefill_kernel(const bf16* __restrict__ bcx, bf16* __restrict__ state, const bf16* __restrict__ w,
+                                         const bf16* __restrict__ bias, bf16* __restrict__ y, int T, int H) {
+    pdl_trigger();
+    pdl_wait();
+    constexpr int L = 3;
+    const int i = blockIdx.x * blockDim.x + threadIdx.x, t = blockIdx.y, b = blockIdx.z;
+    if (i >= H) return;
+    const bf16* base = bcx + (size_t)b * T * 3 * H;
+    auto bx = [&](int tt) -> float {
+        if (tt < 0) return 0.f;
+        const bf16* r = base + (size_t)tt * 3 * H;
+        return rbf(B2F(r[i]) * B2F(r[2 * H + i]));
+    };
+    const float b0 = bx(t - 2), b1 = bx(t - 1), b2 = bx(t);
+    float acc = B2F(w[i * L + 0]) * b0 + B2F(w[i * L + 1]) * b1 + B2F(w[i * L + 2]) * b2;
+    if (bias) acc += B2F(bias[i]);
+    y[((size_t)b * T + t) * H + i] = F2B(B2F(base[(size_t)t * 3 * H + H + i]) * rbf(acc));
+    if (t == T - 1) {
+        bf16* st = state + ((size_t)b * H + i) * L;
+        st[0] = F2B(b0); st[1] = F2B(b1); st[2] = F2B(b2);
+    }
+}
+
+void launch_shortconv_prefill(const void* bcx, void* state, const void* w, const void* bias, void* y, int B, int T, int H,
+                              cudaStream_t st) {
+    dim3 grid((H + 255) / 256, T, B);
+    launch_k(shortconv_prefill_kernel, grid, 256, 0, st, (const bf16*)bcx, (bf16*)state, (const bf16*)w, (const bf16*)bias,
+             (bf16*)y, T, H);
+}

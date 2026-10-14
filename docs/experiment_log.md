@@ -15,7 +15,108 @@ Entry template:
 
 ---
 
-## 2026-10-14 (night, 02:25–02:40): full-grid results of the night's best variants, 3B, batching, FP8 vision (rejected)  (Claude)
+## 2026-10-14 (slot 2, 16:00–18:00): GPU image preprocessing (P1), quality evaluation on 5 VLM benchmarks (Q1), fused vision encoder (O7d), fused LM prefill (O3b)  (Claude)
+
+**Direction (decided with the team this morning):** the main results are lossless BF16 GPU/CUDA optimizations. Quantization (INT8) is only an extension, evaluated separately; INT4 is dropped. Every variant is graded on standard VLM benchmarks (accuracy) next to latency and energy.
+
+**Where the CPU preprocessing time goes** ([profiling/preprocess_probe.py](../profiling/preprocess_probe.py), Core Ultra 9, 24 torch threads): the HF image processor (torchvision resize with antialias in uint8 → normalize → tile → patchify → pad) takes 22 ms at 720p and 69 ms at 1080p inside the processor call. It is also very noisy run to run (1080p: 25–69 ms, 720p: 4–31 ms across runs), probably from contention in the CPU thread pool. Tokenizing the expanded prompt (2327 tokens at 1080p) costs about 2–3 ms. HF's own `device="cuda"` option runs the same torchvision ops on the GPU in 2.05 ms (1080p).
+
+**P1: fused GPU preprocessing** ([kernels/image_prep.cu](../kernels/image_prep.cu), [src/lfm2opt/preprocess.py](../src/lfm2opt/preprocess.py), `GpuImageProcessor.wrap(processor)`, `bench.py --preprocess gpu`):
+- How it works:
+  - The uint8 image goes to the GPU once, through a reused pinned buffer.
+  - Kernel 1 is the horizontal antialiased bilinear pass into a uint8 buffer.
+  - Kernel 2 is the vertical pass fused with rescale/normalize, the 512×512 tile split, 16×16 patchify and the write into the padded `pixel_values` layout. The thumbnail is a second resize job into the last tile slot.
+  - The int16 fixed-point weights are computed on the host with ATen's formula for the uint8 path (Pillow-style: per-pass precision, `1 << (prec-1)` rounding, saturate). The output is therefore **bit-identical to the HF CPU path**: [tests/test_preprocess.py](../tests/test_preprocess.py) passes 28/28 (14 sizes from 64×64 to 4032×3024, including upscaling, portrait and odd sizes; photos and noise; same `input_ids`, masks, spatial shapes, `pixel_values` max diff 0).
+- Timing at 1080p:
+  - The kernels take 25 µs, H2D 0.22 ms, and PIL → numpy (host repack) 0.75 ms. The image processor drops from 22–69 ms to **1.46 ms** (HF on CUDA: 2.05).
+  - Full processor call with tokenization: 0.7 / 1.6 / 3.9 ms (VGA / 720p / 1080p) instead of 1.4 / 5–31 / 25–63 ms.
+- **End to end at 1080p** (preprocess + generate, `results/raw/20261014-1627*_prep_cpu`, `…162815…_prep_gpu`):
+
+  | Configuration | First token | 128 tokens |
+  | --- | --- | --- |
+  | HF baseline | 136.5 ms | 608 ms |
+  | `fused_gemv_vcudnn` + GPU preprocessing | 101.6 ms | 368 ms |
+
+  At 720p: 69.6 → 34.5 ms to the first token.
+
+**Runtime change:** `StaticDecoder.generate(stop_at_eos=True)`, used when `min_new_tokens < max_new_tokens` (HF semantics).
+- The EOS mask is now a device-side bias that the captured graphs read at replay, so the same graph serves fixed-length benchmarking and normal generation.
+- Replays stop once every row has emitted EOS (checked after 1, 2, 4, … steps, then every 16).
+- Teacher-forced check unchanged (127/127 on text and img_small; 124/127 at 1080p with flips only at exact or near ties).
+- New variant `fused_gemv_vcudnn`: BF16 decode + cuDNN vision attention, the best configuration without quantization.
+
+**Q1: quality-evaluation harness** ([benchmarks/eval_quality.py](../benchmarks/eval_quality.py), [benchmarks/eval_compare.py](../benchmarks/eval_compare.py), data via [scripts/download_eval_data.sh](../scripts/download_eval_data.sh); the server needed pyarrow, fetched with parallel range requests because uv's single connection crawled):
+- Benchmarks and scoring:
+  - MMStar (1500; option letter)
+  - POPE (3 × 3000; yes/no, accuracy + F1)
+  - OCRBench (1000; substring match as in the official scorer)
+  - ChartQA test (2500; relaxed accuracy, 5 %)
+  - TextVQA val shard 0 (1667; VQA accuracy, leave-one-out over the 10 human answers)
+- Protocol: same prompts for every variant, greedy, stop at EOS, batch 1. Each variant can carry `+gpuprep`.
+- Recorded: per-question prediction, token ids, score, preprocessing and generation time; energy per benchmark from NVML.
+- `eval_compare.py` reports, against the baseline: score delta, identical-answer rate, discordant pairs and the exact McNemar p-value.
+- Smoke test (20 questions per benchmark): baseline and `fused_gemv_vcudnn` score the same on all five; 2 of 100 answers differ in text and are equally right.
+
+**Q1 result: our optimizations do not change output quality** (`results/eval/20261014-163454_RTXPRO5000Blackwell_full`; POPE subsampled to 1000 per split; `+gpuprep` = our GPU preprocessing).
+
+| Variant | Benchmark | n | Score % | Δ (pp) | Same answer % | Ref ✓ var ✗ | Ref ✗ var ✓ | McNemar p | ms/question | J/question |
+|---|---|---|---|---|---|---|---|---|---|---|
+| HF baseline | MMStar | 1500 | 49.07 | | | | | | 60.2 | 10.04 |
+| | POPE (acc; F1 88.95) | 3000 | 89.73 | | | | | | 51.0 | 8.94 |
+| | OCRBench | 1000 | 79.70 | | | | | | 117.1 | 25.88 |
+| | ChartQA | 2500 | 80.20 | | | | | | 74.3 | 15.56 |
+| | TextVQA | 1667 | 82.07 | | | | | | 137.3 | 34.78 |
+| **`fused_gemv_vcudnn+gpuprep`** (BF16) | MMStar | 1500 | 48.87 | −0.20 | 97.6 | 9 | 6 | 0.61 | 26.9 | 8.22 |
+| | POPE | 3000 | 89.80 | +0.07 | 99.8 | 0 | 2 | 0.50 | 19.8 | 6.34 |
+| | OCRBench | 1000 | 79.70 | 0.00 | 94.5 | 5 | 5 | 1.00 | 66.9 | 20.53 |
+| | ChartQA | 2500 | 80.04 | −0.16 | 96.6 | 8 | 4 | 0.39 | 36.2 | 11.57 |
+| | TextVQA | 1667 | 82.20 | +0.13 | 98.5 | 5 | 7 | 0.77 | 84.4 | 26.13 |
+| `fused_w8_vcudnn+gpuprep` (extension, INT8 weights) | MMStar | 1500 | 49.07 | 0.00 | 97.4 | 8 | 8 | 1.00 | 24.6 | 7.56 |
+| | POPE | 3000 | 89.80 | +0.07 | 99.9 | 0 | 2 | 0.50 | 18.9 | 6.07 |
+| | OCRBench | 1000 | 79.40 | −0.30 | 93.3 | 7 | 4 | 0.55 | 53.9 | 16.65 |
+| | ChartQA | 2500 | 80.04 | −0.16 | 96.1 | 8 | 4 | 0.39 | 33.3 | 10.74 |
+| | TextVQA | 1667 | 82.13 | +0.06 | 98.3 | 5 | 6 | 1.00 | 81.3 | 25.17 |
+
+- Baseline scores are in the published range for LFM2.5-VL-1.6B, so the prompts and scorers are sane.
+- **Every difference is within ±0.3 pp and none is significant (all McNemar p ≥ 0.39).** 94–99.9 % of answers are textually identical. The rest come from BF16 near-ties (different summation order in our kernels and in cuDNN attention); they flip in both directions about equally often.
+- A whole question (CPU or GPU preprocessing + generation) is **1.6–2.6× faster** and uses **18–29 % less GPU energy** with our BF16 stack. GPU energy per question includes the time the GPU waits for the CPU preprocessing, which is why the baseline loses so much here.
+- The INT8 extension is also quality-neutral on these benchmarks. It is a little faster per question, because short answers are dominated by prefill, not decode.
+
+**O7d: fused SigLIP2 vision encoder** ([src/lfm2opt/vision.py](../src/lfm2opt/vision.py), [kernels/vision_ops.cu](../kernels/vision_ops.cu); variants `vision_fused` and `fused_gemv_vfused`):
+- What it does:
+  - q|k|v merged into one GEMM.
+  - Padding-free attention: tiles grouped into runs of equal valid length, flash kernel per run without a mask. At 1080p that is 8 full tiles plus the 1008-patch thumbnail.
+  - GELU (tanh) in the fc1 GEMM epilogue (cuBLASLt `GELU_BIAS` via `torch._addmm_activation`).
+  - Residual add + LayerNorm fused into one warp-per-row kernel.
+- Accuracy ([tests/check_vision_fused.py](../tests/check_vision_fused.py), image features at the valid patches vs an FP32 copy of the tower): relative error 5.0 / 3.7 / 4.6 % (VGA / 720p / 1080p) vs HF BF16's own 4.9 / 3.7 / 4.9 %. So it is as accurate as HF; it only rounds in a different order.
+- Time ([profiling/ttft_probe.py](../profiling/ttft_probe.py), CUDA events): vision 1080p HF 77.3 → cuDNN attention 61.7 → **fused 53.9 ms**; 720p 25.6 → 20.8 → 18.8; VGA 12.0 → 10.0 → 8.1.
+- Ablation at 1080p (all on: 53.4 ms):
+
+  | Removed | Cost |
+  | --- | --- |
+  | Flash-varlen (cuDNN with mask instead) | +2.5 ms |
+  | GELU epilogue | +2.8 ms |
+  | Fused add+LayerNorm | +1.7 ms |
+  | All three (only the merged QKV left) | 59.9 ms |
+
+**O3b: fused LM prefill** (`StaticDecoder(fused_prefill=True)`; new kernels `qk_norm_rope_kv_prefill` and `shortconv_prefill` in [kernels/lfm2_decode.cu](../kernels/lfm2_decode.cu), plus the decode `add_rmsnorm` / `silu_mul` on all T rows):
+- The prompt goes through cuBLAS GEMMs on the merged q|k|v and w1|w3 weights and our kernels, writing k/v and the conv state straight into the static decode buffers (no HF cache, no copy).
+- Teacher-forced check: first token matches HF on text / VGA / 1080p (max |Δlogit| 0.13–0.33), and decode agreement is 126–127/127 (flips only at exact ties).
+- LM prefill: text 3.9 → 2.5 ms, VGA 5.3 → 4.3, 720p 13.3 → 12.0, **1080p 37.0 → 31.8 ms**.
+
+**Full BF16 stack** (`fused_gemv_pf_vfused`, GPU preprocessing; `results/raw/20261014-170328_*_stack_bf16`):
+
+| Workload | First token, baseline | First token, ours |
+| --- | --- | --- |
+| Text | 6.6 ms | **2.6 ms** |
+| VGA | 20.0 ms | **12.3 ms** |
+| 720p | 39.0 ms | **29.4 ms** |
+| 1080p | 111–114 ms | **85.0 ms** |
+
+- At 1080p, 128 tokens take 582 → **352 ms**.
+- With preprocessing included, 1080p is **136.5 → 89 ms to the first token (1.53×)** and **608 → 356 ms for 128 tokens (1.71×)**.
+
+ of the night's best variants, 3B, batching, FP8 vision (rejected)  (Claude)
 
 **Full grids** (`bench.py --preset full --no-phases`, 10 repeats; `results/raw/20261014-022*`; TPOT at 128 new tokens, J/token dynamic in parentheses):
 

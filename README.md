@@ -22,7 +22,10 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Baseline benchmarking + profiling on **T4** | 3 | ✅ Complete (incl. long-context and full-prefill Nsight Compute, 2026-10-11) — see Results and the log |
 | Baseline benchmarking + profiling on the **course server, RTX PRO 5000 Blackwell** (3 × 2 h/week, SSH) | 4–5 | ✅ Done in slot 1 (2026-10-13): full grid, batch sweep, torch profiler, nsys, 9 Nsight Compute runs — see Results |
 | Reference baselines O0a–O0d (`causal-conv1d`, `torch.compile`, vLLM, llama.cpp) | 5 | ✅ Done (night of 13–14 Oct) — see Results |
-| O1 CUDA graph runtime, O2–O4 fused CUDA kernels, O6 INT8/INT4 weight-only GEMV, O7a vision attention | 5–6 | ✅ Working: decode 3.83 → 2.08 ms (BF16) / 1.11 ms (INT8); 1080p TTFT 116 → 102 ms — see Results |
+| O1 CUDA graph runtime, O2–O4 fused CUDA kernels, O7a vision attention, P1 GPU image preprocessing | 5–6 | ✅ Working (all BF16): decode 3.83 → 2.08 ms; 1080p first token incl. preprocessing 136 → 102 ms — see Results |
+| Quality evaluation on standard VLM benchmarks (MMStar, POPE, OCRBench, ChartQA, TextVQA) | 6 | ✅ 14 Oct: our BF16 stack and INT8 are within ±0.3 pp of the baseline, no significant difference (McNemar) |
+| O7d fused vision encoder, O3b fused LM prefill | 6 | ✅ 1080p vision 77 → 54 ms, LM prefill 37 → 32 ms; first token incl. preprocessing 136 → 89 ms |
+| Extension: INT8 weight-only GEMV (O6) | 6 | ✅ 1.11 ms/token; evaluated separately (it changes the model) |
 | Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
 | Main optimization work | 6 | — |
@@ -240,21 +243,48 @@ Full grids from the night of 13–14 Oct; details, correctness checks and pitfal
 | llama.cpp BF16 / Q8_0 (O0d) | GGUF, CUDA backend | 2.26 ; 1.45 | 1.7× ; 2.6× | | — |
 | **O1** `cudagraph` | our static decode loop, one CUDA graph per token | 2.91 / 2.94 | 1.3× | | 99 % |
 | **O1–O4** `fused_gemv` | + fused kernels (norm, conv, RoPE/KV, split-K attention, SwiGLU), merged projections, our BF16 GEMV — 149 kernels/step instead of ~700 | **2.08 / 2.14** | **1.84×** | 0.61–0.63 | 99 % |
-| **O1–O6** `fused_w8` | + INT8 weight-only GEMV | **1.11 / 1.19** | **3.45×** | **0.32–0.35** | 98.7 % |
-| O1–O6b `fused_w4` | + INT4 group-128 GEMV (round-to-nearest) | 0.76 / 0.84 | 5.0× | 0.22–0.26 | 86 % (too lossy without calibration) |
 
-Prefill/vision: cuDNN attention for SigLIP2 (`vision_cudnn`, O7a) cuts 1080p TTFT 116 → 102 ms (vision 73.5 → 62.9 ms). Generalization: on LFM2.5-VL-3B, TPOT 6.50 → 2.50 ms with `fused_w8`. Batched decode (img_small): batch 4 2929 tok/s (HF 1039), batch 16 ~5900 tok/s (HF 3987).
+**Extension: weight quantization.** It changes the model, so it is not counted as one of our optimizations. It is evaluated separately on the quality benchmarks.
 
----|---|---|---|---|
-| HF transformers eager (baseline) | — | 3.83 / 3.81 ms | 1.0× | — |
-| `causal-conv1d` installed (O0a) | NVIDIA-style conv kernels, no code change | 3.73 / 3.70 | 1.03× | — |
-| HF static cache + `torch.compile` (O0b) | PyTorch's compiler + CUDA graphs | 2.72 / 3.26 | 1.4× / 1.2× | — |
-| vLLM 0.31 (O0c) | CUDA graphs, own kernels | 2.38 / 2.38 | 1.6× | — |
-| llama.cpp BF16 / Q8_0 (O0d) | GGUF, CUDA backend | 2.26 / – ; 1.45 / – | 1.7× ; 2.6× | — |
-| **O1** `cudagraph` | our static decode loop, one CUDA graph per token | 2.91 / 2.94 | 1.3× | 99 % (near-ties) |
-| **O1–O4** `fused` | + 5 fused CUDA kernels, merged projections, split-K attention (149 kernels/step instead of ~700) | **2.23 / 2.27** | **1.7×** | 99 % (near-ties) |
-| **O1–O6** `fused_w8` | + INT8 weight-only GEMV kernel (per-row scales) | **1.33 / 1.36** | **2.9×** | 98.7 % (flips at margins ≤ 0.125) |
-| O1–O6b `fused_w4` | + INT4 group-128 GEMV (RTN) | 0.99 / 1.02 | 3.8× | 86 % — too lossy without calibration |
+| Variant | What it adds | TPOT text / 1080p | Speed-up | J/token | Agreement |
+|---|---|---|---|---|---|
+| O1–O6 `fused_w8` | + INT8 weight-only GEMV (per-row scales) | 1.11 / 1.19 | 3.45× | 0.32–0.35 | 98.7 % |
+| O1–O6b `fused_w4` | + INT4 group-128 GEMV (round-to-nearest) | 0.76 / 0.84 | 5.0× | 0.22–0.26 | 86 % (dropped: too lossy) |
+
+Prefill/vision: cuDNN attention for SigLIP2 (`vision_cudnn`, O7a) cuts 1080p TTFT 116 → 102 ms (vision 73.5 → 62.9 ms). Generalization: on LFM2.5-VL-3B, TPOT 6.50 → 4.95 ms with the fused BF16 runtime (2.50 ms with INT8). Batched decode (img_small): batch 4 2929 tok/s (HF 1039), batch 16 ~5900 tok/s (HF 3987).
+
+### Image preprocessing and end to end (RTX PRO 5000 Blackwell, batch 1)
+
+HF's processor resizes, tiles and patchifies the image on the CPU: 22–69 ms at 1080p, and very noisy. Our two CUDA kernels ([kernels/image_prep.cu](kernels/image_prep.cu)) produce **bit-identical** `pixel_values` on the GPU, verified on 28 image sizes and contents by [tests/test_preprocess.py](tests/test_preprocess.py):
+
+| | VGA | 720p | 1080p |
+|---|---|---|---|
+| HF processor, CPU | 1.4 ms | 5–31 ms | 25–63 ms |
+| HF processor, torchvision on CUDA (`device="cuda"`) | 0.45 | 0.98 | 2.05 (image part only) |
+| **ours** (`--preprocess gpu`), incl. tokenization | **0.7** | **1.6** | **3.9** (kernels 25 µs; the rest is PIL → numpy, H2D and the tokenizer) |
+
+Further prefill-side work (all BF16, CUDA events, 1080p):
+- **Vision encoder (O7d):** merged q|k|v, padding-free flash attention, GELU in the fc1 GEMM epilogue, fused add+LayerNorm kernel. 77.3 → 53.9 ms, as accurate as HF's BF16 path vs FP32.
+- **LM prefill (O3b):** our norm / short-conv / qk-norm+RoPE+KV / SwiGLU kernels over all prompt tokens, writing straight into the decode buffers. 37.0 → 31.8 ms.
+
+End to end (preprocess + generate):
+
+| Configuration | Text, first token | VGA, first token | 1080p, first token | 1080p, 128 tokens |
+|---|---|---|---|---|
+| HF baseline (CPU preprocessing) | 6.8 ms | 21.2 ms | 136.5 ms | 608 ms |
+| **ours, all BF16** (`fused_gemv_pf_vfused`, GPU preprocessing) | **2.8 ms** | **13.0 ms** | **≈ 89 ms** | **≈ 356 ms** |
+
+**Output quality on standard VLM benchmarks** ([benchmarks/eval_quality.py](benchmarks/eval_quality.py); same prompts, greedy, exact McNemar test vs the baseline; POPE 1000 per split):
+
+| Benchmark | n | HF baseline | ours BF16 (`fused_gemv_vcudnn` + GPU prep) | Δ | McNemar p | Time per question | GPU energy per question |
+|---|---|---|---|---|---|---|---|
+| MMStar | 1500 | 49.07 | 48.87 | −0.20 | 0.61 | 60 → 27 ms | 10.0 → 8.2 J |
+| POPE (accuracy) | 3000 | 89.73 | 89.80 | +0.07 | 0.50 | 51 → 20 ms | 8.9 → 6.3 J |
+| OCRBench | 1000 | 79.70 | 79.70 | 0.00 | 1.00 | 117 → 67 ms | 25.9 → 20.5 J |
+| ChartQA | 2500 | 80.20 | 80.04 | −0.16 | 0.39 | 74 → 36 ms | 15.6 → 11.6 J |
+| TextVQA (val shard) | 1667 | 82.07 | 82.20 | +0.13 | 0.77 | 137 → 84 ms | 34.8 → 26.1 J |
+
+No difference is significant, and 94–99.8 % of the answers are word-for-word identical (the rest are BF16 near-ties). The INT8 extension is also within ±0.3 pp. Full table in the [experiment log](docs/experiment_log.md).
 
 The fused BF16 step is 94 % GEMV at ~90 % of the measured DRAM read roof (1.23 TB/s), so BF16 is close to its floor (~1.9 ms); the remaining wins come from fewer weight bytes (INT8/INT4) and from prefill/vision (TTFT is still HF's: 116 ms at 1080p).
 
