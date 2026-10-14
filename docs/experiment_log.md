@@ -33,6 +33,11 @@ Entry template:
 - The best square GEMM reaches 219 TFLOPS (4096³). Longer ones throttle at the 300 W board limit: 8192³ gets 142–190 TFLOPS.
 - **So 64.5 of the 87 ms 1080p first token is GEMMs at 88 % of the achievable BF16 tensor-core rate.** The rest is attention (~8 ms) and elementwise work.
 - Further BF16 gains on the first token are therefore small. FP8 GEMMs would be the next step, but that is quantization (an extension, and the rejected O7b showed it needs fused activation quantization).
+**What the differing answers look like** (baseline vs full BF16 stack, 9667 questions of the first eval):
+- 219 answers (2.3 %) differ in their tokens; 92 of them differ from the first token on.
+- 154 have the same score: format only ("61" vs "61."; "A" vs "A: Stage"; "The word "GAMBOA" is written…" vs "GAMBOA").
+- The rest flip **35× in our favour and 30× against**. That is BF16 rounding noise at near-ties (different summation order in our kernels, cuDNN/flash attention and the GELU epilogue), not a systematic loss.
+
 - Pitfalls:
   - A bias on a GEMM matters: with a bias, cuBLAS uses its bias-epilogue path. For the LM's 2327×8192×2048 that is 149 instead of 203 TFLOPS, and the LFM2 LM has no biases.
   - `preferred_blas_library("cublaslt")` and a pre-transposed weight layout did not help (±2 %, or worse).
