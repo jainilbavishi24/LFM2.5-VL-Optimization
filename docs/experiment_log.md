@@ -138,6 +138,7 @@ Entry template:
   - Still bit-identical (109/109).
   - Text 128 tokens 268.3 → 267.1 / 267.0 ms, img_small 282.9 → 282.3 / 282.3 ms (two alternating rounds): TPOT 2.096 → 2.087 ms, about 10 µs per token.
   - That is small, as expected: the BF16 step is already at about 1.09× its weight-read floor.
+  - Under the PyTorch profiler (PDL off, img_small): **123 kernels per decode step (was 149)**, 2.11 ms kernel time per step, 94.6 % of it in GEMVs.
 
 **ncu of our kernels** ([profiling/ncu/profile_ours.sh](../profiling/ncu/profile_ours.sh), 1080p request of the full stack, PDL off; `profiling/reports/20261014-171411_*_ncu_ours_stack_fhd_all`):
 
@@ -179,6 +180,8 @@ Entry template:
   | TextVQA | 82.09 | +0.02 | 1.00 |
 
   No significant change, so INT8 weight-only quantization is safe for this model on these tasks. It stays a separately reported extension.
+
+**Nsight Systems timelines** (1080p, 32 tokens; `profiling/reports/20261014-1730*` baseline, `…-173136*` full stack; `PYTHON=.venv-ref/bin/python bash profiling/nsys/profile_nsys.sh img_fhd 32 --variant fused_gemv_pf_vfused`). The kernel times in the stack's CSV are inflated because PDL lets kernels start early and wait. Use `LFM2_PDL=0` for per-kernel numbers; the timeline is for the picture.
 
 **Figures** ([benchmarks/plot_results.py](../benchmarks/plot_results.py) → `report/figures/`):
 - `decode_tpot.png`: now with the final stack; INT4 dropped; INT8 labelled as an extension.
