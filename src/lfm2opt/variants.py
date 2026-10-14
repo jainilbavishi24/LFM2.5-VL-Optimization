@@ -277,6 +277,13 @@ def _fused_gemv_pf_vfused(net, processor):
     return _fused_variant(net, "bf16", fused_prefill=True)
 
 
+@register("fused_w8_pf_vfused")
+def _fused_w8_pf_vfused(net, processor):
+    """Extension (changes the model): the full stack with INT8 weight-only decode GEMVs (prefill/vision stay BF16)."""
+    _vision_fused(net, processor)
+    return _fused_variant(net, "int8", fused_prefill=True)
+
+
 def apply_variant(name: str, net, processor):
     if name not in VARIANTS:
         raise KeyError(f"unknown variant {name!r}; available: {sorted(VARIANTS)}")

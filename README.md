@@ -24,7 +24,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Reference baselines O0a–O0d (`causal-conv1d`, `torch.compile`, vLLM, llama.cpp) | 5 | ✅ Done (night of 13–14 Oct) — see Results |
 | O1 CUDA graph runtime, O2–O4 fused CUDA kernels, O7a vision attention, P1 GPU image preprocessing | 5–6 | ✅ Working (all BF16): decode 3.83 → 2.08 ms; 1080p first token incl. preprocessing 136 → 102 ms — see Results |
 | Quality evaluation on standard VLM benchmarks (MMStar, POPE, OCRBench, ChartQA, TextVQA) | 6 | ✅ 14 Oct: our BF16 stack and INT8 are within ±0.3 pp of the baseline, no significant difference (McNemar) |
-| O7d fused vision encoder, O3b fused LM prefill | 6 | ✅ 1080p vision 77 → 54 ms, LM prefill 37 → 32 ms; first token incl. preprocessing 136 → 89 ms |
+| O7d fused vision encoder, O3b fused LM prefill, O2d GEMV epilogues | 6 | ✅ 1080p vision 77 → 54 ms, LM prefill 37 → 31 ms; first token incl. preprocessing 164 → 90 ms, TPOT 3.70 → 2.07–2.12 ms (3 repeats) |
 | Extension: INT8 weight-only GEMV (O6) | 6 | ✅ 1.11 ms/token; evaluated separately (it changes the model) |
 | Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
@@ -267,12 +267,16 @@ Further prefill-side work (all BF16, CUDA events, 1080p):
 - **Vision encoder (O7d):** merged q|k|v, padding-free flash attention, GELU in the fc1 GEMM epilogue, fused add+LayerNorm kernel. 77.3 → 53.9 ms, as accurate as HF's BF16 path vs FP32.
 - **LM prefill (O3b):** our norm / short-conv / qk-norm+RoPE+KV / SwiGLU kernels over all prompt tokens, writing straight into the decode buffers. 37.0 → 31.8 ms.
 
-End to end (preprocess + generate):
+**Final end-to-end comparison** (mean ± std over 3 full repeats, 10 runs each; preprocessing + generation; `results/raw/*_final_{base,stack}_r*`, `benchmarks/aggregate_runs.py --pattern 'final_*'`):
 
-| Configuration | Text, first token | VGA, first token | 1080p, first token | 1080p, 128 tokens |
-|---|---|---|---|---|
-| HF baseline (CPU preprocessing) | 6.8 ms | 21.2 ms | 136.5 ms | 608 ms |
-| **ours, all BF16** (`fused_gemv_pf_vfused`, GPU preprocessing) | **2.8 ms** | **13.0 ms** | **≈ 89 ms** | **≈ 356 ms** |
+| Workload | First token, HF baseline (CPU preprocessing) | First token, ours (all BF16) | Speed-up | TPOT baseline → ours | J/token baseline → ours |
+|---|---|---|---|---|---|
+| Text | 6.7 ms | **2.8 ms** | 2.4× | 3.70 → **2.07 ms** | 0.84 → **0.58** |
+| VGA (1 tile) | 21.4 ms | **13.0 ms** | 1.6× | 3.70 → **2.08** | 0.87 → **0.59** |
+| 720p (3 tiles) | 57 ± 14 ms | **31.6 ms** | 1.8× | 3.71 → **2.09** | 0.87 → **0.63** |
+| 1080p (9 tiles) | 164 ± 15 ms | **89.9 ± 0.8 ms** | 1.8× | 3.69 → **2.12** | 0.90 → **0.63** |
+
+"Ours" is `fused_gemv_pf_vfused` with `--preprocess gpu`. It combines the CUDA-graph decode with fused kernels and our GEMV (O1–O4, O2d), the fused LM prefill (O3b), the fused vision encoder (O7d) and GPU preprocessing (P1). It uses no quantization. The baseline's large spread comes from its CPU preprocessing.
 
 **Output quality on standard VLM benchmarks** ([benchmarks/eval_quality.py](benchmarks/eval_quality.py); same prompts, greedy, exact McNemar test vs the baseline; POPE 1000 per split). "Ours" is the full BF16 stack `fused_gemv_pf_vfused` + GPU preprocessing:
 

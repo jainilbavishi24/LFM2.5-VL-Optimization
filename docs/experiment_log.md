@@ -155,6 +155,17 @@ Entry template:
 | `shortconv_prefill` | prefill | 30.1 | 74.2 | |
 | `qk_norm_rope_kv_prefill` | prefill | **116** | **9.6** | 112 k blocks of 64 threads: too small; next to fix (about 0.7 ms per 1080p prefill) |
 
+**Prefill qk-norm/RoPE/KV kernel, second layout:** one block per token, one warp per head, 2 elements per lane, RoPE partner via `__shfl_xor(16)`, instead of one 64-thread block per (token, head). 1080p LM prefill 31.8 → **31.2 ms** (720p 12.0 → 11.8). First token still matches HF; decode flips only at ties.
+
+**Final repeats** (3 × full grid of baseline vs `fused_gemv_pf_vfused` + GPU preprocessing, 10 runs each; `results/raw/*_final_{base,stack}_r*`, `aggregate_runs.py --pattern 'final_*'`, mean ± std):
+
+| Workload | TPOT baseline → ours | J/token | TTFT | First token incl. preprocessing |
+| --- | --- | --- | --- | --- |
+| Text | 3.697 ± 0.011 → **2.074 ± 0.000** ms | 0.84 → 0.58 | 6.54 → **2.65** ms | 6.72 → **2.83** ms (2.4×) |
+| VGA | 3.702 → **2.080** | 0.87 → 0.59 | 20.06 → **12.36** | 21.41 → **13.04** (1.6×) |
+| 720p | 3.711 → **2.092** | 0.87 → 0.63 | 40.22 → **30.21** | 57.1 ± 13.6 → **31.6 ± 0.4** (1.8×) |
+| 1080p | 3.686 → **2.115** | 0.90 → 0.63 | 117.1 → **86.7** | 163.8 ± 14.8 → **89.9 ± 0.8** (1.8×) |
+
 **3B generalization of the full BF16 stack** (`results/raw/20261014-1712*_3b_base`, `…-1718*_3b_stack_bf16`, 5 repeats):
 - Text: first token 9.8 → 5.7 ms; 128 tokens 836 → 594 ms.
 - img_small: first token 25.8 → 17.5 ms; 128 tokens 855 → 608 ms.
