@@ -33,6 +33,20 @@ Entry template:
 - The best square GEMM reaches 219 TFLOPS (4096³). Longer ones throttle at the 300 W board limit: 8192³ gets 142–190 TFLOPS.
 - **So 64.5 of the 87 ms 1080p first token is GEMMs at 88 % of the achievable BF16 tensor-core rate.** The rest is attention (~8 ms) and elementwise work.
 - Further BF16 gains on the first token are therefore small. FP8 GEMMs would be the next step, but that is quantization (an extension, and the rejected O7b showed it needs fused activation quantization).
+**Full-size quality eval** (all test/val questions: POPE 9000, TextVQA val 5000; `results/eval/20261014-180316_*_fullsize`; latest code incl. O2d v2 and the new prefill kernel):
+
+| Variant | MMStar (1500) | POPE (9000; F1) | OCRBench (1000) | ChartQA (2500) | TextVQA (5000) |
+| --- | --- | --- | --- | --- | --- |
+| HF baseline | 49.07 | 89.14 (88.43) | 79.70 | 80.20 | 81.11 |
+| **ours, BF16 stack** | 48.80 (p 0.48) | 89.11 (88.39; p 0.65) | 80.00 (p 0.51) | 80.20 (p 1.0) | 81.12 (p 1.0) |
+| INT8 extension | 48.67 (p 0.26) | 89.11 (p 0.65) | 80.00 (p 0.55) | 80.16 (p 1.0) | 81.10 (p 1.0) |
+
+- Same answers: 97.9 / 99.7 / 94.7 / 96.4 / 98.6 %.
+- Per question: 65 → 22, 53 → 16, 119 → 61, 76 → 32 and 137 → 74 ms; GPU energy 31–42 % lower.
+- MMStar for the stack moved from 49.27 (afternoon) to 48.80 after the O2d v2 / prefill-kernel changes. A handful of near-tie flips, within noise, and both are within ±0.3 pp of the baseline.
+
+**Vision attention backend:** cuDNN (no mask) instead of flash for the padding-free runs is slower (VGA 8.00 → 8.49, 1080p 53.6 → 56.0 ms), so flash stays.
+
 **What the differing answers look like** (baseline vs full BF16 stack, 9667 questions of the first eval):
 - 219 answers (2.3 %) differ in their tokens; 92 of them differ from the first token on.
 - 154 have the same score: format only ("61" vs "61."; "A" vs "A: Stage"; "The word "GAMBOA" is written…" vs "GAMBOA").

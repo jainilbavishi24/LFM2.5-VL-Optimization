@@ -281,17 +281,17 @@ How close to the limit is this? At 1080p, 64.5 of the 87 ms first token are cuBL
 
 "Ours" is `fused_gemv_pf_vfused` with `--preprocess gpu`. It combines the CUDA-graph decode with fused kernels and our GEMV (O1–O4, O2d), the fused LM prefill (O3b), the fused vision encoder (O7d) and GPU preprocessing (P1). It uses no quantization. The baseline's large spread comes from its CPU preprocessing.
 
-**Output quality on standard VLM benchmarks** ([benchmarks/eval_quality.py](benchmarks/eval_quality.py); same prompts, greedy, exact McNemar test vs the baseline; POPE 1000 per split). "Ours" is the full BF16 stack `fused_gemv_pf_vfused` + GPU preprocessing:
+**Output quality on standard VLM benchmarks** (full test/val sets; [benchmarks/eval_quality.py](benchmarks/eval_quality.py); same prompts, greedy, exact McNemar test vs the baseline; `results/eval/*_fullsize`). "Ours" is the full BF16 stack `fused_gemv_pf_vfused` + GPU preprocessing:
 
 | Benchmark | n | HF baseline | Ours (BF16) | Δ (pp) | McNemar p | Time per question | GPU energy per question |
 |---|---|---|---|---|---|---|---|
-| MMStar | 1500 | 49.07 | 49.27 | +0.20 | 0.69 | 60 → 22 ms | 10.0 → 6.8 J |
-| POPE (accuracy) | 3000 | 89.73 | 89.67 | −0.07 | 0.69 | 51 → 16 ms | 8.9 → 5.3 J |
-| OCRBench | 1000 | 79.70 | 80.00 | +0.30 | 0.55 | 117 → 60 ms | 25.9 → 18.5 J |
-| ChartQA | 2500 | 80.20 | 80.28 | +0.08 | 0.77 | 74 → 31 ms | 15.6 → 10.1 J |
-| TextVQA (val shard) | 1667 | 82.07 | 82.05 | −0.02 | 1.00 | 137 → 74 ms | 34.8 → 22.9 J |
+| MMStar | 1500 | 49.07 | 48.80 | −0.27 | 0.48 | 65 → 22 ms | 10.0 → 6.9 J |
+| POPE (all 3 splits; accuracy) | 9000 | 89.14 | 89.11 | −0.03 | 0.65 | 53 → 16 ms | 9.1 → 5.3 J |
+| OCRBench | 1000 | 79.70 | 80.00 | +0.30 | 0.51 | 119 → 61 ms | 26.2 → 18.7 J |
+| ChartQA (test) | 2500 | 80.20 | 80.20 | 0.00 | 1.00 | 76 → 32 ms | 15.7 → 10.2 J |
+| TextVQA (val) | 5000 | 81.11 | 81.12 | +0.01 | 1.00 | 137 → 74 ms | 34.9 → 23.1 J |
 
-No difference is significant, and 94–99.6 % of the answers are word-for-word identical (the rest are BF16 near-ties that flip both ways). The INT8 extension is also within ±0.3 pp. Full table in the [experiment log](docs/experiment_log.md).
+No difference is significant, and 94.7–99.7 % of the answers are word-for-word identical. The rest are BF16 near-ties that flip both ways equally often. The INT8 extension is also within ±0.4 pp (McNemar p ≥ 0.26).
 
 The fused BF16 step is 94 % GEMV at ~90 % of the measured DRAM read roof (1.23 TB/s), so BF16 is close to its floor (~1.9 ms); the remaining wins come from fewer weight bytes (INT8/INT4) and from prefill/vision (TTFT is still HF's: 116 ms at 1080p).
 
