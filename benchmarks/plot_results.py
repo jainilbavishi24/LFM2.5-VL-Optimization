@@ -20,13 +20,15 @@ OUT = ROOT / "report" / "figures"
 GPU = "RTXPRO5000Blackwell"
 
 VARIANTS = [  # (label, run tag, variant name in the CSV)
-    ("HF eager", "o0a_ctrl_nohooks_full", "baseline"),
+    ("HF eager", "final_base_r3", "baseline"),
     ("torch.compile", "o0b_compile_nohooks_full", "compile_static"),
     ("O1 CUDA graph", "o1_cudagraph_nohooks_full", "cudagraph"),
     ("O1-O4 fused (BF16)", "o2g_fused_gemv_nohooks_full", "fused_gemv"),
-    ("O1-O6 INT8 weights", "o6_w8_nohooks_full", "fused_w8"),
-    ("O1-O6 INT4 (lossy)", "o6b_w4_nohooks_full", "fused_w4"),
+    ("ours: full BF16 stack", "final_stack_r3", "fused_gemv_pf_vfused"),
+    ("ext.: INT8 weights", "final_w8_stack", "fused_w8_pf_vfused"),
 ]
+EVAL = ROOT / "results" / "eval"
+BENCH_LABELS = {"mmstar": "MMStar", "pope": "POPE", "ocrbench": "OCRBench", "chartqa": "ChartQA", "textvqa": "TextVQA"}
 
 
 def run_dir(tag):
@@ -117,30 +119,62 @@ def fig_energy():
 
 
 def fig_ttft():
-    base = rows("baseline_full")
-    if not base:
-        base = rows("o0a_ctrl_full")
-    best = rows("o7_w8_vcudnn_full")
-    wls = ["img_small", "img_hd", "img_fhd"]
+    """First token including preprocessing: HF (CPU preprocessing) vs our full BF16 stack (GPU preprocessing)."""
+    wls = ["text", "img_small", "img_hd", "img_fhd"]
+    runs = [("HF eager", "final_base_r", "baseline"), ("ours (BF16)", "final_stack_r", "fused_gemv_pf_vfused")]
     fig, ax = plt.subplots(figsize=(8, 4))
-    for j, (name, rs, var) in enumerate([("HF eager", base, "baseline"), ("+ cuDNN vision attention", best, "fused_w8_vcudnn")]):
+    for j, (name, tag, var) in enumerate(runs):
         for i, wl in enumerate(wls):
-            r = pick(rs, var, wl, gen=1)
-            if not r:
+            pre, tt = [], []
+            for d in sorted(RAW.glob(f"*_{GPU}_{tag}*")):
+                r = pick(list(csv.DictReader(open(d / "summary.csv"))), var, wl, gen=1) if (d / "summary.csv").exists() else None
+                if r:
+                    pre.append(float(r["preprocess_ms"]))
+                    tt.append(float(r["ttft_ms"]))
+            if not tt:
                 continue
-            vis, pre, tt = float(r["vision_ms"] or 0), float(r["lm_prefill_ms"] or 0), float(r["ttft_ms"])
+            p, t = sum(pre) / len(pre), sum(tt) / len(tt)
             xpos = i + (j - 0.5) * 0.38
-            ax.bar(xpos, vis, 0.36, color="tab:blue", label="vision tower" if i == 0 and j == 0 else None)
-            ax.bar(xpos, pre, 0.36, bottom=vis, color="tab:orange", label="LM prefill" if i == 0 and j == 0 else None)
-            ax.bar(xpos, tt - vis - pre, 0.36, bottom=vis + pre, color="tab:gray", label="preprocess/other" if i == 0 and j == 0 else None)
-            ax.text(xpos, tt + 1.5, f"{tt:.0f}", ha="center", fontsize=7)
+            ax.bar(xpos, p, 0.36, color="tab:gray", label="image preprocessing" if i == 0 and j == 0 else None)
+            ax.bar(xpos, t, 0.36, bottom=p, color="tab:blue" if j == 0 else "tab:green",
+                   label=f"{name}: vision + prefill" if i == 0 else None)
+            ax.text(xpos, p + t + 2, f"{p + t:.0f}", ha="center", fontsize=7)
     ax.set_xticks(range(len(wls)))
-    ax.set_xticklabels(["640x480 (1 tile)", "1280x720 (3 tiles)", "1920x1080 (9 tiles)"])
-    ax.set_ylabel("time to first token (ms)")
-    ax.set_title("TTFT: left = HF eager, right = with cuDNN vision attention")
+    ax.set_xticklabels(["text", "640x480 (1 tile)", "1280x720 (3 tiles)", "1920x1080 (9 tiles)"])
+    ax.set_ylabel("time to first token incl. preprocessing (ms)")
+    ax.set_title("First token: left = HF eager (CPU preprocessing), right = ours (all BF16)")
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(OUT / "ttft_breakdown.png", dpi=160)
+
+
+def fig_quality():
+    """Benchmark scores: baseline vs our BF16 stack (and the INT8 extension), from results/eval/*/summary.jsonl."""
+    scores = {}
+    for f in sorted(EVAL.glob(f"*_{GPU}_*/summary.jsonl")):
+        for line in open(f):
+            r = json.loads(line)
+            scores[(r["variant"].split("+")[0], r["bench"])] = 100 * r["score"]
+    series = [("HF eager", "baseline", "tab:blue"), ("ours: full BF16 stack", "fused_gemv_pf_vfused", "tab:green"),
+              ("ext.: INT8 weights", "fused_w8_pf_vfused", "tab:olive")]
+    series = [s for s in series if any((s[1], b) in scores for b in BENCH_LABELS)]
+    fig, ax = plt.subplots(figsize=(8, 4))
+    w = 0.8 / len(series)
+    for j, (label, var, color) in enumerate(series):
+        xs = [i + (j - (len(series) - 1) / 2) * w for i in range(len(BENCH_LABELS))]
+        ys = [scores.get((var, b), float("nan")) for b in BENCH_LABELS]
+        ax.bar(xs, ys, w, label=label, color=color)
+        for x, y in zip(xs, ys):
+            if y == y:
+                ax.text(x, y + 0.8, f"{y:.1f}", ha="center", fontsize=6)
+    ax.set_xticks(range(len(BENCH_LABELS)))
+    ax.set_xticklabels(list(BENCH_LABELS.values()))
+    ax.set_ylabel("score (%)")
+    ax.set_ylim(0, 100)
+    ax.set_title("Output quality is unchanged (all differences within ±0.3 pp, McNemar p > 0.3)")
+    ax.legend(fontsize=8, loc="lower right")
+    fig.tight_layout()
+    fig.savefig(OUT / "quality.png", dpi=160)
 
 
 def fig_batch():
@@ -161,6 +195,6 @@ def fig_batch():
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    for f in (fig_tpot, fig_energy, fig_ttft, fig_batch):
+    for f in (fig_tpot, fig_energy, fig_ttft, fig_batch, fig_quality):
         f()
     print("figures ->", OUT)

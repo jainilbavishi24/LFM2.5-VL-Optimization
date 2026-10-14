@@ -1,0 +1,9 @@
+{
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "variants": "fused_w8_pf_vfused+gpuprep",
+  "benches": "mmstar,pope,ocrbench,chartqa,textvqa",
+  "limit": "pope=3000",
+  "warmup": 3,
+  "tag": "w8_stack",
+  "out": "/data/cs3406/team21/PAA_Project/results/eval"
+}

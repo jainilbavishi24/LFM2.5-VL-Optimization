@@ -166,6 +166,25 @@ Entry template:
 | 720p | 3.711 → **2.092** | 0.87 → 0.63 | 40.22 → **30.21** | 57.1 ± 13.6 → **31.6 ± 0.4** (1.8×) |
 | 1080p | 3.686 → **2.115** | 0.90 → 0.63 | 117.1 → **86.7** | 163.8 ± 14.8 → **89.9 ± 0.8** (1.8×) |
 
+**Extension: INT8 weight-only decode on the full stack** (`fused_w8_pf_vfused`; prefill and vision stay BF16; `results/raw/*_final_w8_stack`, `results/eval/*_w8_stack`):
+- Speed: TPOT 1.12 / 1.13 / 1.15 / 1.19 ms (text / VGA / 720p / 1080p), J/token 0.34–0.36. First token is the same as the BF16 stack (2.8 / 13.1 / 31.9 / 90.2 ms including preprocessing).
+- Quality vs baseline:
+
+  | Benchmark | Score % | Δ (pp) | McNemar p |
+  | --- | --- | --- | --- |
+  | MMStar | 48.67 | −0.40 | 0.26 |
+  | POPE | 89.70 | −0.03 | 1.00 |
+  | OCRBench | 80.00 | +0.30 | 0.55 |
+  | ChartQA | 80.16 | −0.04 | 1.00 |
+  | TextVQA | 82.09 | +0.02 | 1.00 |
+
+  No significant change, so INT8 weight-only quantization is safe for this model on these tasks. It stays a separately reported extension.
+
+**Figures** ([benchmarks/plot_results.py](../benchmarks/plot_results.py) → `report/figures/`):
+- `decode_tpot.png`: now with the final stack; INT4 dropped; INT8 labelled as an extension.
+- `ttft_breakdown.png`: first token including preprocessing, HF vs ours.
+- New `quality.png`: benchmark scores of baseline / BF16 stack / INT8 extension.
+
 **3B generalization of the full BF16 stack** (`results/raw/20261014-1712*_3b_base`, `…-1718*_3b_stack_bf16`, 5 repeats):
 - Text: first token 9.8 → 5.7 ms; 128 tokens 836 → 594 ms.
 - img_small: first token 25.8 → 17.5 ms; 128 tokens 855 → 608 ms.
