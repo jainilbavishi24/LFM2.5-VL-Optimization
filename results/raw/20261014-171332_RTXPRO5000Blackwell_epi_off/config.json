@@ -1,0 +1,17 @@
+{
+  "preset": null,
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variants": "fused_gemv",
+  "workloads": "text,img_small",
+  "gen_lens": "128",
+  "batch_sizes": "1",
+  "warmup": 2,
+  "repeats": 10,
+  "idle_seconds": 0.0,
+  "preprocess": "cpu",
+  "no_phases": true,
+  "tag": "epi_off",
+  "out": "/data/cs3406/team21/PAA_Project/results/raw"
+}
