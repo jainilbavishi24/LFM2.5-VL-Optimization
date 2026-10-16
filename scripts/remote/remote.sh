@@ -62,7 +62,7 @@ case "$cmd" in
         "${SSH[@]}" "mkdir -p $RDIR"
         rsync -az --info=stats1 \
             --exclude .git/ --exclude third_party/ --exclude models/ --exclude results/raw/ \
-            --exclude results/eval/ --exclude profiling/reports/ --exclude '__pycache__/' --exclude .venv/ --exclude '*.pdf' \
+            --exclude results/eval/ --exclude results/vlmeval/ --exclude profiling/reports/ --exclude '__pycache__/' --exclude .venv/ --exclude '*.pdf' \
             "$ROOT/" "$REMOTE:$RDIR/"
         ;;
     pushmodel)  # fallback when the server has no internet: weights from our machine (scripts/download_model.sh here first)
@@ -116,7 +116,7 @@ case "$cmd" in
     stop) need_master; "${SSH[@]}" "pkill -INT -u \$(whoami) -f '[r]un_suite.sh'; sleep 20; pkill -KILL -u \$(whoami) -f '[r]un_suite.sh|[b]ench.py|[t]orch_profile.py|[r]un_once.py|[s]dpa_probe.py'; echo stopped" ;;
     sync)
         need_master
-        for d in results/raw results/eval profiling/reports; do
+        for d in results/raw results/eval results/vlmeval profiling/reports; do
             mkdir -p "$ROOT/$d"
             rsync -az --info=stats1 "$REMOTE:$RDIR/$d/" "$ROOT/$d/"
         done

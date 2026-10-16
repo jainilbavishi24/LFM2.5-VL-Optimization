@@ -19,6 +19,27 @@ Entry template:
 
 **Re-check after the T4 portability changes:** 109/109 kernel tests. `fused_gemv_pf_vfused` text 128 tokens 265.9 ms (TPOT ≈ 2.07 ms, unchanged); 1080p first token 79.5 ms. The PDL guard changes nothing on sm_120.
 
+**MMStar through the official toolkit (VLMEvalKit)** ([benchmarks/vlmeval_mmstar.py](../benchmarks/vlmeval_mmstar.py), `results/vlmeval/20261016-225118`):
+- Setup:
+  - VLMEvalKit's own LFM2-VL integration (`vlmeval/vlm/liquid.py`, config `LFM2.5-VL-1.6B`: `use_custom_prompt=False`, greedy, `max_new_tokens` 8192), its MMStar prompt builder and its MCQ scorer.
+  - Rule-based answer extraction (`exact_matching`, the official setting without an OpenAI key).
+  - Our variants keep that class unchanged and only replace the model inside it with our runtime, plus GPU preprocessing.
+- Two deviations, both forced and both affecting every variant equally:
+  1. VLMEvalKit's MMStar.tsv host (opencompass.openxlab.space) is unreachable from the server and the laptop. We used the MMStar authors' TSV (HF Lin-Chen/MMStar) and converted the options embedded in the question text into A–D columns: 1500/1500 parsed, all answers among the options.
+  2. Only the needed VLMEvalKit modules are loaded; `vlmeval.api` (judge-LLM clients) is stubbed.
+
+| Variant | MMStar overall | Coarse perception | Fine-grained perception | Instance reasoning | Logical reasoning | Math | Science & tech | ms/question |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| LiquidAI model card (VLMEvalKit) | 50.67 | | | | | | | |
+| HF baseline | **50.20** | 65.6 | 44.4 | 59.6 | 53.2 | 45.2 | 33.2 | 85 |
+| **ours, BF16 stack** | **49.87** | 65.6 | 44.0 | 59.2 | 52.0 | 45.2 | 33.2 | 26 |
+| INT8 extension | 49.87 | 65.6 | 44.0 | 59.2 | 52.0 | 45.2 | 33.2 | 23 |
+
+- **The official toolkit reproduces the published baseline:** 50.20 vs 50.67. The remaining 0.5 points fit the data-file conversion and the rule-based extraction; the card likely used a GPT judge.
+- Our harness had 49.07: different prompt, 1.1 points lower. So the gap to the card came from the harness, not from our measurement setup.
+- **Ours vs baseline in VLMEvalKit:** −0.33 points; 11 questions flip right→wrong and 6 wrong→right; exact McNemar p = 0.33; 97.5 % identical predictions. INT8 gives the same score (97.1 % identical predictions).
+- Per question, 3.3× faster inside VLMEvalKit's own loop (85 → 26 ms).
+
 **Long-answer quality** ([benchmarks/longform_compare.py](../benchmarks/longform_compare.py), `results/eval/20261016-220100_*_longform`):
 - Why: the five benchmarks have 1–11-token answers. Their first token comes from the BF16 prefill, so they barely exercise our decode kernels or the INT8 weights.
 - Setup: "Describe this image in detail." on 500 distinct COCO images (POPE), greedy, up to 256 tokens (answers end on their own after about 81 tokens).
