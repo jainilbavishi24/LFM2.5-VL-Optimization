@@ -15,7 +15,29 @@ Entry template:
 
 ---
 
-## 2026-10-14 (evening, Colab T4): does everything reproduce on a Tesla T4?  (Claude)
+## 2026-10-16 (slot 22:00–00:00): Blackwell re-check, long-answer quality test  (Claude)
+
+**Re-check after the T4 portability changes:** 109/109 kernel tests. `fused_gemv_pf_vfused` text 128 tokens 265.9 ms (TPOT ≈ 2.07 ms, unchanged); 1080p first token 79.5 ms. The PDL guard changes nothing on sm_120.
+
+**Long-answer quality** ([benchmarks/longform_compare.py](../benchmarks/longform_compare.py), `results/eval/20261016-220100_*_longform`):
+- Why: the five benchmarks have 1–11-token answers. Their first token comes from the BF16 prefill, so they barely exercise our decode kernels or the INT8 weights.
+- Setup: "Describe this image in detail." on 500 distinct COCO images (POPE), greedy, up to 256 tokens (answers end on their own after about 81 tokens).
+- Reference: HF in **FP32**. Greedy BF16 drifts from FP32 at near-ties anyway, so the question is whether our variants drift more than HF's own BF16 does.
+
+| Variant | Identical to FP32 | Common prefix (tokens) | Token ROUGE-L F1 vs FP32 | Mean length | ms per answer | J per answer |
+| --- | --- | --- | --- | --- | --- | --- |
+| HF FP32 (reference) | 100 % | 81.3 | 1.000 | 81.3 | 528 | 120.4 |
+| HF BF16 (baseline) | 42.2 % | 42.3 | 0.823 | 81.8 | 370 | 80.6 |
+| **ours, BF16 stack** | 40.8 % | 41.0 | 0.814 | 83.4 | 201 | 59.9 |
+| INT8 extension | 36.6 % | 38.5 | 0.801 | 80.7 | 114 | 34.5 |
+
+- **Our BF16 stack drifts from FP32 as much as HF BF16 does.** ROUGE-L difference vs HF BF16 is −0.008, paired 95 % CI [−0.025, +0.009], not significant. Our kernels only reorder BF16 rounding. Against HF BF16 directly, ours has ROUGE-L 0.851, closer than FP32 is (0.823).
+- **INT8 drifts measurably more:** −0.022, CI [−0.040, −0.003]. That is small: about 2 points of ROUGE-L, with an average common prefix of 38.5 vs 42.3 tokens.
+  - Drift is not necessarily worse text; the five short-answer benchmarks showed no accuracy loss.
+  - Before calling INT8 deployment-ready for long outputs, score the long answers against human references (e.g. COCO captions with CIDEr) or a judge.
+- More than half of HF BF16's own long answers already differ from FP32 somewhere. This is why exact-match comparisons with a BF16 baseline are the wrong yardstick for long generations.
+
+: does everything reproduce on a Tesla T4?  (Claude)
 
 **Porting** (sm_75: no PDL, no flash/cuDNN attention, no native BF16):
 - PDL is now compiled and enabled only on sm_90+.
