@@ -19,7 +19,7 @@ Entry template:
 
 **Re-check after the T4 portability changes:** 109/109 kernel tests. `fused_gemv_pf_vfused` text 128 tokens 265.9 ms (TPOT ≈ 2.07 ms, unchanged); 1080p first token 79.5 ms. The PDL guard changes nothing on sm_120.
 
-**MMStar through the official toolkit (VLMEvalKit)** ([benchmarks/vlmeval_mmstar.py](../benchmarks/vlmeval_mmstar.py), `results/vlmeval/20261016-225118`):
+**MMStar through the official toolkit (VLMEvalKit)** ([benchmarks/vlmeval_mmstar.py](../benchmarks/vlmeval_mmstar.py), `results/vlmeval/20261016-224742`):
 - Setup:
   - VLMEvalKit's own LFM2-VL integration (`vlmeval/vlm/liquid.py`, config `LFM2.5-VL-1.6B`: `use_custom_prompt=False`, greedy, `max_new_tokens` 8192), its MMStar prompt builder and its MCQ scorer.
   - Rule-based answer extraction (`exact_matching`, the official setting without an OpenAI key).
