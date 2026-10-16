@@ -8,6 +8,7 @@ Benchmarks (test/val parquet files from scripts/download_eval_data.sh, under dat
   chartqa   2500 chart questions                                      relaxed accuracy (5 % numeric tolerance)
   textvqa   val shard 0 (~1670 scene-text questions)                  VQA accuracy (min(#humans agreeing / 3, 1))
   textvqa_full  all 5000 TextVQA val questions (3 shards)
+  longform  detailed descriptions (256 tokens) of distinct COCO images, no ground truth (longform_compare.py)
 
     python benchmarks/eval_quality.py --variants baseline,fused_gemv_vcudnn+gpuprep [--limit pope=3000]
     python benchmarks/eval_compare.py results/eval/<run>      # paired comparison + McNemar test
@@ -79,6 +80,17 @@ def load_bench(name):
         for r in (r for sh in shards for r in _rows(sh)):
             items.append(dict(id=f"textvqa/{r['question_id']}", image=_img(r["image"]), prompt=r["question"] + SHORT,
                               max_new=16, gt=list(r["answers"]), cat=None))
+    elif name == "longform":
+        # long free-form answers (benchmarks above have 1-11-token answers, i.e. mostly test the first token):
+        # one detailed description per distinct COCO image of POPE, 256 tokens max; no ground truth, compared
+        # against a reference variant (e.g. baseline@fp32) with benchmarks/longform_compare.py
+        seen = set()
+        for r in _rows("pope_random.parquet"):
+            if r["image_source"] in seen:
+                continue
+            seen.add(r["image_source"])
+            items.append(dict(id=f"longform/{r['image_source']}", image=_img(r["image"]),
+                              prompt="Describe this image in detail.", max_new=256, gt="", cat=None))
     else:
         raise KeyError(name)
     return items
@@ -162,6 +174,8 @@ def score_textvqa(pred, gts):
 
 
 def score(bench, item, pred):
+    if bench == "longform":
+        return 0.0  # no ground truth: see benchmarks/longform_compare.py
     if bench == "mmstar":
         return score_mmstar(pred, item["gt"])
     if bench == "pope":
@@ -188,7 +202,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--variants", default="baseline,fused_gemv_vcudnn+gpuprep",
-                    help="comma-separated; suffix +gpuprep = our GPU image preprocessing for that variant")
+                    help="comma-separated; suffix +gpuprep = our GPU image preprocessing for that variant, "
+                         "@fp32 / @bf16 = load the model in that dtype (default auto)")
     ap.add_argument("--benches", default="mmstar,pope,ocrbench,chartqa,textvqa")
     ap.add_argument("--limit", default="0", help="questions per benchmark (evenly spaced subset): N for all, or "
                     "bench=N,...; 0 = all")
@@ -212,8 +227,9 @@ def main():
     summary_f = open(out / "summary.jsonl", "a")
 
     for variant in args.variants.split(","):
-        base, _, opt = variant.partition("+")
-        net, processor = load(args.model, "auto")
+        spec, _, dtype = variant.partition("@")  # e.g. baseline@fp32 for a reference run
+        base, _, opt = spec.partition("+")
+        net, processor = load(args.model, dtype or "auto")
         net = apply_variant(base, net, processor)
         if opt == "gpuprep":
             from lfm2opt.preprocess import GpuImageProcessor
