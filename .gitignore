@@ -48,3 +48,6 @@ report/*.synctex.gz
 
 # Benchmark datasets (downloaded on the server by scripts/download_eval_data.sh)
 data/
+
+# SLURM / remote job logs
+jobs/
