@@ -8,7 +8,7 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 PY=.venv-ref/bin/python
-STEPS="${STEPS:-tests bench batch probes eval longform}"
+STEPS="${STEPS:-tests bench batch probes eval longform vlmeval}"
 BENCH="$PY benchmarks/bench.py --workloads text,img_small,img_hd,img_fhd --gen-lens 1,128 --batch-sizes 1 --warmup 2 --repeats 10 --no-phases --idle-seconds 2"
 
 step() { local name="$1"; shift; echo "[suite] $(date +%T) $name start"; "$@"; echo "[suite] $(date +%T) $name rc=$?"; }
@@ -41,6 +41,10 @@ for s in $STEPS; do
         longform)
             step longform $PY benchmarks/eval_quality.py --benches longform --limit 500 \
                 --variants baseline@fp32,baseline,fused_gemv_pf_vfused+gpuprep,fused_w8_pf_vfused+gpuprep --tag l40_longform ;;
+        vlmeval)  # MMStar through VLMEvalKit (needs ~/ext/VLMEvalKit and data/LMUData/MMStar_authors.tsv, see README)
+            step mmstar_tsv $PY scripts/prepare_mmstar_vlmeval.py data/LMUData/MMStar_authors.tsv data/LMUData
+            step vlmeval env VLMEVAL_DIR="$HOME/ext/VLMEvalKit" LMUData="$PWD/data/LMUData" $PY benchmarks/vlmeval_mmstar.py \
+                --local-tsv --variants baseline,fused_gemv_pf_vfused+gpuprep,fused_w8_pf_vfused+gpuprep ;;
         *) echo "[suite] unknown step $s" ;;
     esac
 done
