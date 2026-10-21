@@ -11,6 +11,9 @@ PY=.venv-ref/bin/python
 STEPS="${STEPS:-tests bench batch probes eval longform vlmeval}"
 BENCH="$PY benchmarks/bench.py --workloads text,img_small,img_hd,img_fhd --gen-lens 1,128 --batch-sizes 1 --warmup 2 --repeats 10 --no-phases --idle-seconds 2"
 
+# models and benchmark data are downloaded on the login node (compute nodes may have no internet): wait for that
+while [[ -f jobs/downloads.out ]] && ! grep -q DL_EXIT jobs/downloads.out; do sleep 30; done
+
 step() { local name="$1"; shift; echo "[suite] $(date +%T) $name start"; "$@"; echo "[suite] $(date +%T) $name rc=$?"; }
 
 for s in $STEPS; do
