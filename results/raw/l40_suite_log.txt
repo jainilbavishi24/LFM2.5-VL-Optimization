@@ -1,0 +1,419 @@
+==========================================
+SLURM_JOB_ID = 47457
+SLURM_NODELIST = node13
+SLURM_JOB_GPUS = 0
+==========================================
+/var/spool/slurmd/job47457/slurm_script: 4: module: not found
+[job] node13 Thu Oct 22 09:06:28 AM IST 2026 GPU: NVIDIA L40S, 610.57.04
+[suite] 09:06:28 test_kernels start
+PASS  add_rmsnorm (residual)       max|err| 0  (ref max 4.88)
+PASS  add_rmsnorm (normed)         max|err| 0  (ref max 4.5)
+PASS  rmsnorm (no add)             max|err| 0  (ref max 4.22)
+PASS  shortconv_step (out)         max|err| 0  (ref max 8.38)
+PASS  shortconv_step (state)       max|err| 0  (ref max 7.19)
+PASS  qk_norm_rope (q)             max|err| 0  (ref max 4.91)
+PASS  qk_norm_rope (k -> cache)    max|err| 0  (ref max 4.62)
+PASS  qk_norm_rope (v -> cache)    max|err| 0  (ref max 3.12)
+PASS  qk_norm_rope (cache untouched) max|err| 0  (ref max 0)
+PASS  decode_attention (len 2301)  max|err| 0.0009766  (ref max 0.128)
+PASS  attention_split S=16 (len 2301) max|err| 0.0009766  (ref max 0.128)
+PASS  attention_split S=4 (len 2301) max|err| 0.0009766  (ref max 0.128)
+PASS  attention_split (len 1)      max|err| 0  (ref max 3.83)
+PASS  decode_attention (len 1)     max|err| 0  (ref max 3.83)
+PASS  silu_mul                     max|err| 0  (ref max 8.88)
+PASS  gemv bf16 [3072x2048]        max|err| 3.815e-06  (ref max 3.09)
+PASS  gemv int8 [3072x2048]        max|err| 0.001953  (ref max 3.09)
+PASS  gemv int8 B=2 [3072x2048]    max|err| 0.001953  (ref max 3.09)
+PASS  gemv bf16 B=2 [3072x2048]    max|err| 0.003906  (ref max 3.09)
+PASS  gemv int8 B=3 [3072x2048]    max|err| 1.526e-05  (ref max 3.36)
+PASS  gemv bf16 B=3 [3072x2048]    max|err| 0.007812  (ref max 3.34)
+PASS  gemv int8 B=4 [3072x2048]    max|err| 0.0004883  (ref max 3.88)
+PASS  gemv bf16 B=4 [3072x2048]    max|err| 0.01562  (ref max 3.89)
+PASS  gemv int8 B=7 [3072x2048]    max|err| 0.0004883  (ref max 3.97)
+PASS  gemv bf16 B=7 [3072x2048]    max|err| 0.01562  (ref max 3.97)
+PASS  gemv int8 B=8 [3072x2048]    max|err| 0.007812  (ref max 4.03)
+PASS  gemv bf16 B=8 [3072x2048]    max|err| 0.007812  (ref max 4.03)
+PASS  gemv int8 B=13 [3072x2048]   max|err| 0.003906  (ref max 3.94)
+PASS  gemv bf16 B=13 [3072x2048]   max|err| 0.007812  (ref max 3.94)
+PASS  gemv int4 [3072x2048]        max|err| 0  (ref max 3.22)
+PASS  gemv bf16 [6144x2048]        max|err| 0  (ref max 3.95)
+PASS  gemv int8 [6144x2048]        max|err| 3.052e-05  (ref max 3.95)
+PASS  gemv int8 B=2 [6144x2048]    max|err| 0.001953  (ref max 3.62)
+PASS  gemv bf16 B=2 [6144x2048]    max|err| 0.007812  (ref max 3.61)
+PASS  gemv int8 B=3 [6144x2048]    max|err| 0.0009766  (ref max 3.95)
+PASS  gemv bf16 B=3 [6144x2048]    max|err| 0.01562  (ref max 3.97)
+PASS  gemv int8 B=4 [6144x2048]    max|err| 0.003906  (ref max 3.42)
+PASS  gemv bf16 B=4 [6144x2048]    max|err| 0.007812  (ref max 3.41)
+PASS  gemv int8 B=7 [6144x2048]    max|err| 0.007812  (ref max 3.66)
+PASS  gemv bf16 B=7 [6144x2048]    max|err| 0.01562  (ref max 3.64)
+PASS  gemv int8 B=8 [6144x2048]    max|err| 0.007812  (ref max 4.03)
+PASS  gemv bf16 B=8 [6144x2048]    max|err| 0.01562  (ref max 4.06)
+PASS  gemv int8 B=13 [6144x2048]   max|err| 0.007812  (ref max 4.44)
+PASS  gemv bf16 B=13 [6144x2048]   max|err| 0.007812  (ref max 4.41)
+PASS  gemv int4 [6144x2048]        max|err| 0  (ref max 4.12)
+PASS  gemv bf16 [2048x2048]        max|err| 0  (ref max 3.06)
+PASS  gemv int8 [2048x2048]        max|err| 6.104e-05  (ref max 3.05)
+PASS  gemv int8 B=2 [2048x2048]    max|err| 0.0004883  (ref max 3.86)
+PASS  gemv bf16 B=2 [2048x2048]    max|err| 0.003906  (ref max 3.86)
+PASS  gemv int8 B=3 [2048x2048]    max|err| 0.003906  (ref max 3.94)
+PASS  gemv bf16 B=3 [2048x2048]    max|err| 0.003906  (ref max 3.92)
+PASS  gemv int8 B=4 [2048x2048]    max|err| 0.0004883  (ref max 3.3)
+PASS  gemv bf16 B=4 [2048x2048]    max|err| 0.003906  (ref max 3.3)
+PASS  gemv int8 B=7 [2048x2048]    max|err| 0.0009766  (ref max 3.77)
+PASS  gemv bf16 B=7 [2048x2048]    max|err| 0.007812  (ref max 3.75)
+PASS  gemv int8 B=8 [2048x2048]    max|err| 0.0002441  (ref max 3.66)
+PASS  gemv bf16 B=8 [2048x2048]    max|err| 0.007812  (ref max 3.66)
+PASS  gemv int8 B=13 [2048x2048]   max|err| 0.007812  (ref max 3.52)
+PASS  gemv bf16 B=13 [2048x2048]   max|err| 0.007812  (ref max 3.52)
+PASS  gemv int4 [2048x2048]        max|err| 0  (ref max 2.98)
+PASS  gemv bf16 [16384x2048]       max|err| 0.003906  (ref max 3.53)
+PASS  gemv int8 [16384x2048]       max|err| 0.007812  (ref max 3.53)
+PASS  gemv int8 B=2 [16384x2048]   max|err| 0.007812  (ref max 4.47)
+PASS  gemv bf16 B=2 [16384x2048]   max|err| 0.003906  (ref max 4.44)
+PASS  gemv int8 B=3 [16384x2048]   max|err| 0.003906  (ref max 3.8)
+PASS  gemv bf16 B=3 [16384x2048]   max|err| 0.01562  (ref max 3.8)
+PASS  gemv int8 B=4 [16384x2048]   max|err| 0.003906  (ref max 4.28)
+PASS  gemv bf16 B=4 [16384x2048]   max|err| 0.007812  (ref max 4.25)
+PASS  gemv int8 B=7 [16384x2048]   max|err| 0.007812  (ref max 4.03)
+PASS  gemv bf16 B=7 [16384x2048]   max|err| 0.007812  (ref max 4.03)
+PASS  gemv int8 B=8 [16384x2048]   max|err| 0.003906  (ref max 3.92)
+PASS  gemv bf16 B=8 [16384x2048]   max|err| 0.01562  (ref max 3.92)
+PASS  gemv int8 B=13 [16384x2048]  max|err| 0.007812  (ref max 4.44)
+PASS  gemv bf16 B=13 [16384x2048]  max|err| 0.007812  (ref max 4.44)
+PASS  gemv int4 [16384x2048]       max|err| 0.0009766  (ref max 3.5)
+PASS  gemv bf16 [2048x8192]        max|err| 0  (ref max 6.28)
+PASS  gemv int8 [2048x8192]        max|err| 1.192e-07  (ref max 6.28)
+PASS  gemv int8 B=2 [2048x8192]    max|err| 0.003906  (ref max 6.78)
+PASS  gemv bf16 B=2 [2048x8192]    max|err| 0.01562  (ref max 6.78)
+PASS  gemv int8 B=3 [2048x8192]    max|err| 0.0004883  (ref max 6.31)
+PASS  gemv bf16 B=3 [2048x8192]    max|err| 0.01562  (ref max 6.34)
+PASS  gemv int8 B=4 [2048x8192]    max|err| 0.0009766  (ref max 7.88)
+PASS  gemv bf16 B=4 [2048x8192]    max|err| 0.01562  (ref max 7.88)
+PASS  gemv int8 B=7 [2048x8192]    max|err| 0.0004883  (ref max 7.97)
+PASS  gemv bf16 B=7 [2048x8192]    max|err| 0.01562  (ref max 8)
+PASS  gemv int8 B=8 [2048x8192]    max|err| 0.0009766  (ref max 8.19)
+PASS  gemv bf16 B=8 [2048x8192]    max|err| 0.03125  (ref max 8.19)
+PASS  gemv int8 B=13 [2048x8192]   max|err| 0.0009766  (ref max 7.47)
+PASS  gemv bf16 B=13 [2048x8192]   max|err| 0.03125  (ref max 7.47)
+PASS  gemv int4 [2048x8192]        max|err| 0  (ref max 6)
+PASS  gemv bf16 [65536x2048]       max|err| 0.003906  (ref max 3.78)
+PASS  gemv int8 [65536x2048]       max|err| 0.003906  (ref max 3.78)
+PASS  gemv int8 B=2 [65536x2048]   max|err| 0.003906  (ref max 4.06)
+PASS  gemv bf16 B=2 [65536x2048]   max|err| 0.01562  (ref max 4.09)
+PASS  gemv int8 B=3 [65536x2048]   max|err| 0.01562  (ref max 4)
+PASS  gemv bf16 B=3 [65536x2048]   max|err| 0.01562  (ref max 4.03)
+PASS  gemv int8 B=4 [65536x2048]   max|err| 0.007812  (ref max 4.16)
+PASS  gemv bf16 B=4 [65536x2048]   max|err| 0.01562  (ref max 4.16)
+PASS  gemv int8 B=7 [65536x2048]   max|err| 0.01562  (ref max 4.53)
+PASS  gemv bf16 B=7 [65536x2048]   max|err| 0.01562  (ref max 4.5)
+PASS  gemv int8 B=8 [65536x2048]   max|err| 0.007812  (ref max 4.53)
+PASS  gemv bf16 B=8 [65536x2048]   max|err| 0.01562  (ref max 4.53)
+PASS  gemv int8 B=13 [65536x2048]  max|err| 0.007812  (ref max 4.19)
+PASS  gemv bf16 B=13 [65536x2048]  max|err| 0.01562  (ref max 4.16)
+PASS  gemv int4 [65536x2048]       max|err| 0.001953  (ref max 3.88)
+PASS  gemv_epi swiglu bf16 [16384x2048]  bit-identical=True  max|err| 0
+PASS  gemv_epi shortconv bf16 [6144x2048] (+state)  bit-identical=True  max|err| 0
+PASS  gemv_epi swiglu int8 [16384x2048]  bit-identical=True  max|err| 0
+PASS  gemv_epi shortconv int8 [6144x2048] (+state)  bit-identical=True  max|err| 0
+109/109 passed
+[suite] 09:06:39 test_kernels rc=0
+[suite] 09:06:39 test_preprocess start
+OK    640x480  photo tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    640x480  noise tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1280x720  photo tiles=(3, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1280x720  noise tiles=(3, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1920x1080 photo tiles=(9, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1920x1080 noise tiles=(9, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    200x150  photo tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    200x150  noise tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK     64x64   photo tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK     64x64   noise tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    512x512  photo tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    512x512  noise tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    720x1280 photo tiles=(3, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    720x1280 noise tiles=(3, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1000x777  photo tiles=(7, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1000x777  noise tiles=(7, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    333x1500 photo tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    333x1500 noise tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   3000x2000 photo tiles=(7, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   3000x2000 noise tiles=(7, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   4032x3024 photo tiles=(7, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   4032x3024 noise tiles=(7, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    800x600  photo tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    800x600  noise tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1024x1024 photo tiles=(5, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   1024x1024 noise tiles=(5, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   2048x512  photo tiles=(5, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK   2048x512  noise tiles=(5, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+0 failures
+[suite] 09:07:11 test_preprocess rc=0
+[suite] 09:07:11 numerics start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+text      T=   18  argmax agree 127/127  max|dlogit| 0.328  median 0.125  first token ok (max|dlogit| 0.125)  flips at near-ties: []
+img_small T=  252  argmax agree 125/127  max|dlogit| 0.250  median 0.125  first token ok (max|dlogit| 0.188)  flips at near-ties: [0.062, 0.0]
+img_fhd   T= 2327  argmax agree 126/127  max|dlogit| 0.250  median 0.125  first token ok (max|dlogit| 0.156)  flips at near-ties: [0.062]
+[suite] 09:07:37 numerics rc=0
+[suite] 09:07:37 vision start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+img_small  HF bf16 vs fp32: rel err 4.2644e-02  cos min 0.962755 mean 0.999433
+img_small    fused vs fp32: rel err 4.3576e-02  cos min 0.952885 mean 0.999447
+img_small   fused vs HF bf16: rel diff 3.2057e-02
+img_small   generation: identical for 7/14 tokens
+   img_hd  HF bf16 vs fp32: rel err 3.8032e-02  cos min 0.954178 mean 0.999500
+   img_hd    fused vs fp32: rel err 3.7312e-02  cos min 0.935350 mean 0.999505
+   img_hd   fused vs HF bf16: rel diff 3.0227e-02
+   img_hd   generation: identical for 21/21 tokens
+  img_fhd  HF bf16 vs fp32: rel err 4.9429e-02  cos min 0.447260 mean 0.999232
+  img_fhd    fused vs fp32: rel err 4.6628e-02  cos min 0.525309 mean 0.999256
+  img_fhd   fused vs HF bf16: rel diff 3.0751e-02
+  img_fhd   generation: identical for 14/21 tokens
+OK
+[suite] 09:08:08 vision rc=0
+[suite] 09:08:08 bench_base_r1 start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[bench] run 20261022-090815_L40S_l40_base_r1 on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-090815_L40S_l40_base_r1
+[bench] idle power 41.7 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 2.2s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     20.9 ms  E/run=   3.56 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1156.5 ms  E/run= 201.23 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     24.6 ms  E/run=   6.39 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1168.9 ms  E/run= 208.45 J  mem=3.02 GB
+[bench]   baseline    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     43.6 ms  E/run=  16.45 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   1192.0 ms  E/run= 218.68 J  mem=3.08 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    116.8 ms  E/run=  40.31 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   1266.8 ms  E/run= 247.98 J  mem=3.26 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-090815_L40S_l40_base_r1
+[suite] 09:09:23 bench_base_r1 rc=0
+[suite] 09:09:23 bench_stack_r1 start
+[bench] run 20261022-090933_L40S_l40_stack_r1 on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-090933_L40S_l40_stack_r1
+[bench] idle power 36.4 W
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 2.2s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.4 ms  E/run=   2.86 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    422.4 ms  E/run= 108.98 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     12.5 ms  E/run=   5.73 J  mem=4.30 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    431.0 ms  E/run= 112.57 J  mem=4.31 GB
+[bench] fused_gemv_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     29.4 ms  E/run=  14.74 J  mem=4.39 GB
+[bench] fused_gemv_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    449.3 ms  E/run= 117.83 J  mem=4.39 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=     86.4 ms  E/run=  32.08 J  mem=4.62 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    510.3 ms  E/run= 138.60 J  mem=4.62 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-090933_L40S_l40_stack_r1
+[suite] 09:10:03 bench_stack_r1 rc=0
+[suite] 09:10:03 bench_base_r2 start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[bench] run 20261022-091010_L40S_l40_base_r2 on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091010_L40S_l40_base_r2
+[bench] idle power 37.7 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 2.0s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     21.3 ms  E/run=   3.75 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1165.7 ms  E/run= 208.16 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     24.8 ms  E/run=   8.02 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1176.2 ms  E/run= 217.43 J  mem=3.02 GB
+[bench]   baseline    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     43.7 ms  E/run=  17.12 J  mem=3.08 GB
+[bench]   baseline    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   1202.0 ms  E/run= 227.09 J  mem=3.08 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    118.1 ms  E/run=  40.41 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   1276.1 ms  E/run= 252.88 J  mem=3.26 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091010_L40S_l40_base_r2
+[suite] 09:11:18 bench_base_r2 rc=0
+[suite] 09:11:18 bench_stack_r2 start
+[bench] run 20261022-091124_L40S_l40_stack_r2 on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091124_L40S_l40_stack_r2
+[bench] idle power 65.8 W
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 2.4s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.2 ms  E/run=   2.68 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    422.3 ms  E/run= 111.72 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     12.5 ms  E/run=   5.09 J  mem=4.30 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    431.0 ms  E/run= 114.44 J  mem=4.31 GB
+[bench] fused_gemv_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     29.7 ms  E/run=  14.47 J  mem=4.39 GB
+[bench] fused_gemv_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    449.4 ms  E/run= 120.65 J  mem=4.39 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=     87.2 ms  E/run=  32.31 J  mem=4.62 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    511.0 ms  E/run= 140.35 J  mem=4.62 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091124_L40S_l40_stack_r2
+[suite] 09:11:54 bench_stack_r2 rc=0
+[suite] 09:11:54 bench_w8 start
+[bench] run 20261022-091159_L40S_l40_w8_stack on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091159_L40S_l40_w8_stack
+[bench] idle power 66.9 W
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[bench] variant=fused_w8_pf_vfused dtype=bf16 attn=sdpa loaded in 1.8s
+[bench] fused_w8_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.2 ms  E/run=   2.91 J  mem=5.36 GB
+[bench] fused_w8_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    229.0 ms  E/run=  65.83 J  mem=5.36 GB
+[bench] fused_w8_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     12.5 ms  E/run=   7.34 J  mem=5.40 GB
+[bench] fused_w8_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    238.3 ms  E/run=  70.00 J  mem=5.40 GB
+[bench] fused_w8_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=     30.0 ms  E/run=  11.67 J  mem=5.48 GB
+[bench] fused_w8_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=    257.4 ms  E/run=  74.85 J  mem=5.48 GB
+[bench] fused_w8_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=     87.1 ms  E/run=  32.02 J  mem=5.71 GB
+[bench] fused_w8_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    318.8 ms  E/run=  94.26 J  mem=5.71 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091159_L40S_l40_w8_stack
+[suite] 09:12:20 bench_w8 rc=0
+[suite] 09:12:20 bench_long start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[bench] run 20261022-091227_L40S_l40_long on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091227_L40S_l40_long
+[bench] idle power 40.9 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 2.1s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     21.8 ms  E/run=   3.75 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=1024 tiles=0  img_tok=0     wall=   9225.6 ms  E/run=1671.20 J  mem=3.01 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    117.9 ms  E/run=  38.99 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=1024 tiles=9  img_tok=2300  wall=   9339.5 ms  E/run=1771.73 J  mem=3.26 GB
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 1.2s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.2 ms  E/run=   4.63 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1024 tiles=0  img_tok=0     wall=   3397.5 ms  E/run= 887.73 J  mem=4.29 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=     87.5 ms  E/run=  28.79 J  mem=4.62 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1024 tiles=9  img_tok=2300  wall=   3536.5 ms  E/run= 930.22 J  mem=4.66 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091227_L40S_l40_long
+[suite] 09:14:18 bench_long rc=0
+[suite] 09:14:18 batch start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[bench] run 20261022-091427_L40S_l40_batch on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091427_L40S_l40_batch
+[bench] idle power 39.1 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 2.0s
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     32.5 ms  E/run=   7.76 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1163.4 ms  E/run= 220.35 J  mem=3.02 GB
+[bench]   baseline img_small bs=2   gen=1    tiles=1  img_tok=234   wall=     37.1 ms  E/run=  16.03 J  mem=3.05 GB
+[bench]   baseline img_small bs=2   gen=128  tiles=1  img_tok=234   wall=   1193.1 ms  E/run= 218.73 J  mem=3.05 GB
+[bench]   baseline img_small bs=4   gen=1    tiles=1  img_tok=234   wall=     58.0 ms  E/run=  17.93 J  mem=3.11 GB
+[bench]   baseline img_small bs=4   gen=128  tiles=1  img_tok=234   wall=   1215.1 ms  E/run= 225.91 J  mem=3.11 GB
+[bench]   baseline img_small bs=8   gen=1    tiles=1  img_tok=234   wall=    101.9 ms  E/run=  38.17 J  mem=3.23 GB
+[bench]   baseline img_small bs=8   gen=128  tiles=1  img_tok=234   wall=   1266.3 ms  E/run= 247.18 J  mem=3.23 GB
+[bench]   baseline img_small bs=16  gen=1    tiles=1  img_tok=234   wall=    202.1 ms  E/run=  70.66 J  mem=3.46 GB
+[bench]   baseline img_small bs=16  gen=128  tiles=1  img_tok=234   wall=   1356.6 ms  E/run= 290.97 J  mem=3.46 GB
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 1.2s
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     12.4 ms  E/run=   5.40 J  mem=4.30 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    431.0 ms  E/run= 115.59 J  mem=4.31 GB
+[bench] fused_gemv_pf_vfused img_small bs=2   gen=1    tiles=1  img_tok=234   wall=     19.9 ms  E/run=  12.20 J  mem=4.35 GB
+[bench] fused_gemv_pf_vfused img_small bs=2   gen=128  tiles=1  img_tok=234   wall=    457.7 ms  E/run= 126.91 J  mem=4.36 GB
+[bench] fused_gemv_pf_vfused img_small bs=4   gen=1    tiles=1  img_tok=234   wall=     39.0 ms  E/run=  19.12 J  mem=4.44 GB
+[bench] fused_gemv_pf_vfused img_small bs=4   gen=128  tiles=1  img_tok=234   wall=    476.9 ms  E/run= 149.73 J  mem=4.46 GB
+[bench] fused_gemv_pf_vfused img_small bs=8   gen=1    tiles=1  img_tok=234   wall=     73.7 ms  E/run=  23.97 J  mem=4.64 GB
+[bench] fused_gemv_pf_vfused img_small bs=8   gen=128  tiles=1  img_tok=234   wall=    550.3 ms  E/run= 158.65 J  mem=4.70 GB
+[bench] fused_gemv_pf_vfused img_small bs=16  gen=1    tiles=1  img_tok=234   wall=    149.9 ms  E/run=  53.90 J  mem=5.03 GB
+[bench] fused_gemv_pf_vfused img_small bs=16  gen=128  tiles=1  img_tok=234   wall=    640.0 ms  E/run= 191.32 J  mem=5.13 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-091427_L40S_l40_batch
+[suite] 09:15:44 batch rc=0
+[suite] 09:15:44 gemm_efficiency start
+square GEMMs: 2048^3 193  3072^3 184  4096^3 238  6144^3 193  8192^3 199 TFLOPS -> peak 238
+GEMM                       M x K x N      ms  TFLOPS  % peak x/req  ms/req
+vision qkv            9216x1152x3456   0.468     157     66%    27   12.63
+vision out            9216x1152x1152   0.178     138     58%    27    4.80
+vision fc1+gelu       9216x1152x4304   0.475     192     81%    27   12.83
+vision fc2            9216x4304x1152   0.529     173     72%    27   14.29
+LM attn qkv           2327x2048x3072   0.184     159     67%     6    1.11
+LM attn out           2327x2048x2048   0.155     126     53%     6    0.93
+LM conv in            2327x2048x6144   0.328     179     75%    10    3.28
+LM conv out           2327x2048x2048   0.147     132     56%    10    1.47
+LM w1|w3             2327x2048x16384   0.753     207     87%    16   12.05
+LM w2                 2327x8192x2048   0.486     161     67%    16    7.78
+all first-token GEMMs: 71.2 ms per 1080p request, 174 TFLOPS (73 % of the best square GEMM)
+[suite] 09:15:48 gemm_efficiency rc=0
+[suite] 09:15:48 ttft_probe start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+     text T=18    prefill_hf=13.23ms  prefill_fused=4.08ms
+img_small T=252   vision_hf=10.00ms  vision_hf_cudnn=11.12ms  vision_fused=9.37ms  prefill_hf=13.45ms  prefill_fused=5.19ms
+   img_hd T=785   vision_hf=26.46ms  vision_hf_cudnn=23.28ms  vision_fused=19.07ms  prefill_hf=14.20ms  prefill_fused=12.27ms
+  img_fhd T=2327  vision_hf=77.16ms  vision_hf_cudnn=69.42ms  vision_fused=57.28ms  prefill_hf=36.73ms  prefill_fused=30.77ms
+[suite] 09:16:12 ttft_probe rc=0
+[suite] 09:16:12 decode_step start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+/home/cs3.406-c/PAA_Project/.venv-ref/lib/python3.12/site-packages/torch/profiler/profiler.py:224: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+bf16 img_small: 123 kernels/step, kernel time 3.315 ms/step
+  gemv/gemm                65.0 kernels    3187.8 us   96.2 %
+  ours: add_rmsnorm        33.0 kernels      63.6 us    1.9 %
+  ours: attention          12.0 kernels      33.3 us    1.0 %
+  argmax/topk               1.0 kernels      12.8 us    0.4 %
+  ours: qk_rope_kv          6.0 kernels       8.4 us    0.3 %
+  index/copy                2.0 kernels       3.4 us    0.1 %
+  other elementwise         3.0 kernels       3.2 us    0.1 %
+  reduce                    1.0 kernels       2.1 us    0.1 %
+top kernels:
+    1440.6 us   16.0x  void gemv_epi_kernel<__nv_bfloat16, 2, 0>(__nv_bfloat16 const*, float const*, __nv_bfloat16 const*, __nv_bfloa
+    1398.3 us   39.0x  void gemv_direct_kernel<__nv_bfloat16, 1, 4, 1>(__nv_bfloat16 const*, float const*, __nv_bfloat16 const*, __nv
+     348.9 us   10.0x  void gemv_epi_kernel<__nv_bfloat16, 3, 1>(__nv_bfloat16 const*, float const*, __nv_bfloat16 const*, __nv_bfloa
+      61.9 us   32.0x  void add_rmsnorm_kernel<true>(__nv_bfloat16*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*, int,
+      21.1 us    6.0x  decode_attention_split_kernel(__nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16 const*, long const*, f
+      12.8 us    1.0x  void at::native::reduce_kernel<512, 1, at::native::ReduceOp<c10::BFloat16, at::native::ArgMaxOps<float>, unsig
+      12.3 us    6.0x  attn_combine_kernel(float const*, __nv_bfloat16*, int)
+       8.4 us    6.0x  void qk_norm_rope_kv_kernel<64>(__nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16 const*, float const*
+       2.2 us    2.0x  void at::native::vectorized_elementwise_kernel<2, at::native::CUDAFunctorOnSelf_add<long>, std::array<char*, 2
+       2.1 us    1.0x  void at::native::indexFuncSmallIndex<c10::BFloat16, long, unsigned int, 1, 1, -2, at::native::(anonymous names
+       2.0 us    1.0x  void at::native::(anonymous namespace)::indexSelectSmallIndex<c10::BFloat16, long, unsigned int, 2, 2, -2>(at:
+       1.8 us    1.0x  void add_rmsnorm_kernel<false>(__nv_bfloat16*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*, int
+[suite] 09:16:22 decode_step rc=0
+[suite] 09:16:22 eval_full start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[eval] -> /home/cs3.406-c/PAA_Project/results/eval/20261022-091626_L40S_l40_fullsize
+[eval] mmstar=1500  pope=9000  ocrbench=1000  chartqa=2500  textvqa_full=5000
+[eval]             baseline   mmstar n=1500  score= 49.20  pre=  5.21 ms gen=  47.13 ms  E/q=11.833 J
+[eval]             baseline     pope n=9000  score= 89.12 f1= 88.40  pre=  4.82 ms gen=  37.32 ms  E/q=9.740 J
+[eval]             baseline ocrbench n=1000  score= 79.80  pre= 12.32 ms gen= 142.92 ms  E/q=33.686 J
+[eval]             baseline  chartqa n=2500  score= 80.08  pre=  8.50 ms gen=  60.72 ms  E/q=17.139 J
+[eval]             baseline textvqa_full n=5000  score= 81.16  pre= 22.71 ms gen= 106.97 ms  E/q=35.313 J
+[eval] fused_gemv_pf_vfused+gpuprep   mmstar n=1500  score= 49.27  pre=  2.97 ms gen=  24.16 ms  E/q=8.448 J
+[eval] fused_gemv_pf_vfused+gpuprep     pope n=9000  score= 89.10 f1= 88.38  pre=  1.47 ms gen=  16.29 ms  E/q=6.347 J
+[eval] fused_gemv_pf_vfused+gpuprep ocrbench n=1000  score= 80.00  pre=  6.27 ms gen=  73.15 ms  E/q=23.141 J
+[eval] fused_gemv_pf_vfused+gpuprep  chartqa n=2500  score= 80.00  pre=  2.38 ms gen=  32.61 ms  E/q=11.879 J
+[eval] fused_gemv_pf_vfused+gpuprep textvqa_full n=5000  score= 81.03  pre=  5.23 ms gen=  71.05 ms  E/q=25.457 J
+[eval] fused_w8_pf_vfused+gpuprep   mmstar n=1500  score= 49.20  pre=  3.02 ms gen=  20.54 ms  E/q=7.485 J
+[eval] fused_w8_pf_vfused+gpuprep     pope n=9000  score= 89.10 f1= 88.38  pre=  1.50 ms gen=  14.87 ms  E/q=5.944 J
+[eval] fused_w8_pf_vfused+gpuprep ocrbench n=1000  score= 79.90  pre=  6.31 ms gen=  52.67 ms  E/q=17.975 J
+[eval] fused_w8_pf_vfused+gpuprep  chartqa n=2500  score= 79.96  pre=  2.31 ms gen=  28.10 ms  E/q=10.967 J
+[eval] fused_w8_pf_vfused+gpuprep textvqa_full n=5000  score= 81.02  pre=  5.04 ms gen=  66.32 ms  E/q=24.325 J
+[suite] 10:07:59 eval_full rc=0
+[suite] 10:07:59 longform start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[eval] -> /home/cs3.406-c/PAA_Project/results/eval/20261022-100808_L40S_l40_longform
+[eval] longform=500
+[eval]        baseline@fp32 longform n=500   score=  0.00  pre=  4.68 ms gen= 831.59 ms  E/q=188.742 J
+[eval]             baseline longform n=500   score=  0.00  pre=  4.93 ms gen= 788.26 ms  E/q=149.600 J
+[eval] fused_gemv_pf_vfused+gpuprep longform n=500   score=  0.00  pre=  1.80 ms gen= 304.65 ms  E/q=84.353 J
+[eval] fused_w8_pf_vfused+gpuprep longform n=500   score=  0.00  pre=  1.86 ms gen= 169.93 ms  E/q=51.765 J
+[suite] 10:26:05 longform rc=0
+[suite] 10:26:05 mmstar_tsv start
+parsed 1500/1500, unparsed [], answers outside options 0
+[suite] 10:26:08 mmstar_tsv rc=0
+[suite] 10:26:08 vlmeval start
+[vlmeval] MMStar: 1500 questions -> /home/cs3.406-c/PAA_Project/results/vlmeval/20261022-102619
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+  0%|          | 0/1500 [00:00<?, ?it/s] 10%|█         | 152/1500 [00:00<00:00, 1512.68it/s] 20%|██        | 304/1500 [00:00<00:00, 1314.92it/s] 29%|██▉       | 438/1500 [00:00<00:01, 911.58it/s]  36%|███▌      | 540/1500 [00:00<00:01, 661.76it/s] 41%|████▏     | 619/1500 [00:00<00:01, 579.42it/s] 46%|████▌     | 685/1500 [00:01<00:01, 523.82it/s] 49%|████▉     | 742/1500 [00:01<00:01, 462.85it/s] 53%|█████▎    | 791/1500 [00:01<00:01, 429.46it/s] 56%|█████▌    | 836/1500 [00:01<00:01, 410.55it/s] 59%|█████▊    | 878/1500 [00:01<00:01, 394.67it/s] 61%|██████    | 918/1500 [00:01<00:01, 377.99it/s] 64%|██████▎   | 956/1500 [00:01<00:01, 361.91it/s] 66%|██████▌   | 992/1500 [00:01<00:01, 345.45it/s] 68%|██████▊   | 1027/1500 [00:02<00:01, 330.66it/s] 71%|███████   | 1060/1500 [00:02<00:01, 319.74it/s] 73%|███████▎  | 1092/1500 [00:02<00:01, 310.55it/s] 75%|███████▍  | 1123/1500 [00:02<00:01, 301.03it/s] 77%|███████▋  | 1153/1500 [00:02<00:01, 291.03it/s] 79%|███████▉  | 1182/1500 [00:02<00:01, 285.40it/s] 81%|████████  | 1211/1500 [00:02<00:01, 282.83it/s] 83%|████████▎ | 1240/1500 [00:02<00:00, 277.05it/s] 85%|████████▍ | 1268/1500 [00:02<00:00, 276.07it/s] 86%|████████▋ | 1296/1500 [00:03<00:00, 268.75it/s] 88%|████████▊ | 1323/1500 [00:03<00:00, 263.12it/s] 90%|█████████ | 1350/1500 [00:03<00:00, 259.32it/s] 92%|█████████▏| 1376/1500 [00:03<00:00, 255.35it/s] 93%|█████████▎| 1402/1500 [00:03<00:00, 253.70it/s] 95%|█████████▌| 1428/1500 [00:03<00:00, 250.24it/s] 97%|█████████▋| 1454/1500 [00:03<00:00, 245.19it/s] 99%|█████████▊| 1481/1500 [00:03<00:00, 251.01it/s]100%|██████████| 1500/1500 [00:03<00:00, 389.19it/s]
+[vlmeval] baseline: 150 s (100 ms/question)
+  split   Overall  ...   math  science & technology
+0  none  0.500667  ...  0.452                 0.328
+
+[1 rows x 26 columns]
+  0%|          | 0/1500 [00:00<?, ?it/s]  0%|          | 2/1500 [00:00<01:21, 18.41it/s]  9%|▊         | 129/1500 [00:00<00:01, 726.70it/s] 16%|█▋        | 244/1500 [00:00<00:01, 914.73it/s] 23%|██▎       | 338/1500 [00:00<00:01, 686.60it/s] 28%|██▊       | 414/1500 [00:00<00:01, 553.66it/s] 32%|███▏      | 477/1500 [00:00<00:02, 504.73it/s] 36%|███▌      | 533/1500 [00:00<00:01, 491.61it/s] 39%|███▉      | 586/1500 [00:01<00:02, 434.86it/s] 42%|████▏     | 632/1500 [00:01<00:01, 438.24it/s] 45%|████▌     | 678/1500 [00:01<00:01, 432.88it/s] 48%|████▊     | 723/1500 [00:01<00:01, 422.10it/s] 51%|█████     | 766/1500 [00:01<00:01, 407.16it/s] 54%|█████▍    | 808/1500 [00:01<00:01, 392.72it/s] 57%|█████▋    | 848/1500 [00:01<00:01, 382.62it/s] 59%|█████▉    | 887/1500 [00:01<00:01, 372.79it/s] 62%|██████▏   | 925/1500 [00:02<00:01, 360.98it/s] 64%|██████▍   | 962/1500 [00:02<00:01, 349.12it/s] 66%|██████▋   | 997/1500 [00:02<00:01, 334.50it/s] 69%|██████▊   | 1031/1500 [00:02<00:01, 330.60it/s] 71%|███████▏  | 1072/1500 [00:02<00:01, 351.86it/s] 74%|███████▍  | 1112/1500 [00:02<00:01, 364.72it/s] 77%|███████▋  | 1151/1500 [00:02<00:00, 369.28it/s] 79%|███████▉  | 1189/1500 [00:02<00:00, 351.62it/s] 82%|████████▏ | 1225/1500 [00:02<00:00, 325.04it/s] 84%|████████▍ | 1258/1500 [00:03<00:00, 307.38it/s] 86%|████████▌ | 1290/1500 [00:03<00:00, 303.74it/s] 88%|████████▊ | 1321/1500 [00:03<00:00, 291.89it/s] 90%|█████████ | 1351/1500 [00:03<00:00, 278.76it/s] 92%|█████████▏| 1380/1500 [00:03<00:00, 268.52it/s] 94%|█████████▍| 1407/1500 [00:03<00:00, 262.48it/s] 96%|█████████▌| 1434/1500 [00:03<00:00, 258.85it/s] 97%|█████████▋| 1460/1500 [00:03<00:00, 254.45it/s] 99%|█████████▉| 1486/1500 [00:03<00:00, 250.03it/s]100%|██████████| 1500/1500 [00:04<00:00, 374.52it/s]
+[vlmeval] fused_gemv_pf_vfused+gpuprep: 53 s (36 ms/question)
+  split   Overall  ...   math  science & technology
+0  none  0.500667  ...  0.448                 0.332
+
+[1 rows x 26 columns]
+  0%|          | 0/1500 [00:00<?, ?it/s]  0%|          | 2/1500 [00:00<01:46, 14.07it/s]  6%|▌         | 87/1500 [00:00<00:03, 431.24it/s]  9%|▉         | 138/1500 [00:00<00:02, 457.36it/s] 13%|█▎        | 188/1500 [00:00<00:02, 455.48it/s] 16%|█▌        | 236/1500 [00:00<00:03, 418.63it/s] 19%|█▊        | 280/1500 [00:00<00:03, 384.64it/s] 21%|██▏       | 321/1500 [00:00<00:03, 352.69it/s] 24%|██▍       | 358/1500 [00:00<00:03, 327.59it/s] 26%|██▌       | 392/1500 [00:01<00:03, 304.48it/s] 28%|██▊       | 424/1500 [00:01<00:03, 287.34it/s] 30%|███       | 454/1500 [00:01<00:03, 275.78it/s] 32%|███▏      | 482/1500 [00:01<00:03, 263.49it/s] 34%|███▍      | 509/1500 [00:01<00:03, 251.27it/s] 36%|███▌      | 535/1500 [00:01<00:04, 240.22it/s] 37%|███▋      | 560/1500 [00:01<00:04, 231.53it/s] 39%|███▉      | 584/1500 [00:01<00:04, 222.14it/s] 41%|████      | 609/1500 [00:02<00:03, 228.74it/s] 42%|████▏     | 633/1500 [00:02<00:03, 229.85it/s] 44%|████▍     | 657/1500 [00:02<00:03, 228.40it/s] 45%|████▌     | 680/1500 [00:02<00:03, 227.78it/s] 47%|████▋     | 703/1500 [00:02<00:03, 227.30it/s] 48%|████▊     | 726/1500 [00:02<00:03, 225.23it/s] 50%|████▉     | 749/1500 [00:02<00:03, 220.94it/s] 51%|█████▏    | 772/1500 [00:02<00:03, 215.13it/s] 54%|█████▎    | 806/1500 [00:02<00:02, 249.89it/s] 56%|█████▌    | 842/1500 [00:03<00:02, 279.73it/s] 59%|█████▊    | 878/1500 [00:03<00:02, 300.58it/s] 61%|██████    | 912/1500 [00:03<00:01, 311.08it/s] 63%|██████▎   | 945/1500 [00:03<00:01, 316.25it/s] 65%|██████▌   | 977/1500 [00:03<00:01, 315.59it/s] 67%|██████▋   | 1009/1500 [00:03<00:01, 312.19it/s] 69%|██████▉   | 1041/1500 [00:03<00:01, 310.73it/s] 72%|███████▏  | 1073/1500 [00:03<00:01, 304.75it/s] 74%|███████▎  | 1104/1500 [00:03<00:01, 297.02it/s] 76%|███████▌  | 1134/1500 [00:03<00:01, 290.04it/s] 78%|███████▊  | 1166/1500 [00:04<00:01, 298.44it/s] 80%|███████▉  | 1196/1500 [00:04<00:01, 292.00it/s] 82%|████████▏ | 1226/1500 [00:04<00:00, 281.58it/s] 84%|████████▎ | 1255/1500 [00:04<00:00, 276.21it/s] 86%|████████▌ | 1283/1500 [00:04<00:00, 269.62it/s] 87%|████████▋ | 1311/1500 [00:04<00:00, 264.31it/s] 89%|████████▉ | 1338/1500 [00:04<00:00, 260.70it/s] 91%|█████████ | 1365/1500 [00:04<00:00, 256.52it/s] 93%|█████████▎| 1391/1500 [00:04<00:00, 252.50it/s] 94%|█████████▍| 1417/1500 [00:05<00:00, 248.07it/s] 96%|█████████▌| 1443/1500 [00:05<00:00, 248.60it/s] 98%|█████████▊| 1468/1500 [00:05<00:00, 246.68it/s]100%|█████████▉| 1493/1500 [00:05<00:00, 244.42it/s]100%|██████████| 1500/1500 [00:05<00:00, 277.59it/s]
+[vlmeval] fused_w8_pf_vfused+gpuprep: 46 s (31 ms/question)
+  split   Overall  ...   math  science & technology
+0  none  0.500667  ...  0.448                 0.332
+
+[1 rows x 26 columns]
+[suite] 10:30:52 vlmeval rc=0
+[suite] done 10:30:52
+JOB_EXIT=0

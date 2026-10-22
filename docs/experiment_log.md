@@ -15,7 +15,54 @@ Entry template:
 
 ---
 
-## 2026-10-16 (slot 22:00–00:00): Blackwell re-check, long-answer quality test  (Claude)
+## 2026-10-22: everything repeated on an NVIDIA L40S (course SLURM cluster)  (Claude)
+
+**Setup:**
+- Cluster: `turing.iiit.ac.in`, reservation `cs3406`, node13; the GPU is an **L40S** (Ada, sm_89, 48 GB GDDR6, 864 GB/s, driver 610.57).
+- Same code and versions as on the Blackwell (torch 2.11 cu130, transformers 5.19).
+- One SLURM job ([scripts/slurm/l40_suite.sh](../scripts/slurm/l40_suite.sh), log `results/raw/l40_suite_log.txt`), 09:06–10:30. Every step rc=0.
+- The job waited about 10 h for a GPU: the shared course account's GPU limit was in use by other jobs.
+
+**Correctness: all reproduces.**
+- 109/109 kernel tests; preprocessing bit-exact (28/28).
+- Fused decode + prefill first token matches HF.
+- Fused vision as accurate as HF BF16.
+
+**Speed and energy** (2 full rounds, 10 runs each, mean ± std; `results/raw/20261022-09*_L40S_l40_*`):
+
+| Workload | TPOT HF → ours | J/token | First token incl. preprocessing |
+| --- | --- | --- | --- |
+| Text | 8.98 → **3.29 ms** (2.7×) | 1.58 → 0.85 | 21.6 → **4.8 ms** (4.5×) |
+| VGA | 9.04 → **3.30** | 1.62 → 0.85 | 28.4 → **13.9** (2.0×) |
+| 720p | 9.08 → **3.31** | 1.62 → 0.82 | 54.8 → **32.1** (1.7×) |
+| 1080p | 9.09 → **3.34** | 1.65 → 0.85 | 146.4 → **92.7** (1.6×) |
+
+- HF eager is much more host-bound on this node (TPOT 9.0 ms vs 3.7 on the Blackwell server; the CPU is shared with the node's other jobs). Our CUDA-graph runtime is not, so the decode gain is larger: 2.7× vs 1.75×.
+- Our 3.3 ms is about 1.2× the L40S's weight-read floor (2.34 GB / 864 GB/s = 2.7 ms).
+- **Energy per token −48 %.**
+- INT8 extension: TPOT 1.77–1.82 ms, 0.49 J/token.
+- 1024-token generation: TPOT 9.0 → 3.3 ms (text) / 3.4 ms (1080p, 3.3 k context).
+- Batch 16: 1,760 → **4,146 tok/s**.
+- Components at 1080p (CUDA events): vision 77.2 → 57.3 ms; LM prefill 36.7 → 30.8 ms (text 13.2 → 4.1 ms). 123 kernels per decode step.
+- First-token GEMMs: 71 ms per 1080p request at 174 TFLOPS, 73 % of the best square GEMM (238 TFLOPS). On the Blackwell this was 88 %. Ada's cuBLAS kernels are less efficient for the skinny vision/LM shapes; a possible follow-up.
+
+**Quality on the L40S** (full sets, `results/eval/20261022-091626_L40S_l40_fullsize`):
+
+| Benchmark | HF baseline | ours BF16 (Δ, McNemar p) | INT8 (Δ, p) |
+| --- | --- | --- | --- |
+| MMStar (1500) | 49.20 | 49.27 (+0.07, 1.00) | 49.20 (0.00, 1.00) |
+| POPE (9000) | 89.12 | 89.10 (−0.02, 0.85) | 89.10 (−0.02, 0.85) |
+| OCRBench (1000) | 79.80 | 80.00 (+0.20, 0.63) | 79.90 (+0.10, 1.00) |
+| ChartQA (2500) | 80.08 | 80.00 (−0.08, 0.73) | 79.96 (−0.12, 0.51) |
+| TextVQA (5000) | 81.16 | 81.03 (−0.13, 0.23) | 81.02 (−0.14, 0.23) |
+
+- Per question, 1.7–2.4× faster and 26–35 % less energy.
+- **MMStar via VLMEvalKit:** baseline 50.07, ours 50.07, INT8 50.07; 100 → 36 ms per question.
+- **Long answers vs FP32** (ROUGE-L): HF BF16 0.813, **ours 0.826**, INT8 0.802. Our BF16 stack is again as close to FP32 as HF's BF16 (here even slightly closer); INT8 is again a little further.
+
+**Conclusion:** every result from the Blackwell reproduces on a second datacenter GPU of a different architecture (Ada), with larger speed and energy gains and unchanged quality.
+
+: Blackwell re-check, long-answer quality test  (Claude)
 
 **Re-check after the T4 portability changes:** 109/109 kernel tests. `fused_gemv_pf_vfused` text 128 tokens 265.9 ms (TPOT ≈ 2.07 ms, unchanged); 1080p first token 79.5 ms. The PDL guard changes nothing on sm_120.
 

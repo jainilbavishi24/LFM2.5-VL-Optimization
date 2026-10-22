@@ -277,6 +277,13 @@ Further prefill-side work (all BF16, CUDA events, 1080p):
 | 720p (3 tiles) | 57 ± 14 ms | **31.6 ms** | 1.8× | 3.71 → **2.09** | 0.87 → **0.63** |
 | 1080p (9 tiles) | 164 ± 15 ms | **89.9 ± 0.8 ms** | 1.8× | 3.69 → **2.12** | 0.90 → **0.63** |
 
+**Second GPU (NVIDIA L40S, Ada; course SLURM cluster):** everything reproduces.
+- Decode: TPOT 9.0 → **3.3 ms (2.7×)**, energy per token −48 %.
+- First token including preprocessing: text 21.6 → 4.8 ms, 1080p 146 → 93 ms.
+- Batch 16: 1,760 → 4,146 tok/s.
+- Quality on all five full benchmarks within ±0.2 pp (all McNemar p ≥ 0.23); VLMEvalKit MMStar 50.07 for baseline and ours alike.
+- Details in the [experiment log](docs/experiment_log.md).
+
 How close to the limit is this? At 1080p, 64.5 of the 87 ms first token are cuBLAS GEMMs running at 192 TFLOPS. That is 88 % of the best BF16 rate we measured on this GPU (219 TFLOPS; [profiling/gemm_efficiency.py](profiling/gemm_efficiency.py)). The decode step is at 1.09× its weight-read floor. Larger BF16 gains would need fewer bytes or FLOPs, i.e. quantization, which is our separately evaluated extension.
 
 "Ours" is `fused_gemv_pf_vfused` with `--preprocess gpu`. It combines the CUDA-graph decode with fused kernels and our GEMV (O1–O4, O2d), the fused LM prefill (O3b), the fused vision encoder (O7d) and GPU preprocessing (P1). It uses no quantization. The baseline's large spread comes from its CPU preprocessing.
