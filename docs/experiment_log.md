@@ -60,6 +60,8 @@ Entry template:
 - **MMStar via VLMEvalKit:** baseline 50.07, ours 50.07, INT8 50.07; 100 → 36 ms per question.
 - **Long answers vs FP32** (ROUGE-L): HF BF16 0.813, **ours 0.826**, INT8 0.802. Our BF16 stack is again as close to FP32 as HF's BF16 (here even slightly closer); INT8 is again a little further.
 
+**Figure:** `report/figures/gpus.png` (from `plot_results.py`, colours validated for colour-blind separation) shows baseline vs ours on all three GPUs: time per token, energy per token, and 1080p first token. The T4's first token is marked n/a: it needs FP16 kernels.
+
 **Conclusion:** every result from the Blackwell reproduces on a second datacenter GPU of a different architecture (Ada), with larger speed and energy gains and unchanged quality.
 
 : Blackwell re-check, long-answer quality test  (Claude)

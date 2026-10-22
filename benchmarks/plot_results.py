@@ -195,8 +195,59 @@ def fig_batch():
     fig.savefig(OUT / "batch_throughput.png", dpi=160)
 
 
+def _mean_over_runs(gpu, tag_glob, variant, workload, gen, field):
+    vals = []
+    for d in sorted(RAW.glob(f"*_{gpu}_{tag_glob}")):
+        if (d / "summary.csv").exists():
+            r = pick(list(csv.DictReader(open(d / "summary.csv"))), variant, workload, gen=gen)
+            if r and r.get(field):
+                vals.append(float(r[field]) + (float(r["preprocess_ms"]) if field == "ttft_ms" else 0.0))
+    return sum(vals) / len(vals) if vals else float("nan")
+
+
+def fig_gpus():
+    """Baseline vs our BF16 stack on every GPU we measured: decode time, decode energy, 1080p first token."""
+    hf_c, ours_c, ink, muted = "#2a78d6", "#eb6834", "#1f1f1e", "#6b6a64"   # validated categorical slots 1-2
+    gpus = [  # (label, gpu dir name, baseline tag, baseline variant, ours tag)
+        ("RTX PRO 5000\nBlackwell", GPU, "final_base_r*", "baseline", "final_stack_r*"),
+        ("L40S\n(Ada)", "L40S", "l40_base_r*", "baseline", "l40_stack_r*"),
+        ("T4\n(Turing; HF in FP16)", "T4", "t4_base_fp16", "baseline", "t4_stack_bf16"),
+    ]
+    panels = [("Time per output token (ms)", "tpot_ms", 128, "text"),
+              ("GPU energy per output token (J)", "decode_j_per_tok", 128, "text"),
+              ("First token, 1080p image (ms)\nincl. image preprocessing", "ttft_ms", 1, "img_fhd")]
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4.2))
+    for ax, (title, field, gen, wl) in zip(axes, panels):
+        for i, (label, gpu, btag, bvar, otag) in enumerate(gpus):
+            if field == "ttft_ms" and gpu == "T4":
+                ax.text(i, 60, "n/a on T4:\nno BF16 tensor\ncores (needs our\nkernels in FP16)", ha="center",
+                        va="bottom", fontsize=7, color=muted)
+                continue
+            b = _mean_over_runs(gpu, btag, bvar, wl, gen, field)
+            o = _mean_over_runs(gpu, otag, "fused_gemv_pf_vfused", wl, gen, field)
+            ax.bar(i - 0.19, b, 0.36, color=hf_c, edgecolor="white", linewidth=1.5, label="HF transformers" if i == 0 else None)
+            ax.bar(i + 0.19, o, 0.36, color=ours_c, edgecolor="white", linewidth=1.5, label="ours (BF16)" if i == 0 else None)
+            def fmt(v):
+                return f"{v:.2f}" if v < 10 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
+            ax.text(i - 0.19, b, fmt(b), ha="center", va="bottom", fontsize=7, color=ink)
+            ax.text(i + 0.19, o, fmt(o) + f"\n({b / o:.1f}×)", ha="center", va="bottom", fontsize=7, color=ink)
+        ax.set_xticks(range(len(gpus)))
+        ax.set_xticklabels([g[0] for g in gpus], fontsize=8, color=ink)
+        ax.set_title(title, fontsize=9, color=ink)
+        ax.margins(y=0.22)
+        ax.grid(axis="y", color="#e6e5e0", linewidth=0.8)
+        ax.set_axisbelow(True)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+        ax.tick_params(colors=muted, labelsize=8)
+    axes[0].legend(fontsize=8, frameon=False, loc="upper left")
+    fig.suptitle("LFM2.5-VL-1.6B, batch 1: the same CUDA optimizations on three GPU architectures", fontsize=10, color=ink)
+    fig.tight_layout()
+    fig.savefig(OUT / "gpus.png", dpi=160)
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    for f in (fig_tpot, fig_energy, fig_ttft, fig_batch, fig_quality):
+    for f in (fig_tpot, fig_energy, fig_ttft, fig_batch, fig_quality, fig_gpus):
         f()
     print("figures ->", OUT)
