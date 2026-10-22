@@ -48,6 +48,19 @@ for s in $STEPS; do
             step mmstar_tsv $PY scripts/prepare_mmstar_vlmeval.py data/LMUData/MMStar_authors.tsv data/LMUData
             step vlmeval env VLMEVAL_DIR="$HOME/ext/VLMEvalKit" LMUData="$PWD/data/LMUData" $PY benchmarks/vlmeval_mmstar.py \
                 --local-tsv --variants baseline,fused_gemv_pf_vfused+gpuprep,fused_w8_pf_vfused+gpuprep ;;
+        3b)  # generalization: LFM2.5-VL-3B speed (baseline vs our stack) and a quality subset
+            step bench_3b_base $PY benchmarks/bench.py --model LiquidAI/LFM2.5-VL-3B --variants baseline \
+                --workloads text,img_small,img_fhd --gen-lens 1,128 --batch-sizes 1 --warmup 2 --repeats 5 --no-phases \
+                --idle-seconds 2 --tag l40_3b_base
+            step bench_3b_stack $PY benchmarks/bench.py --model LiquidAI/LFM2.5-VL-3B --variants fused_gemv_pf_vfused \
+                --workloads text,img_small,img_fhd --gen-lens 1,128 --batch-sizes 1 --warmup 2 --repeats 5 --no-phases \
+                --idle-seconds 2 --preprocess gpu --tag l40_3b_stack
+            step eval_3b $PY benchmarks/eval_quality.py --model LiquidAI/LFM2.5-VL-3B \
+                --variants baseline,fused_gemv_pf_vfused+gpuprep \
+                --limit mmstar=500,pope=1500,ocrbench=500,chartqa=500,textvqa=500 --tag l40_3b_subset ;;
+        ncu)  # Nsight Compute on our kernels (1080p request of the full stack)
+            step ncu_ours env NCU_SET=basic LAUNCHES=900 bash profiling/ncu/profile_ours.sh l40_stack_fhd \
+                $PY profiling/run_once.py --variant fused_gemv_pf_vfused --workload img_fhd --gen-len 2 --warmup 0 ;;
         *) echo "[suite] unknown step $s" ;;
     esac
 done
