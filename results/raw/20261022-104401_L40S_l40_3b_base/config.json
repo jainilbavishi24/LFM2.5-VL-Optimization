@@ -1,0 +1,17 @@
+{
+  "preset": null,
+  "model": "LiquidAI/LFM2.5-VL-3B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variants": "baseline",
+  "workloads": "text,img_small,img_fhd",
+  "gen_lens": "1,128",
+  "batch_sizes": "1",
+  "warmup": 2,
+  "repeats": 5,
+  "idle_seconds": 2.0,
+  "preprocess": "cpu",
+  "no_phases": true,
+  "tag": "l40_3b_base",
+  "out": "/home/cs3.406-c/PAA_Project/results/raw"
+}

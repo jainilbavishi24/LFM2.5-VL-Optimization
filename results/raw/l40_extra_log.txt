@@ -1,0 +1,660 @@
+==========================================
+SLURM_JOB_ID = 47538
+SLURM_NODELIST = node13
+SLURM_JOB_GPUS = 0
+==========================================
+/var/spool/slurmd/job47538/slurm_script: 4: module: not found
+[job] node13 Thu Oct 22 10:43:51 AM IST 2026 GPU: NVIDIA L40S, 610.57.04
+[suite] 10:43:51 bench_3b_base start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[bench] run 20261022-104401_L40S_l40_3b_base on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-104401_L40S_l40_3b_base
+[bench] idle power 33.5 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 16.7s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     31.0 ms  E/run=   5.03 J  mem=5.84 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1944.2 ms  E/run= 385.78 J  mem=5.84 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     31.8 ms  E/run=  12.96 J  mem=5.87 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1963.3 ms  E/run= 396.86 J  mem=5.87 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    159.9 ms  E/run=  56.95 J  mem=6.11 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   2094.7 ms  E/run= 445.36 J  mem=6.11 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-104401_L40S_l40_3b_base
+[suite] 10:45:06 bench_3b_base rc=0
+[suite] 10:45:06 bench_3b_stack start
+[bench] run 20261022-104510_L40S_l40_3b_stack on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261022-104510_L40S_l40_3b_stack
+[bench] idle power 63.9 W
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 4.4s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      9.1 ms  E/run=   3.60 J  mem=8.60 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    959.0 ms  E/run= 244.76 J  mem=8.60 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     19.3 ms  E/run=  11.40 J  mem=8.64 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    969.0 ms  E/run= 248.96 J  mem=8.64 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    124.9 ms  E/run=  45.25 J  mem=9.00 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   1082.3 ms  E/run= 291.79 J  mem=9.00 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261022-104510_L40S_l40_3b_stack
+[suite] 10:45:41 bench_3b_stack rc=0
+[suite] 10:45:41 eval_3b start
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[eval] -> /home/cs3.406-c/PAA_Project/results/eval/20261022-104545_L40S_l40_3b_subset
+[eval] mmstar=500  pope=1500  ocrbench=500  chartqa=500  textvqa=500
+[eval]             baseline   mmstar n=500   score= 61.40  pre=  5.93 ms gen=  55.11 ms  E/q=15.256 J
+[eval]             baseline     pope n=1500  score= 89.60 f1= 89.18  pre=  5.17 ms gen=  51.28 ms  E/q=14.398 J
+[eval]             baseline ocrbench n=500   score= 81.60  pre= 14.35 ms gen= 207.85 ms  E/q=52.031 J
+[eval]             baseline  chartqa n=500   score= 82.80  pre= 10.22 ms gen=  87.72 ms  E/q=25.847 J
+[eval]             baseline  textvqa n=500   score= 85.94  pre= 27.38 ms gen= 153.05 ms  E/q=50.848 J
+[eval] fused_gemv_pf_vfused+gpuprep   mmstar n=500   score= 61.40  pre=  3.54 ms gen=  31.34 ms  E/q=11.192 J
+[eval] fused_gemv_pf_vfused+gpuprep     pope n=1500  score= 89.67 f1= 89.26  pre=  1.93 ms gen=  27.25 ms  E/q=9.946 J
+[eval] fused_gemv_pf_vfused+gpuprep ocrbench n=500   score= 81.60  pre=  7.60 ms gen= 125.56 ms  E/q=38.791 J
+[eval] fused_gemv_pf_vfused+gpuprep  chartqa n=500   score= 83.00  pre=  2.94 ms gen=  54.70 ms  E/q=19.091 J
+[eval] fused_gemv_pf_vfused+gpuprep  textvqa n=500   score= 85.76  pre=  6.31 ms gen= 110.90 ms  E/q=38.392 J
+[suite] 10:56:04 eval_3b rc=0
+[suite] 10:56:04 ncu_ours start
+==PROF== Connected to process 2255430 (/home/cs3.406-c/.local/share/uv/python/cpython-3.12.15-linux-x86_64-gnu/bin/python3.12)
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_layernorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_prefill_warp_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_prefill_warp_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_prefill_warp_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_prefill_warp_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_prefill_warp_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_prefill_warp_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "shortconv_prefill_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "silu_mul_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "qk_norm_rope_kv_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "decode_attention_split_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "attn_combine_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_epi_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "add_rmsnorm_kernel": 0%....50%....100% - 8 passes
+==PROF== Profiling "gemv_direct_kernel": 0%....50%....100% - 8 passes
+[run_once] done
+==PROF== Disconnected from process 2255430
+==PROF== Report: /home/cs3.406-c/PAA_Project/profiling/reports/20261022-105604_L40S_ncu_ours_l40_stack_fhd/ncu_ours.ncu-rep
+kernel                                                        grid    n       us  DRAM %   mem %   SM %  occ %
+gemv_epi_kernel<__nv_bfloat16, 2, 0>                         2,048   64    92.57    93.7    93.7   10.3   78.3
+<unnamed>::add_layernorm_kernel                              1,152   54    81.04    71.2    71.2   14.9   32.4
+gemv_direct_kernel<__nv_bfloat16, 1, 4, 1>                     256  128    31.67    81.4    81.4    8.1   28.0
+silu_mul_kernel                                             74,464   16   112.28    94.1    94.1   41.0   76.5
+gemv_epi_kernel<__nv_bfloat16, 3, 1>                           512   40    37.94    86.0    86.0    9.7   68.4
+gemv_direct_kernel<__nv_bfloat16, 1, 4, 1>                   8,192    4   362.74    96.5    96.5   10.1   71.8
+add_rmsnorm_kernel<1>                                        2,327   32    35.19    73.9    73.9   48.4   88.7
+add_rmsnorm_kernel<1>                                            1  128     5.69     0.5     0.6    0.1   16.4
+shortconv_prefill_kernel                                    18,616   10    65.44    64.5    64.5   65.7   86.3
+gemv_direct_kernel<__nv_bfloat16, 1, 4, 1>                     384   24    20.44    80.2    80.2    8.6   40.3
+decode_attention_split_kernel                                  128   24    12.37     4.9     5.3    3.9    8.2
+qk_norm_rope_kv_prefill_warp_kernel                          2,327    6    49.19    40.7    40.7   75.6   85.4
+attn_combine_kernel                                             32   24     5.44     1.6     1.6    1.1    4.1
+qk_norm_rope_kv_kernel<64>                                      48   24     4.10     0.5     0.8    0.6    4.1
+add_rmsnorm_kernel<0>                                        2,327    1    20.93    61.4    62.2   62.2   86.6
+add_rmsnorm_kernel<0>                                            1    4     5.21     0.5     0.7    0.1   16.3
+-> /home/cs3.406-c/PAA_Project/profiling/reports/20261022-105604_L40S_ncu_ours_l40_stack_fhd
+[suite] 10:59:52 ncu_ours rc=0
+[suite] done 10:59:52
+JOB_EXIT=0

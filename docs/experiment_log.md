@@ -60,6 +60,27 @@ Entry template:
 - **MMStar via VLMEvalKit:** baseline 50.07, ours 50.07, INT8 50.07; 100 → 36 ms per question.
 - **Long answers vs FP32** (ROUGE-L): HF BF16 0.813, **ours 0.826**, INT8 0.802. Our BF16 stack is again as close to FP32 as HF's BF16 (here even slightly closer); INT8 is again a little further.
 
+**Follow-up job** (3B + Nsight Compute, 10:44–11:00, `results/raw/l40_extra_log.txt`):
+- **LFM2.5-VL-3B on the L40S** (`results/raw/*L40S_l40_3b_*`, 5 repeats):
+  - TPOT 15.1 → **7.5 ms (2.0×)**, about 1.25× its weight-read floor (~6.0 ms).
+  - J/token 3.0 → 1.9 (−37 %).
+  - First token including preprocessing: text 31.6 → 9.6 ms (3.3×), VGA 36.2 → 21.2, 1080p 192.6 → 132.7 (1.45×).
+  - Quality subset (500 per benchmark, POPE 1500): all within ±0.2 pp, every McNemar p = 1.0, 97.2–99.9 % identical answers.
+- **ncu of our kernels on the L40S** (`profiling/reports/20261022-105604_L40S_ncu_ours_l40_stack_fhd`):
+
+  | Kernel | % of DRAM peak |
+  | --- | --- |
+  | `gemv_direct` lm_head | **96.5** |
+  | `gemv_epi` w1\|w3 + SwiGLU | 93.7 |
+  | `gemv_epi` in_proj + conv | 86.0 |
+  | Other GEMVs | 80–81 |
+  | Prefill `silu_mul` | 94.1 |
+  | Prefill `add_rmsnorm` | 73.9 |
+  | `add_layernorm` (vision) | 71.2 |
+  | `qk_norm_rope_kv_prefill` (warp version) | 40.7 |
+
+  The weight-streaming kernels sit at the bandwidth roof on Ada as well.
+
 **Figure:** `report/figures/gpus.png` (from `plot_results.py`, colours validated for colour-blind separation) shows baseline vs ours on all three GPUs: time per token, energy per token, and 1080p first token. The T4's first token is marked n/a: it needs FP16 kernels.
 
 **Conclusion:** every result from the Blackwell reproduces on a second datacenter GPU of a different architecture (Ada), with larger speed and energy gains and unchanged quality.

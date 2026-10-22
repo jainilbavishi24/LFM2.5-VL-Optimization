@@ -282,6 +282,8 @@ Further prefill-side work (all BF16, CUDA events, 1080p):
 - First token including preprocessing: text 21.6 → 4.8 ms, 1080p 146 → 93 ms.
 - Batch 16: 1,760 → 4,146 tok/s.
 - Quality on all five full benchmarks within ±0.2 pp (all McNemar p ≥ 0.23); VLMEvalKit MMStar 50.07 for baseline and ours alike.
+- LFM2.5-VL-3B on the L40S: TPOT 15.1 → 7.5 ms (2.0×), quality within ±0.2 pp.
+- Our GEMV kernels reach 81–97 % of the L40S's DRAM bandwidth (ncu).
 - Details in the [experiment log](docs/experiment_log.md).
 
 How close to the limit is this? At 1080p, 64.5 of the 87 ms first token are cuBLAS GEMMs running at 192 TFLOPS. That is 88 % of the best BF16 rate we measured on this GPU (219 TFLOPS; [profiling/gemm_efficiency.py](profiling/gemm_efficiency.py)). The decode step is at 1.09× its weight-read floor. Larger BF16 gains would need fewer bytes or FLOPs, i.e. quantization, which is our separately evaluated extension.
