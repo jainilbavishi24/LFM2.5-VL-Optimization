@@ -1,8 +1,8 @@
 # Improving Inference Speed and Energy Efficiency of a Vision-Language Model
 
-**Course:** CS3.406 Programming AI Accelerators (Monsoon 2026)
-**Team:** Jainil Bavishi (2023102045) · Gautam Gandhi (2023102059) · Bibek Singh Dhody (2023101054)
-**Model:** [LiquidAI/LFM2.5-VL-1.6B](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B)
+**Course:** CS3.406 Programming AI Accelerators (Monsoon 2026) \
+**Team:** Jainil Bavishi (2023102045) · Gautam Gandhi (2023102059) · Bibek Singh Dhody (2023101054) \
+**Model:** [LiquidAI/LFM2.5-VL-1.6B](https://huggingface.co/LiquidAI/LFM2.5-VL-1.6B) \
 **Hardware:** course GPU server with an **NVIDIA RTX PRO 5000 Blackwell 48 GB** (sm_120) over SSH, 3 × 2 h slots/week, for measurements · Google Colab T4 for development · Jetson Orin at the end
 
 > _Last updated: 2026-10-13 (measurement GPU: course RTX 5000 server, 2-hour slots)_

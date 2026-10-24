@@ -51,3 +51,6 @@ data/
 
 # SLURM / remote job logs
 jobs/
+
+# Private docs
+docs/private/
