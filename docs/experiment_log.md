@@ -15,6 +15,43 @@ Entry template:
 
 ---
 
+## 2026-10-27: INT8 for prefill and the vision encoder: probes before writing kernels (L40S)  (Claude)
+
+**Goal:** INT8 is decode-only today (prefill and vision use BF16 weights, and the INT8 runtime keeps both copies, so it uses *more* memory than BF16). For the edge we want INT8 weights everywhere. Before writing kernels: is the INT8 GEMM faster on our prefill/vision shapes, and which scheme keeps the answers?
+
+**Setup:** L40S (node13, job 52045), torch 2.11 cu130. [profiling/int8_gemm_probe.py](../profiling/int8_gemm_probe.py) (every first-token GEMM shape, CUDA events, median of 30) and [profiling/int8_quality_probe.py](../profiling/int8_quality_probe.py) (fake quantization that computes exactly what an INT8 kernel would; 36 cases = 3 workload images, 3 text prompts, 30 benchmark images from all 5 benchmarks; BF16 greedy 64-token answers fed back teacher-forced in one forward pass = prefill numerics; first token of the benchmark question; vision features vs an FP32 copy of the tower). Report: `profiling/reports/20261027-113518_L40S_int8_quality.json`.
+
+**Speed: GEMM time per request (ms; sum over all first-token GEMMs):**
+
+| | BF16 (today) | W8A16 (dequantize W, BF16 GEMM) | INT8 tensor cores, `torch._int_mm` alone | W8A8 with a separate dequant pass over the int32 output (est.) |
+|---|---|---|---|---|
+| 1080p (vision + LM) | 59.9 (36.9 + 23.0) | 73.4 (+23 %) | **41.1** (26.6 + 14.6), −31 % | ~67 (+12 %) |
+| VGA | 10.9 | 22.3 (+105 %) | **7.5**, −31 % | ~10.4 (−5 %) |
+
+- Per shape, INT8 tensor cores are 1.2–1.8× faster than BF16 (largest gain on fc2, w2 and the N = 2048 projections).
+- **But cuBLAS INT8 writes int32.** Reading that back to apply the scales (+ bias, GELU) costs more than the GEMM saves on the wide outputs (vision qkv / fc1, LM w1|w3). The gain only exists with the dequantization **inside the GEMM's epilogue** (registers → BF16), i.e. our own INT8 GEMM (or CUTLASS with an epilogue visitor).
+- W8A16 by dequantizing weights before each GEMM is a full extra pass over the weights: +23 % at 1080p, 2× at VGA. Weight-only INT8 for compute-bound GEMMs needs a mixed-input GEMM that dequantizes in the main loop.
+- (The probe's printed "copy bandwidth 1 GB/s" and the "fused~" column had a units bug, fixed; the separate-pass estimate above uses 0.8 TB/s.)
+
+**Quality (36 cases; teacher-forced argmax agreement with the BF16 forward, first-token agreement on 30 benchmark questions, vision feature error vs FP32):**
+
+| Scheme : scope | Teacher-forced agree | median max\|Δlogit\| | First token | Vision rel. err vs FP32 |
+|---|---|---|---|---|
+| (BF16 noise floor: one-pass vs decode) | 98.05 % | | | 4.61 % (BF16 itself) |
+| W8A16 : vision / LM / all | 98.2 / 98.4 / 97.7 % | 0.25 / 0.28 / 0.37 | 96.7 / 100 / 96.7 % | 5.89 % |
+| W8A8 : vision / LM / all | 97.7 / 97.3 / 96.4 % | 0.43 / 0.75 / 0.88 | 100 / 100 / 96.7 % | **13.3 %** |
+| W8A8 one kind only: vqkv / vout / fc1 / **fc2** | 98.7 / 98.7 / 98.9 / 98.0 % | 0.25 / 0.19 / 0.23 / **0.38** | | 7.2 / 6.1 / 7.7 / **11.0 %** |
+| W8A8 one kind only: qkv / o / in / out / w13 / **w2** | 98.6 / 98.9 / 99.0 / 98.7 / 98.6 / 97.8 % | 0.25 / 0.19 / 0.19 / 0.25 / 0.25 / **0.63** | | |
+| W8A8 + SmoothQuant (α 0.5) : vision / LM | 90.8 / 97.2 % | 2.34 / 0.78 | 83 / 93 % | 61.9 % |
+
+- **W8A16 is close to free** (as already known from decode): within the BF16 noise floor.
+- **W8A8 costs something measurable**, mostly from two layer kinds: the inputs of the vision **fc2** (after GELU) and of the LM **w2** (after SwiGLU), the classic outlier activations. Without them, each remaining kind is at the W8A16 level.
+- **SmoothQuant made vision much worse** (calibrated on one image; per-row weight scales absorb the large smoothing factors). Not pursued further for now.
+
+**Takeaway / next step:** INT8 for prefill/vision is worth doing only with our own kernels: an INT8 tensor-core GEMM with the scales (+ bias / GELU) applied in the epilogue, BF16 out, and activation quantization fused into the norm kernels that produce the GEMM inputs. Candidate configuration: W8A8 everywhere except fc2 and w2 (their inputs keep BF16 activations), then a benchmark-level quality check. Decision pending with the team (effort vs ~−30 % GEMM time on the first token).
+
+---
+
 ## 2026-10-22: everything repeated on an NVIDIA L40S (course SLURM cluster)  (Claude)
 
 **Setup:**

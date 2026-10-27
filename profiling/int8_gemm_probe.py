@@ -35,7 +35,7 @@ def cuda_ms(fn, repeats):
 def copy_bandwidth(repeats):
     src = torch.empty(256 << 20, dtype=torch.uint8, device="cuda")
     dst = torch.empty_like(src)
-    return 2 * src.numel() / cuda_ms(lambda: dst.copy_(src), repeats) / 1e9  # GB/s (read + write)
+    return 2 * src.numel() / cuda_ms(lambda: dst.copy_(src), repeats) / 1e6  # GB/s (read + write)
 
 
 def quant_rows(x):
