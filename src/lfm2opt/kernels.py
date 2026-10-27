@@ -61,3 +61,8 @@ def prep_ext():
 def vision_ext():
     """Vision-encoder kernels (kernels/vision_ops.cu), used by lfm2opt.vision."""
     return _build("lfm2_vision_ops", "vision_ops")
+
+
+def int8_ext():
+    """INT8 tensor-core GEMMs for prefill and the vision encoder (kernels/int8_gemm.cu), used by lfm2opt.int8."""
+    return _build("lfm2_int8_gemm", "int8_gemm")

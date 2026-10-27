@@ -1,0 +1,67 @@
+// PyTorch bindings for the INT8 prefill / vision GEMMs in int8_gemm.cu (compiled by the host compiler).
+#include <torch/extension.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <cuda_runtime.h>
+
+void launch_gemm_i8(const void *A, const float *sa, const void *B, const float *sb, const void *bias, void *Y, int M,
+                    int N, int K, bool gelu, cudaStream_t st);
+void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *bias, void *Y, int M, int N, int K,
+                    bool gelu, cudaStream_t st);
+void launch_quant_rows(const void *x, void *q, float *s, int rows, int K, cudaStream_t st);
+
+#define CHECK_T(t, dt) TORCH_CHECK(t.is_cuda() && t.scalar_type() == dt && t.is_contiguous(), #t " must be contiguous CUDA " #dt)
+
+static void check_common(const torch::Tensor &w, const torch::Tensor &sw, const c10::optional<torch::Tensor> &bias,
+                         const torch::Tensor &y, int M, int K) {
+    CHECK_T(w, at::kChar);
+    CHECK_T(sw, at::kFloat);
+    CHECK_T(y, at::kBFloat16);
+    const int N = w.size(0);
+    TORCH_CHECK(w.dim() == 2 && w.size(1) == K, "w must be [N, K]");
+    TORCH_CHECK(K % 16 == 0 && N % 8 == 0, "need K % 16 == 0 and N % 8 == 0");
+    TORCH_CHECK(sw.numel() == N && y.numel() == (int64_t)M * N, "sw / y shape");
+    if (bias.has_value()) {
+        CHECK_T((*bias), at::kBFloat16);
+        TORCH_CHECK(bias->numel() == N, "bias shape");
+    }
+}
+
+// W8A8: y[M, N] = (x_q[M, K] . w[N, K]^T) * sx[m] * sw[n] (+ bias) (GELU), bf16 out
+void gemm_i8(torch::Tensor xq, torch::Tensor sx, torch::Tensor w, torch::Tensor sw, c10::optional<torch::Tensor> bias,
+             torch::Tensor y, bool gelu) {
+    CHECK_T(xq, at::kChar);
+    CHECK_T(sx, at::kFloat);
+    const int K = xq.size(-1), M = xq.numel() / K;
+    TORCH_CHECK(sx.numel() == M, "sx shape");
+    check_common(w, sw, bias, y, M, K);
+    launch_gemm_i8(xq.data_ptr(), sx.data_ptr<float>(), w.data_ptr(), sw.data_ptr<float>(),
+                   bias.has_value() ? bias->data_ptr() : nullptr, y.data_ptr(), M, w.size(0), K, gelu,
+                   at::cuda::getCurrentCUDAStream());
+}
+
+// W8A16: y[M, N] = (x[M, K] . w[N, K]^T) * sw[n] (+ bias) (GELU), bf16 in / out
+void gemm_w8(torch::Tensor x, torch::Tensor w, torch::Tensor sw, c10::optional<torch::Tensor> bias, torch::Tensor y,
+             bool gelu) {
+    CHECK_T(x, at::kBFloat16);
+    const int K = x.size(-1), M = x.numel() / K;
+    check_common(w, sw, bias, y, M, K);
+    launch_gemm_w8(x.data_ptr(), w.data_ptr(), sw.data_ptr<float>(), bias.has_value() ? bias->data_ptr() : nullptr,
+                   y.data_ptr(), M, w.size(0), K, gelu, at::cuda::getCurrentCUDAStream());
+}
+
+// per-row (token) symmetric quantization: s = max(|x|) / 127, q = round(x / s)
+void quant_rows(torch::Tensor x, torch::Tensor q, torch::Tensor s) {
+    CHECK_T(x, at::kBFloat16);
+    CHECK_T(q, at::kChar);
+    CHECK_T(s, at::kFloat);
+    const int K = x.size(-1), rows = x.numel() / K;
+    TORCH_CHECK(K % 128 == 0 && K <= 2048, "K must be a multiple of 128, <= 2048");
+    TORCH_CHECK(q.numel() == x.numel() && s.numel() == rows, "q / s shape");
+    launch_quant_rows(x.data_ptr(), q.data_ptr(), s.data_ptr<float>(), rows, K, at::cuda::getCurrentCUDAStream());
+}
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("gemm_i8", &gemm_i8, "W8A8 GEMM, int8 tensor cores, scales (+bias, GELU) in the epilogue, bf16 out");
+    m.def("gemm_w8", &gemm_w8, "W8A16 GEMM, int8 weights converted in registers, bf16 tensor cores, bf16 out");
+    m.def("quant_rows", &quant_rows, "bf16 -> int8 with one absmax scale per row");
+}
