@@ -53,7 +53,9 @@ class Chair:
 
     def words(self, text):
         """COCO object node words mentioned in `text` (the authors' caption_to_words)."""
-        ws = [self.lemma.lemmatize(w) for w in re.findall(r"[a-z]+", text.lower())]
+        # WordNet keeps "men" (a lemma itself): -men -> -man as pattern.en singularize did (men, women, policemen)
+        ws = [w[:-3] + "man" if w.endswith("men") and len(w) > 3 or w == "men" else self.lemma.lemmatize(w)
+              for w in re.findall(r"[a-z]+", text.lower())]
         out, i = [], 0
         while i < len(ws):
             dw = " ".join(ws[i:i + 2])
