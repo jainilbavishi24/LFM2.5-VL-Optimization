@@ -8,7 +8,7 @@
 #   bash demo/live_l40.sh --image ~/photo.jpg --prompt "What is in this picture?"   # image path on the cluster
 set -euo pipefail
 if ! command -v srun >/dev/null; then
-    exec ssh -t turing "bash ~/PAA_Project/demo/live_l40.sh $(printf '%q ' "$@")"
+    exec ssh -t turing "bash ~/PAA_Project/demo/live_l40.sh${*:+ $(printf '%q ' "$@")}"  # no args -> no '' arg
 fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "[live] requesting the L40S on node13 (waits if our other jobs hold it) ..."
