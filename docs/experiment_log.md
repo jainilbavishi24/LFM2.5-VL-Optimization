@@ -45,6 +45,20 @@ Over these 8: geometric-mean speed-up 2.2× (BF16) and 3.1× (INT8); energy per 
 
 **Video:** [demo/render.py](../demo/render.py) replays the median run of each case: each token appears at its measured time, the phase bar (image prep / vision encoder / reading prompt / writing answer) fills on a shared time axis, and each case plays once at real speed and then slowed down by a stated factor (5–200×) with a real-time clock. Title, a how-to-read card (method, slow motion, the BF16 wording caveat) and a summary chart are included. Output: `presentations/demo/` (not committed; 2.5 min at 1080p30 plus one clip per case; regenerate with `python demo/render.py results/demo/<run> --cases ...`).
 
+**Live check (proof for the video), same day:** [demo/live.py](../demo/live.py) re-runs the video's cases on the L40S with the recorder's own measurement code (`Runner` in demo/record.py) and prints every number next to the one the video shows (read from the committed `traces.json`), plus whether each answer is token-for-token the same. [demo/live_l40.sh](../demo/live_l40.sh) runs it on node13 through `srun` from a laptop or the login node and streams the output. Full run (job 52274, `results/demo/20261027-184054_L40S_live`):
+- **Answers:** 24 / 24 identical to the video, token for token.
+- **Peak memory:** identical everywhere.
+- **Our decode time per token** (CUDA graphs, GPU-bound): identical to 0.01 ms (BF16 3.29–3.44, INT8 1.78–1.88 ms).
+- **Total time:** 21 / 24 within 4 %. Geometric-mean speed-up 2.18× (BF16) and 3.15× (INT8) live vs 2.22× and 3.09× in the video.
+- **The 3 outliers are all CPU-bound:** HF bar chart +35 % (its eager Python decode loop: 12.9 vs 9.2 ms/token), BF16 handwritten word +23 % (kernel-launch bound), BF16 35 MP scan +12 % (host-side image copy).
+
+Why some cases vary, investigated:
+- node13's CPUs use the `schedutil` governor (Xeon Gold 6326, 0.8–3.5 GHz, idle cores at ~1 GHz; we have no root to pin the clock).
+- BF16 on the 148×60 image measured either ~16 or ~20 ms per process: 9 and 5 times over 14 processes, once switching mid-process.
+- The difference is entirely in CPU-side work: image prep ×1.45, vision launch +3.5 ms.
+- It is the same GPU every time (bus 31:00.0), and pinning to one NUMA node did not change it (fast 3/5).
+- The script prints this explanation under every case that differs by more than 5 %. The video's values are from one recording session; tiny and very large images can come out up to ~35 % slower in another.
+
 ---
 
 ## 2026-10-27: INT8 for prefill and the vision encoder: probes before writing kernels (L40S)  (Claude)

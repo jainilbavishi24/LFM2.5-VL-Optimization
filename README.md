@@ -187,6 +187,7 @@ Every script works the same on any NVIDIA GPU (T4, the course GPU server, later 
 | Nsight Compute, one phase | `bash profiling/ncu/profile_ncu.sh decode\|prefill\|vision img_small` | `.ncu-rep` + `*_metrics.csv` |
 | Bandwidth per kernel from ncu | `python profiling/ncu/analyze_ncu.py <..._metrics.csv> --steps 1` | table: time, MB, GB/s, % of peak |
 | Demo video (HF vs ours BF16 vs ours INT8, side by side) | `python demo/record.py` on the GPU, then `python demo/render.py results/demo/<run> --cases ...` anywhere | `results/demo/<run>/traces.json`; `presentations/demo/*.mp4` (not committed) |
+| Live proof of the video's numbers on the L40S (same cases, same measuring code, live vs video side by side) | `bash demo/live_l40.sh` (`--quick`, `--only cats,graph`, `--image x.jpg --prompt ...`) | terminal; `results/demo/<time>_L40S_live/` |
 
 Workloads (fixed inputs, defined in `src/lfm2opt/workloads.py`): `text` (no image), `img_small` (640×480, 1 tile), `img_hd` (1280×720), `img_fhd` (1920×1080, multi-tile). Decoding is greedy with a fixed number of new tokens, so runs are comparable across GPUs and optimizations. Optimizations are registered as _variants_ in `src/lfm2opt/variants.py` and selected with `--variants` / `--variant`.
 

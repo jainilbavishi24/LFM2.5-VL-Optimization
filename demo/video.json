@@ -1,0 +1,5 @@
+{
+  "run": "results/demo/20261027-175305_L40S_l40_demo",
+  "cases": ["handwriting", "chart_bar", "cats", "math_latex", "letter", "graph", "receipt_35mp", "describe_city"],
+  "render": "python demo/render.py results/demo/20261027-175305_L40S_l40_demo --cases handwriting,chart_bar,cats,math_latex,letter,graph,receipt_35mp,describe_city --out presentations/demo"
+}

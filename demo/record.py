@@ -60,6 +60,112 @@ def event():
     return e
 
 
+class Runner:
+    """One variant loaded and instrumented; measure() is the whole per-case protocol (used by record.py and
+    live.py, so the live check runs exactly the code that produced the video's numbers)."""
+
+    def __init__(self, variant, model=DEFAULT_MODEL):
+        self.variant = variant
+        base, _, opt = variant.partition("+")
+        net, processor = load(model)
+        net = apply_variant(base, net, processor)
+        if opt == "gpuprep":
+            from lfm2opt.preprocess import GpuImageProcessor
+            processor = GpuImageProcessor.wrap(processor)
+        self.net, self.processor = net, processor
+        self.dec = getattr(net, "_static_decoder", None)
+        self.model_mem = torch.cuda.memory_allocated() / 2**30
+        eos = net.generation_config.eos_token_id
+        self.eos = set([eos] if isinstance(eos, int) else eos)
+
+        rec = self.rec = {"on": False, "vision": [], "tokens": []}
+        get_feats = net.model.get_image_features
+
+        @functools.wraps(get_feats)  # HF generate() reads its signature to pre-encode the image
+        def get_image_features(*a, **k):
+            r = get_feats(*a, **k)
+            if rec["on"]:
+                rec["vision"].append(event())
+            return r
+
+        net.model.get_image_features = get_image_features
+        if self.dec is None:  # HF decode: one lm_head call per generated token
+            net.lm_head.register_forward_hook(lambda m, i, o: rec["tokens"].append(event()) if rec["on"] else None)
+
+    def run(self, img, case, traced):
+        net, processor, dec, rec = self.net, self.processor, self.dec, self.rec
+        rec.update(on=traced, vision=[], tokens=[])
+        if dec is not None:
+            dec.trace = rec["tokens"] if traced else None
+        torch.cuda.synchronize()
+        e0 = event()
+        t0 = time.perf_counter()
+        inputs = build_inputs(processor, img, case["prompt"])
+        e_pre = event()
+        with torch.inference_mode():
+            o = net.generate(**inputs, max_new_tokens=case["max_new"], do_sample=False,
+                             pad_token_id=processor.tokenizer.pad_token_id)
+        e_end = event()
+        torch.cuda.synchronize()
+        wall = (time.perf_counter() - t0) * 1e3
+        rec["on"] = False
+        if dec is not None:
+            dec.trace = None
+        n_prompt = int(inputs["input_ids"].shape[1])
+        ids = o[0, n_prompt:].tolist()
+        r = dict(wall_ms=wall, pre_ms=e0.elapsed_time(e_pre), end_ms=e0.elapsed_time(e_end),
+                 vision_ms=[e0.elapsed_time(e) for e in rec["vision"]],
+                 token_ms=[e0.elapsed_time(e) for e in rec["tokens"]])
+        return ids, n_prompt, r
+
+    def measure(self, case, raw_image, warmup=3, repeats=7, energy_s=3.0, meter=None):
+        """Warm-up, `repeats` traced runs, then >= energy_s s untraced for energy (meter=None: skipped). -> trace dict"""
+        img = Image.open(io.BytesIO(raw_image)).convert("RGB")
+        if self.dec is not None:  # keep only this request's CUDA graph + buffers (captured by the warm-up): peak memory
+            self.dec.graphs.clear()  # is then what one request needs, as in benchmarks/bench.py
+        gc.collect()
+        torch.cuda.empty_cache()
+        for _ in range(warmup):
+            self.run(img, case, False)
+        torch.cuda.reset_peak_memory_stats()
+        runs, all_ids = [], []
+        for _ in range(repeats):
+            ids, n_prompt, r = self.run(img, case, True)
+            runs.append(r)
+            all_ids.append(ids)
+        peak = torch.cuda.max_memory_allocated() / 2**30
+        ids = all_ids[0]
+        cut = next((j for j, t in enumerate(ids) if t in self.eos), None)
+        answer = ids if cut is None else ids[: cut + 1]  # incl. EOS: its logits are the last thing computed
+        same = all(a[: len(answer)] == answer for a in all_ids)
+        pieces = [self.processor.decode(answer[:k], skip_special_tokens=True) for k in range(1, len(answer) + 1)]
+
+        walls = [r["wall_ms"] for r in runs]
+        n_e, untraced_ms, en = 0, None, {}
+        if meter is not None and energy_s > 0:
+            n_e = max(5, math.ceil(energy_s * 1e3 / statistics.median(walls)))
+            meter.start()
+            t0 = time.perf_counter()
+            for _ in range(n_e):
+                self.run(img, case, False)
+            untraced_ms = (time.perf_counter() - t0) * 1e3 / n_e
+            en = meter.stop()
+
+        med = sorted(range(len(runs)), key=lambda i: walls[i])[len(runs) // 2]
+        return dict(variant=self.variant, key=case["key"], image_size=list(img.size), prompt=case["prompt"],
+                    max_new=case["max_new"], prompt_tokens=n_prompt, answer_ids=answer, ended_with_eos=cut is not None,
+                    same_tokens_all_runs=same, text=pieces[-1] if pieces else "", pieces=pieces, runs=runs,
+                    median_run=med, wall_ms_median=walls[med], wall_ms_min=min(walls), wall_ms_max=max(walls),
+                    peak_mem_gb=peak, model_mem_gb=self.model_mem, energy_runs=n_e, untraced_ms_mean=untraced_ms,
+                    energy_j_per_answer=en["energy_j"] / n_e if "energy_j" in en else None,
+                    power_avg_w=en.get("power_avg_w"), sm_clock_avg_mhz=en.get("sm_clock_avg_mhz"))
+
+    def close(self):
+        del self.net, self.dec, self.rec
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=DEFAULT_MODEL)
@@ -91,107 +197,18 @@ def main():
     meter = EnergyMeter()
     traces = []
     for variant in args.variants.split(","):
-        base, _, opt = variant.partition("+")
-        net, processor = load(args.model)
-        net = apply_variant(base, net, processor)
-        if opt == "gpuprep":
-            from lfm2opt.preprocess import GpuImageProcessor
-            processor = GpuImageProcessor.wrap(processor)
-        dec = getattr(net, "_static_decoder", None)
-        model_mem = torch.cuda.memory_allocated() / 2**30
-        eos = net.generation_config.eos_token_id
-        eos = set([eos] if isinstance(eos, int) else eos)
-
-        rec = {"on": False, "vision": [], "tokens": []}
-        inner = net.model
-        get_feats = inner.get_image_features
-
-        @functools.wraps(get_feats)  # HF generate() reads its signature to pre-encode the image
-        def get_image_features(*a, **k):
-            r = get_feats(*a, **k)
-            if rec["on"]:
-                rec["vision"].append(event())
-            return r
-
-        inner.get_image_features = get_image_features
-        if dec is None:  # HF decode: one lm_head call per generated token
-            net.lm_head.register_forward_hook(lambda m, i, o: rec["tokens"].append(event()) if rec["on"] else None)
-
+        runner = Runner(variant, args.model)
         for c in cases:
-            img = Image.open(io.BytesIO(images[c["key"]])).convert("RGB")
-
-            def run(traced):
-                rec.update(on=traced, vision=[], tokens=[])
-                if dec is not None:
-                    dec.trace = rec["tokens"] if traced else None
-                torch.cuda.synchronize()
-                e0 = event()
-                t0 = time.perf_counter()
-                inputs = build_inputs(processor, img, c["prompt"])
-                e_pre = event()
-                with torch.inference_mode():
-                    o = net.generate(**inputs, max_new_tokens=c["max_new"], do_sample=False,
-                                     pad_token_id=processor.tokenizer.pad_token_id)
-                e_end = event()
-                torch.cuda.synchronize()
-                wall = (time.perf_counter() - t0) * 1e3
-                rec["on"] = False
-                if dec is not None:
-                    dec.trace = None
-                n_prompt = int(inputs["input_ids"].shape[1])
-                ids = o[0, n_prompt:].tolist()
-                r = dict(wall_ms=wall, pre_ms=e0.elapsed_time(e_pre), end_ms=e0.elapsed_time(e_end),
-                         vision_ms=[e0.elapsed_time(e) for e in rec["vision"]],
-                         token_ms=[e0.elapsed_time(e) for e in rec["tokens"]])
-                return ids, n_prompt, r
-
-            if dec is not None:  # keep only this request's CUDA graph + buffers (captured by the warm-up): peak memory
-                dec.graphs.clear()  # is then what one request needs, as in benchmarks/bench.py
-            gc.collect()
-            torch.cuda.empty_cache()
-            for _ in range(args.warmup):
-                run(False)
-            torch.cuda.reset_peak_memory_stats()
-            runs, all_ids = [], []
-            for _ in range(args.repeats):
-                ids, n_prompt, r = run(True)
-                runs.append(r)
-                all_ids.append(ids)
-            peak = torch.cuda.max_memory_allocated() / 2**30
-            ids = all_ids[0]
-            cut = next((j for j, t in enumerate(ids) if t in eos), None)
-            answer = ids if cut is None else ids[: cut + 1]  # incl. EOS: its logits are the last thing computed
-            same = all(a[: len(answer)] == answer for a in all_ids)
-            pieces = [processor.decode(answer[:k], skip_special_tokens=True) for k in range(1, len(answer) + 1)]
-
-            n_e = max(5, math.ceil(args.energy_s * 1e3 / statistics.median(r["wall_ms"] for r in runs)))
-            meter.start()
-            t0 = time.perf_counter()
-            for _ in range(n_e):
-                run(False)
-            untraced_ms = (time.perf_counter() - t0) * 1e3 / n_e
-            en = meter.stop()
-
-            walls = [r["wall_ms"] for r in runs]
-            med = sorted(range(len(runs)), key=lambda i: walls[i])[len(runs) // 2]
-            t = dict(variant=variant, key=c["key"], image_size=list(img.size), prompt=c["prompt"], max_new=c["max_new"],
-                     prompt_tokens=n_prompt, answer_ids=answer, ended_with_eos=cut is not None,
-                     same_tokens_all_runs=same, text=pieces[-1] if pieces else "", pieces=pieces, runs=runs,
-                     median_run=med, wall_ms_median=walls[med], wall_ms_min=min(walls), wall_ms_max=max(walls),
-                     peak_mem_gb=peak, model_mem_gb=model_mem, energy_runs=n_e, untraced_ms_mean=untraced_ms,
-                     energy_j_per_answer=en["energy_j"] / n_e if "energy_j" in en else None,
-                     power_avg_w=en.get("power_avg_w"), sm_clock_avg_mhz=en.get("sm_clock_avg_mhz"))
+            t = runner.measure(c, images[c["key"]], args.warmup, args.repeats, args.energy_s, meter)
             traces.append(t)
             (out / "traces.json").write_text(json.dumps(traces))
-            r = runs[med]
-            print(f"[demo] {variant:>32} {c['key']:>18} {img.size[0]:>4}x{img.size[1]:<4} T={n_prompt:<5} "
-                  f"new={len(answer):<3} pre={r['pre_ms']:7.2f} vis={(r['vision_ms'] or [0])[0]:7.2f} "
-                  f"ttft={r['token_ms'][0]:7.2f} end={r['end_ms']:7.2f} wall={walls[med]:7.2f} "
-                  f"(untraced {untraced_ms:7.2f}) mem={peak:.2f} GB E={t['energy_j_per_answer'] or 0:.2f} J "
-                  f"same={same} | {t['text'][:60]!r}")
-        del net, dec, inner, get_feats
-        gc.collect()
-        torch.cuda.empty_cache()
+            r = t["runs"][t["median_run"]]
+            print(f"[demo] {variant:>32} {c['key']:>18} {t['image_size'][0]:>4}x{t['image_size'][1]:<4} "
+                  f"T={t['prompt_tokens']:<5} new={len(t['answer_ids']):<3} pre={r['pre_ms']:7.2f} "
+                  f"vis={(r['vision_ms'] or [0])[0]:7.2f} ttft={r['token_ms'][0]:7.2f} end={r['end_ms']:7.2f} "
+                  f"wall={t['wall_ms_median']:7.2f} (untraced {t['untraced_ms_mean']:7.2f}) mem={t['peak_mem_gb']:.2f} GB "
+                  f"E={t['energy_j_per_answer'] or 0:.2f} J same={t['same_tokens_all_runs']} | {t['text'][:60]!r}")
+        runner.close()
 
 
 if __name__ == "__main__":
