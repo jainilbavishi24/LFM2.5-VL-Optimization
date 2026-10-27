@@ -264,7 +264,7 @@ Full grids from the night of 13–14 Oct; details, correctness checks and pitfal
 | 5 benchmarks vs baseline | | ±0.2 pp | ±0.2 pp | −0.36…+0.08 pp, p ≥ 0.18 |
 | long answers, ROUGE-L vs FP32 (HF BF16 0.813) | | 0.826 | 0.802 | **0.757** (−0.056, CI [−0.077, −0.034]) |
 
-Short answers are unchanged, but W8A8 activations make long answers drift measurably more than BF16 or weight-only INT8; whether that drift costs accuracy needs a reference-scored long-answer test.
+Short answers are unchanged, but W8A8 activations make long answers drift measurably more than BF16 or weight-only INT8, mostly from the vision encoder (INT8 vision alone −0.050, INT8 LM prefill alone −0.030); whether that drift costs accuracy needs a reference-scored long-answer test.
 
 Prefill/vision: cuDNN attention for SigLIP2 (`vision_cudnn`, O7a) cuts 1080p TTFT 116 → 102 ms (vision 73.5 → 62.9 ms). Generalization: on LFM2.5-VL-3B, TPOT 6.50 → 4.95 ms with the fused BF16 runtime (2.50 ms with INT8). Batched decode (img_small): batch 4 2929 tok/s (HF 1039), batch 16 ~5900 tok/s (HF 3987).
 

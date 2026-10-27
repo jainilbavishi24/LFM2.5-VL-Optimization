@@ -121,10 +121,11 @@ Entry template:
 **Long answers** (500 COCO descriptions, ~80 tokens, vs the FP32 reference of the 22 Oct run; paired bootstrap, 2000 resamples):
 - ROUGE-L vs FP32: HF BF16 0.813, ours BF16 0.826, INT8 decode only 0.802 (−0.010 vs HF BF16, CI [−0.030, +0.007]), **INT8 everywhere 0.757 (−0.056, CI [−0.077, −0.034])**; identical answers 25.6 % (HF BF16 40.6 %), mean length 79.0 vs 81.8 tokens.
 - So W8A8 prefill/vision is quality-neutral on short-answer benchmarks but drifts measurably on long generation: the quantized vision features and prompt KV cache steer the whole answer.
+- **Which half drifts** (ablation variants `fused_w8_pf_v8` = INT8 vision only, `fused_w8_pf8_vfused` = INT8 LM prefill only, both with the INT8 decode GEMV; `results/eval/20261027-123845_L40S_l40_int8_drift_ablation`): ROUGE-L vs HF BF16 −0.050 [−0.072, −0.028] for INT8 vision, −0.030 [−0.051, −0.010] for INT8 prefill, −0.056 for both. The vision encoder is the main source (its feature error vs FP32 was already 8 % vs BF16's 5 %).
 
 **Takeaway / next step:**
 - INT8 everywhere is the memory configuration for small Jetsons (2.1 GB peak); it stays a separately reported extension.
-- Before claiming it for long answers: a reference-scored long-answer test (COCO captions with CIDEr, or a judge), and an ablation that runs vision or LM prefill in W8A16 (`LFM2_INT8_A16`, weights still INT8 only) to find which part causes the drift.
+- Before claiming it for long answers: a reference-scored long-answer test (COCO captions with CIDEr, or a judge). Drift fix candidates, vision first: keep the vision activations in BF16 (W8A16: same memory, needs a faster `gemm_w8`), or finer / calibrated activation scales for the vision encoder.
 - Speed at small inputs: a CUDA graph for the vision encoder (launch-bound at one tile, BF16 and INT8 alike).
 
 ---
