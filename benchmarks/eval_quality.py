@@ -94,9 +94,9 @@ def load_bench(name):
             items.append(dict(id=f"longform/{r['image_source']}", image=_img(r["image"]),
                               prompt="Describe this image in detail.", max_new=256, gt="", cat=None))
     elif name in ("coco_cap", "coco_desc"):
-        for r in _rows("coco_cap_val0.parquet"):  # id = COCO image id; gt = the 5 human captions
+        for r in _rows("coco_cap_val0.parquet"):  # gt = the 5 human captions; the COCO image id is in file_name
             cap = name == "coco_cap"
-            items.append(dict(id=f"{name}/{r['id']}", image=_img(r["image"]),
+            items.append(dict(id=f"{name}/{int(r['file_name'].split('.')[0])}", image=_img(r["image"]),
                               prompt=r["question"] if cap else "Describe this image in detail.", max_new=64 if cap else 256,
                               gt=list(r["answer"]), cat=None))
     else:
