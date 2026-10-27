@@ -26,6 +26,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Quality evaluation on standard VLM benchmarks (MMStar, POPE, OCRBench, ChartQA, TextVQA) | 6 | ✅ 14 Oct: our BF16 stack and INT8 are within ±0.3 pp of the baseline, no significant difference (McNemar) |
 | O7d fused vision encoder, O3b fused LM prefill, O2d GEMV epilogues | 6 | ✅ 1080p vision 77 → 54 ms, LM prefill 37 → 31 ms; first token incl. preprocessing 164 → 90 ms, TPOT 3.70 → 2.07–2.12 ms (3 repeats) |
 | Extension: INT8 weight-only GEMV (O6) | 6 | ✅ 1.11 ms/token; evaluated separately (it changes the model) |
+| Extension: INT8 everywhere (prefill + vision on our INT8 tensor-core GEMMs, no BF16 weight copies) | 7 | ✅ 27 Oct (L40S): peak memory 4.6 → **2.1 GB** (HF 3.3), 1080p first token 84.5 → 72.4 ms; 5 benchmarks within −0.36…+0.08 pp (p ≥ 0.18); long answers drift more (ROUGE-L −0.056 vs HF BF16) |
 | Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
 | Main optimization work | 6 | — |
@@ -251,6 +252,19 @@ Full grids from the night of 13–14 Oct; details, correctness checks and pitfal
 |---|---|---|---|---|---|
 | O1–O6 `fused_w8` | + INT8 weight-only GEMV (per-row scales) | 1.11 / 1.19 | 3.45× | 0.32–0.35 | 98.7 % |
 | O1–O6b `fused_w4` | + INT4 group-128 GEMV (round-to-nearest) | 0.76 / 0.84 | 5.0× | 0.22–0.26 | 86 % (dropped: too lossy) |
+
+**INT8 everywhere** (`fused_w8all_pf_vfused`, L40S, 27 Oct; [kernels/int8_gemm.cu](kernels/int8_gemm.cu), [src/lfm2opt/int8.py](src/lfm2opt/int8.py)): the prefill and vision GEMMs also run on the INT8 weights, on our own W8A8 tensor-core GEMM (`mma.sync` s8, scales + bias + GELU in the epilogue, activation scales per token and group of 64 channels; the norm / SwiGLU / fc1 kernels write the next GEMM's INT8 input directly), and no BF16 copy of a quantized weight is kept:
+
+| L40S, batch 1 | HF baseline | ours BF16 | INT8 decode only | INT8 everywhere |
+|---|---|---|---|---|
+| peak GPU memory | 3.0–3.3 GB | 4.3–4.6 GB | 5.4–5.7 GB | **1.8–2.1 GB** |
+| TPOT | 9.03 ms | 3.30 ms | 1.79 ms | 1.79 ms |
+| first token 1080p / text (GPU preprocessing) | 114.9 / 18.0 ms | 84.5 / 4.2 ms | 85.2 / 4.2 ms | **72.4 / 3.6 ms** |
+| J/token | 1.43 | 0.76 | 0.45 | 0.45 |
+| 5 benchmarks vs baseline | | ±0.2 pp | ±0.2 pp | −0.36…+0.08 pp, p ≥ 0.18 |
+| long answers, ROUGE-L vs FP32 (HF BF16 0.813) | | 0.826 | 0.802 | **0.757** (−0.056, CI [−0.077, −0.034]) |
+
+Short answers are unchanged, but W8A8 activations make long answers drift measurably more than BF16 or weight-only INT8; whether that drift costs accuracy needs a reference-scored long-answer test.
 
 Prefill/vision: cuDNN attention for SigLIP2 (`vision_cudnn`, O7a) cuts 1080p TTFT 116 → 102 ms (vision 73.5 → 62.9 ms). Generalization: on LFM2.5-VL-3B, TPOT 6.50 → 4.95 ms with the fused BF16 runtime (2.50 ms with INT8). Batched decode (img_small): batch 4 2929 tok/s (HF 1039), batch 16 ~5900 tok/s (HF 3987).
 

@@ -92,7 +92,40 @@ Entry template:
 - VGA vision is launch-bound (1024 patches per GEMM): the INT8 path has more kernels per layer (separate quantization of the attention and GELU outputs) and more Python per call. A CUDA graph for the vision encoder (fixed shapes per tile count) would remove this for BF16 and INT8 alike.
 - Teacher-forced vs HF BF16, whole INT8 stack: 62/63, 60/63, 62/63 tokens; every flip at a near-tie (margin ≤ 0.125).
 
-**Next:** end-to-end speed / energy / peak memory and the full 5-benchmark + long-answer quality of `fused_w8all_pf_vfused` (job 52058).
+**fc1 epilogue with INT8 output** (`gemm_i8_q`): fc1 + GELU writes fc2's grouped INT8 input (row maxima of each 64-column group meet across the 2 warps in shared memory; bit-identical to GEMM + quantization). In-process A/B: 1080p vision 47.96 → 47.13 ms, VGA 9.13 → 8.60 ms.
+
+**End to end** (job 52058, L40S, one session; `results/raw/20261027-122046_L40S_l40_base_int8day`, `…122158_L40S_l40_int8all`; GPU preprocessing for ours):
+
+| batch 1 | HF baseline | ours BF16 | INT8 decode only | INT8 everywhere (`fused_w8all_pf_vfused`) |
+|---|---|---|---|---|
+| peak GPU memory | 3.0–3.3 GB | 4.3–4.6 GB | 5.4–5.7 GB | **1.8–2.1 GB** |
+| TPOT | 9.02–9.06 ms | 3.29–3.34 | 1.77–1.83 | 1.77–1.83 |
+| first token 1080p / 720p / VGA / text | 114.9 / 42.8 / 24.6 / 18.0 | 84.5 / 28.9 / 12.3 / 4.2 | 85.2 / 28.9 / 12.3 / 4.2 | **72.4 / 26.1 / 12.5 / 3.6** |
+| J/token (128 tokens) | 1.40–1.45 | 0.75–0.77 | 0.45–0.46 | 0.43–0.48 |
+
+- Memory: INT8 everywhere is 35–40 % below HF itself and less than half of our BF16 stack (which keeps merged q|k|v and w1|w3 copies); the previous INT8 variant kept BF16 and INT8 copies (5.7 GB).
+- First token: −14 % at 1080p and text; VGA unchanged (the vision encoder is launch-bound at one tile).
+
+**Quality, full 5 benchmarks** (19,000 questions, paired with the 22 Oct L40S baseline run on the same GPU; `results/eval/20261027-122306_L40S_l40_w8all_fullsize`, `python benchmarks/eval_compare.py results/eval/20261022-091626_L40S_l40_fullsize results/eval/20261027-122306_L40S_l40_w8all_fullsize`):
+
+| Benchmark | baseline | INT8 everywhere | Δ (pp) | same answer | McNemar p | e2e ms/q (baseline → ours) |
+|---|---|---|---|---|---|---|
+| MMStar | 49.20 | 49.13 | −0.07 | 94.6 % | 1.00 | 52.3 → 23.3 |
+| POPE | 89.12 | 89.20 | +0.08 | 99.4 % | 0.40 | 42.1 → 16.4 |
+| OCRBench | 79.80 | 79.60 | −0.20 | 89.7 % | 0.80 | 155.2 → 55.7 |
+| ChartQA | 80.08 | 79.72 | −0.36 | 91.2 % | 0.18 | 69.2 → 28.5 |
+| TextVQA (5000) | 81.16 | 80.98 | −0.18 | 96.7 % | 0.39 | 129.7 → 62.7 |
+
+- No significant difference, but fewer identical answers than the BF16 stack (95–99.7 %) or weight-only INT8: W8A8 activations change more near-ties.
+
+**Long answers** (500 COCO descriptions, ~80 tokens, vs the FP32 reference of the 22 Oct run; paired bootstrap, 2000 resamples):
+- ROUGE-L vs FP32: HF BF16 0.813, ours BF16 0.826, INT8 decode only 0.802 (−0.010 vs HF BF16, CI [−0.030, +0.007]), **INT8 everywhere 0.757 (−0.056, CI [−0.077, −0.034])**; identical answers 25.6 % (HF BF16 40.6 %), mean length 79.0 vs 81.8 tokens.
+- So W8A8 prefill/vision is quality-neutral on short-answer benchmarks but drifts measurably on long generation: the quantized vision features and prompt KV cache steer the whole answer.
+
+**Takeaway / next step:**
+- INT8 everywhere is the memory configuration for small Jetsons (2.1 GB peak); it stays a separately reported extension.
+- Before claiming it for long answers: a reference-scored long-answer test (COCO captions with CIDEr, or a judge), and an ablation that runs vision or LM prefill in W8A16 (`LFM2_INT8_A16`, weights still INT8 only) to find which part causes the drift.
+- Speed at small inputs: a CUDA graph for the vision encoder (launch-bound at one tile, BF16 and INT8 alike).
 
 ---
 

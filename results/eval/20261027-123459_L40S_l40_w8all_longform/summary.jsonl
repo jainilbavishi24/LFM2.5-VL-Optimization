@@ -1,0 +1,1 @@
+{"variant": "fused_w8all_pf_vfused+gpuprep", "bench": "longform", "n": 500, "score": 0.0, "pre_ms_mean": 1.7543363813310862, "gen_ms_mean": 166.7141833677888, "e2e_ms_mean": 168.46851974911988, "new_tokens_mean": 78.962, "wall_s": 85.66643108054996, "energy_j": 23153.448, "energy_j_per_q": 46.306896}
