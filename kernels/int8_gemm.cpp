@@ -4,10 +4,11 @@
 #include <cuda_runtime.h>
 
 void launch_gemm_i8(const void *A, const float *sa, const void *B, const float *sb, const void *bias, void *Y, int M,
-                    int N, int K, bool gelu, cudaStream_t st);
+                    int N, int K, bool gelu, bool grouped, cudaStream_t st);
 void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *bias, void *Y, int M, int N, int K,
                     bool gelu, cudaStream_t st);
 void launch_quant_rows(const void *x, void *q, float *s, int rows, int K, cudaStream_t st);
+void launch_quant_groups(const void *x, void *q, float *sT, int rows, int K, cudaStream_t st);
 
 #define CHECK_T(t, dt) TORCH_CHECK(t.is_cuda() && t.scalar_type() == dt && t.is_contiguous(), #t " must be contiguous CUDA " #dt)
 
@@ -26,16 +27,18 @@ static void check_common(const torch::Tensor &w, const torch::Tensor &sw, const 
     }
 }
 
-// W8A8: y[M, N] = (x_q[M, K] . w[N, K]^T) * sx[m] * sw[n] (+ bias) (GELU), bf16 out
+// W8A8: y[M, N] = (x_q[M, K] . w[N, K]^T) * sx[m] * sw[n] (+ bias) (GELU), bf16 out. sx [M]: one scale per row;
+// sx [K/64, M]: one scale per row and group of 64 input channels (from quant_rows with a 2-d scale tensor)
 void gemm_i8(torch::Tensor xq, torch::Tensor sx, torch::Tensor w, torch::Tensor sw, c10::optional<torch::Tensor> bias,
              torch::Tensor y, bool gelu) {
     CHECK_T(xq, at::kChar);
     CHECK_T(sx, at::kFloat);
     const int K = xq.size(-1), M = xq.numel() / K;
-    TORCH_CHECK(sx.numel() == M, "sx shape");
+    const bool grouped = sx.dim() == 2;
+    TORCH_CHECK(grouped ? (K % 64 == 0 && sx.size(0) == K / 64 && sx.size(1) == M) : sx.numel() == M, "sx shape");
     check_common(w, sw, bias, y, M, K);
     launch_gemm_i8(xq.data_ptr(), sx.data_ptr<float>(), w.data_ptr(), sw.data_ptr<float>(),
-                   bias.has_value() ? bias->data_ptr() : nullptr, y.data_ptr(), M, w.size(0), K, gelu,
+                   bias.has_value() ? bias->data_ptr() : nullptr, y.data_ptr(), M, w.size(0), K, gelu, grouped,
                    at::cuda::getCurrentCUDAStream());
 }
 
@@ -49,12 +52,18 @@ void gemm_w8(torch::Tensor x, torch::Tensor w, torch::Tensor sw, c10::optional<t
                    y.data_ptr(), M, w.size(0), K, gelu, at::cuda::getCurrentCUDAStream());
 }
 
-// per-row (token) symmetric quantization: s = max(|x|) / 127, q = round(x / s)
+// per-row (token) symmetric quantization: s = max(|x|) / 127, q = round(x / s); with s of shape [K/64, rows]: one
+// scale per row and group of 64 channels (transposed, as gemm_i8 reads it)
 void quant_rows(torch::Tensor x, torch::Tensor q, torch::Tensor s) {
     CHECK_T(x, at::kBFloat16);
     CHECK_T(q, at::kChar);
     CHECK_T(s, at::kFloat);
     const int K = x.size(-1), rows = x.numel() / K;
+    if (s.dim() == 2) {
+        TORCH_CHECK(K % 128 == 0 && s.size(0) == K / 64 && s.size(1) == rows && q.numel() == x.numel(), "grouped shapes");
+        launch_quant_groups(x.data_ptr(), q.data_ptr(), s.data_ptr<float>(), rows, K, at::cuda::getCurrentCUDAStream());
+        return;
+    }
     TORCH_CHECK(K % 128 == 0 && K <= 2048, "K must be a multiple of 128, <= 2048");
     TORCH_CHECK(q.numel() == x.numel() && s.numel() == rows, "q / s shape");
     launch_quant_rows(x.data_ptr(), q.data_ptr(), s.data_ptr<float>(), rows, K, at::cuda::getCurrentCUDAStream());

@@ -10,8 +10,9 @@ out GEMM, residual add, LayerNorm, fc1 GEMM, GELU, fc2 GEMM, residual add. Here:
     activation is written once instead of written, read and written again;
   * residual add + next LayerNorm fused into one kernel (kernels/vision_ops.cu, add_layernorm).
   * int8=True (extension, changes the weights): every encoder GEMM on INT8 weights through kernels/int8_gemm.cu,
-    W8A8 on INT8 tensor cores except the kinds in LFM2_INT8_A16 (default fc2), W8A16 there; GELU stays in the fc1
-    epilogue. The BF16 copies are not kept (drop_bf16 also frees the HF modules' weights).
+    W8A8 on INT8 tensor cores (activation scales per token and group of 64 channels; lfm2opt.int8), GELU in the fc1
+    epilogue, the 4304-wide MLP zero-padded to 4352. The BF16 copies are not kept (drop_bf16 also frees the HF
+    modules' weights).
 
     from lfm2opt.vision import patch_vision_tower; patch_vision_tower(net)
 """
@@ -54,9 +55,11 @@ class FusedSiglip2Encoder:
 
             a16 = a16_kinds()
             for p in self.layers:
-                for key, w, b, kind in (("qkv", "wqkv", "bqkv", "vqkv"), ("o", "wo", "bo", "vout"),
-                                        ("fc1", "w1", "b1", "fc1"), ("fc2", "w2", "b2", "fc2")):
-                    p[key] = Int8Linear(p.pop(w), p[b], a8=kind not in a16)
+                pad = -p["w1"].shape[0] % 128  # MLP width -> multiple of 128 (grouped activation scales)
+                for key, w, b, kind, pads in (("qkv", "wqkv", "bqkv", "vqkv", {}), ("o", "wo", "bo", "vout", {}),
+                                              ("fc1", "w1", "b1", "fc1", dict(pad_n=pad)),
+                                              ("fc2", "w2", "b2", "fc2", dict(pad_k=pad))):
+                    p[key] = Int8Linear(p.pop(w), p[b], a8=kind not in a16, **pads)
             if drop_bf16:
                 for layer in vt.encoder.layers:
                     a, m = layer.self_attn, layer.mlp

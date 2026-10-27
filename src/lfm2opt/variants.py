@@ -287,7 +287,8 @@ def _fused_w8_pf_vfused(net, processor):
 @register("fused_w8all_pf_vfused")
 def _fused_w8all_pf_vfused(net, processor):
     """Extension (changes the model): INT8 weights everywhere, no BF16 copies kept. Decode: INT8 weight-only GEMV;
-    prefill and vision: our INT8 tensor-core GEMMs (lfm2opt.int8), W8A8 except vision fc2 / LM w2 (W8A16)."""
+    prefill and vision: our INT8 tensor-core GEMMs (lfm2opt.int8), W8A8 with per-token, per-64-channel activation
+    scales."""
     from .vision import patch_vision_tower
 
     patch_vision_tower(net, int8=True, drop_bf16=True)

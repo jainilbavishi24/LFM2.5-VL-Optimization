@@ -4,9 +4,13 @@
 //
 //   gemm_i8  (W8A8):  X int8 with one scale per row (token), W int8 with one scale per row (output channel);
 //                     mma.m16n8k32 s8 -> exact int32 accumulation; y = (acc * sx[m]) * sw[n] + b[n]
+//                     Grouped: one X scale per row and group of 64 input channels (sxT[K/64][M]): after each
+//                     64-wide K stage the int32 partial sums are folded into fp32, acc += float(part) * sxT[g][m]
+//                     (outlier channels then only coarsen their own group: W8A8 at the W8A16 quality level)
 //   gemm_w8  (W8A16): X bf16, W int8; W converted to bf16 in registers (exact: |q| <= 127) right before the
 //                     mma.m16n8k16 bf16 -> fp32 accumulation; y = acc * sw[n] + b[n]
 //   quant_rows:       X bf16 -> int8 + per-row scale (absmax / 127, round half to even), one warp per row
+//   quant_groups:     the same with one scale per row and group of 64 (written transposed, [K/64][M])
 //
 // Tiles: BM (64 | 128) x 128 x 64 bytes of K per stage, 8 warps (2 x 4, warp tile BM/2 x 32), cp.async multistage
 // pipeline, XOR-swizzled shared memory (conflict-free ldmatrix / LDS), zero-filled M / N / K tails.
@@ -26,6 +30,10 @@ __device__ __forceinline__ uint32_t smem_u32(const void *p) { return (uint32_t)_
 __device__ __forceinline__ void cp_async16(uint32_t dst, const void *src, bool pred) {
     const int n = pred ? 16 : 0;  // src-size 0: the 16 bytes are zero-filled
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" ::"r"(dst), "l"(src), "r"(n));
+}
+__device__ __forceinline__ void cp_async4(uint32_t dst, const void *src, bool pred) {
+    const int n = pred ? 4 : 0;
+    asm volatile("cp.async.ca.shared.global [%0], [%1], 4, %2;\n" ::"r"(dst), "l"(src), "r"(n));
 }
 __device__ __forceinline__ void cp_async_commit() { asm volatile("cp.async.commit_group;\n" ::); }
 template <int N>
@@ -64,6 +72,9 @@ __device__ __forceinline__ void i8x4_to_bf16x4(int q, uint32_t &lo, uint32_t &hi
     hi = __byte_perm(__float_as_uint(c), __float_as_uint(d), 0x7632);
 }
 
+// exact int -> float for |v| < 2^22 (a group of 64: |v| <= 127 * 127 * 64): integer add into the mantissa of 1.5 * 2^23
+__device__ __forceinline__ float i2f_small(int v) { return __int_as_float(v + 0x4B400000) - 12582912.f; }
+
 __device__ __forceinline__ float gelu_tanh(float v) {  // = F.gelu(approximate="tanh")
     return 0.5f * v * (1.f + tanhf(0.7978845608028654f * (v + 0.044715f * v * v * v)));
 }
@@ -99,7 +110,7 @@ __device__ __forceinline__ void store_tile(bf16 *Y, int M, int N, int row0, int 
 // ldmatrix phase reads (same logical chunk) land on 8 distinct 16-byte bank groups.
 __device__ __forceinline__ int swz_i8(int r, int c) { return (r * 4 + (c ^ ((r >> 1) & 3))) << 4; }
 
-template <int BM, int STAGES, bool GELU>
+template <int BM, int STAGES, bool GELU, bool GROUPED>
 __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ A, const float *__restrict__ sa,
                                                       const int8_t *__restrict__ B, const float *__restrict__ sb,
                                                       const bf16 *__restrict__ bias, bf16 *__restrict__ Y, int M,
@@ -107,11 +118,14 @@ __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ 
     constexpr int BK = 64, MI = BM / 32;  // MI m16 tiles per warp (warp tile BM/2 x 32)
     extern __shared__ __align__(128) uint8_t smem[];
     uint8_t *sA = smem, *sB = smem + STAGES * BM * BK;
+    float *sS = reinterpret_cast<float *>(sB + STAGES * BN * BK);  // GROUPED: [STAGES][BM] X scales of the stage's group
     const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31, wm = warp >> 2, wn = warp & 3;
     const int m0 = blockIdx.y * BM, n0 = blockIdx.x * BN, KT = (K + BK - 1) / BK;
 
     auto load = [&](int stage, int kt) {
         const int k0 = kt * BK;
+        if (GROUPED && tid < BM)
+            cp_async4(smem_u32(sS + stage * BM + tid), sa + (size_t)kt * M + m0 + tid, m0 + tid < M);
 #pragma unroll
         for (int it = 0; it < BM * 4 / NT; ++it) {
             const int i = tid + it * NT, r = i >> 2, c = i & 3, gr = m0 + r, gk = k0 + c * 16;
@@ -127,13 +141,17 @@ __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ 
     };
 
     int acc[MI][4][4];
+    float facc[GROUPED ? MI : 1][4][4];
 #pragma unroll
     for (int i = 0; i < MI; ++i)
 #pragma unroll
         for (int j = 0; j < 4; ++j)
 #pragma unroll
-            for (int e = 0; e < 4; ++e)
+            for (int e = 0; e < 4; ++e) {
                 acc[i][j][e] = 0;
+                if (GROUPED)
+                    facc[GROUPED ? i : 0][j][e] = 0.f;
+            }
 
 #pragma unroll
     for (int s = 0; s < STAGES - 1; ++s) {
@@ -141,6 +159,7 @@ __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ 
             load(s, s);
         cp_async_commit();
     }
+    const int g = lane >> 2, t4 = lane & 3;
     for (int kt = 0; kt < KT; ++kt) {
         cp_async_wait<STAGES - 2>();
         __syncthreads();  // stage kt landed for everyone; stage kt - 1 is no longer read
@@ -172,16 +191,34 @@ __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ 
                 for (int j = 0; j < 4; ++j)
                     mma_s8(acc[i][j], af[i], bfr[j][0], bfr[j][1]);
         }
+        if (GROUPED) {  // fold this group's int32 sums into fp32 with its per-row scale (mul and add rounded separately)
+            const float *s_s = sS + (kt % STAGES) * BM;
+#pragma unroll
+            for (int i = 0; i < MI; ++i) {
+                const float s0 = s_s[wm * (BM / 2) + i * 16 + g], s1 = s_s[wm * (BM / 2) + i * 16 + g + 8];
+#pragma unroll
+                for (int j = 0; j < 4; ++j)
+#pragma unroll
+                    for (int e = 0; e < 4; ++e) {
+                        facc[GROUPED ? i : 0][j][e] =
+                            __fadd_rn(facc[GROUPED ? i : 0][j][e], __fmul_rn(i2f_small(acc[i][j][e]), e < 2 ? s0 : s1));
+                        acc[i][j][e] = 0;
+                    }
+            }
+        }
     }
     cp_async_wait<0>();
 
-    const int g = lane >> 2, t4 = lane & 3;
 #pragma unroll
     for (int i = 0; i < MI; ++i)
 #pragma unroll
         for (int j = 0; j < 4; ++j) {
-            const float v[4] = {(float)acc[i][j][0], (float)acc[i][j][1], (float)acc[i][j][2], (float)acc[i][j][3]};
-            store_tile<GELU>(Y, M, N, m0 + wm * (BM / 2) + i * 16 + g, n0 + wn * 32 + j * 8 + t4 * 2, v, sa, sb, bias);
+            float v[4];
+#pragma unroll
+            for (int e = 0; e < 4; ++e)
+                v[e] = GROUPED ? facc[GROUPED ? i : 0][j][e] : (float)acc[i][j][e];
+            store_tile<GELU>(Y, M, N, m0 + wm * (BM / 2) + i * 16 + g, n0 + wn * 32 + j * 8 + t4 * 2, v,
+                             GROUPED ? nullptr : sa, sb, bias);
         }
 }
 
@@ -320,6 +357,35 @@ __global__ void quant_rows_kernel(const bf16 *__restrict__ x, int8_t *__restrict
         }
 }
 
+// one warp per row, a 128-wide chunk at a time: lanes 0-15 hold group 2c, lanes 16-31 group 2c + 1 (4 values each)
+__global__ void quant_groups_kernel(const bf16 *__restrict__ x, int8_t *__restrict__ q, float *__restrict__ sT, int rows,
+                                    int K) {
+    const int row = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = threadIdx.x & 31;
+    if (row >= rows)
+        return;
+    const bf16 *xr = x + (size_t)row * K;
+    for (int c = 0; c < (K >> 7); ++c) {
+        const int i = (c * 32 + lane) * 4;
+        const uint2 u = *reinterpret_cast<const uint2 *>(xr + i);
+        const __nv_bfloat162 a = *reinterpret_cast<const __nv_bfloat162 *>(&u.x);
+        const __nv_bfloat162 b = *reinterpret_cast<const __nv_bfloat162 *>(&u.y);
+        const float v[4] = {__low2float(a), __high2float(a), __low2float(b), __high2float(b)};
+        float amax = fmaxf(fmaxf(fabsf(v[0]), fabsf(v[1])), fmaxf(fabsf(v[2]), fabsf(v[3])));
+#pragma unroll
+        for (int o = 8; o > 0; o >>= 1)
+            amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+        const float sc = fmaxf(amax, 1e-8f) / 127.f;
+        if ((lane & 15) == 0)
+            sT[(size_t)(2 * c + (lane >> 4)) * rows + row] = sc;
+        char4 o;
+        o.x = (signed char)max(-127, min(127, __float2int_rn(v[0] / sc)));
+        o.y = (signed char)max(-127, min(127, __float2int_rn(v[1] / sc)));
+        o.z = (signed char)max(-127, min(127, __float2int_rn(v[2] / sc)));
+        o.w = (signed char)max(-127, min(127, __float2int_rn(v[3] / sc)));
+        *reinterpret_cast<char4 *>(q + (size_t)row * K + i) = o;
+    }
+}
+
 }  // namespace
 
 // 48 KB of shared memory per block at BM = 128: two blocks per SM on Ada (100 KB) and Ampere (Jetson Orin)
@@ -348,21 +414,39 @@ static int pick_bm(int M, int N) {
         k<<<dim3((N + BN - 1) / BN, (M + BM_ - 1) / BM_), NT, SMEM_, st>>>(__VA_ARGS__);                       \
     }
 
+template <int BM, bool GELU, bool GROUPED>
+static void run_i8(const int8_t *a, const float *sa, const int8_t *b, const float *sb, const bf16 *bi, bf16 *y, int M,
+                   int N, int K, cudaStream_t st) {
+    constexpr size_t sm = (size_t)I8_STAGES * ((BM + BN) * 64 + (GROUPED ? BM * 4 : 0));
+    auto k = gemm_i8_kernel<BM, I8_STAGES, GELU, GROUPED>;
+    static bool cfg = false;
+    if (!cfg) {
+        cudaFuncSetAttribute(k, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)sm);
+        cfg = true;
+    }
+    k<<<dim3((N + BN - 1) / BN, (M + BM - 1) / BM), NT, sm, st>>>(a, sa, b, sb, bi, y, M, N, K);
+}
+
+template <int BM>
+static void run_i8_bm(const int8_t *a, const float *sa, const int8_t *b, const float *sb, const bf16 *bi, bf16 *y,
+                      int M, int N, int K, bool gelu, bool grouped, cudaStream_t st) {
+    if (grouped) {
+        if (gelu) run_i8<BM, true, true>(a, sa, b, sb, bi, y, M, N, K, st);
+        else run_i8<BM, false, true>(a, sa, b, sb, bi, y, M, N, K, st);
+    } else {
+        if (gelu) run_i8<BM, true, false>(a, sa, b, sb, bi, y, M, N, K, st);
+        else run_i8<BM, false, false>(a, sa, b, sb, bi, y, M, N, K, st);
+    }
+}
+
+// grouped: sa = sxT [K/64][M] (one scale per row and group of 64), else sa = sx [M]
 void launch_gemm_i8(const void *A, const float *sa, const void *B, const float *sb, const void *bias, void *Y, int M,
-                    int N, int K, bool gelu, cudaStream_t st) {
+                    int N, int K, bool gelu, bool grouped, cudaStream_t st) {
     const int8_t *a = (const int8_t *)A, *b = (const int8_t *)B;
     const bf16 *bi = (const bf16 *)bias;
     bf16 *y = (bf16 *)Y;
-    const int bm = pick_bm(M, N);
-    if (bm == 128) {
-        constexpr size_t sm = (size_t)I8_STAGES * (128 + BN) * 64;
-        if (gelu) LAUNCH_GEMM(gemm_i8_kernel, 128, I8_STAGES, true, sm, a, sa, b, sb, bi, y, M, N, K)
-        else LAUNCH_GEMM(gemm_i8_kernel, 128, I8_STAGES, false, sm, a, sa, b, sb, bi, y, M, N, K)
-    } else {
-        constexpr size_t sm = (size_t)I8_STAGES * (64 + BN) * 64;
-        if (gelu) LAUNCH_GEMM(gemm_i8_kernel, 64, I8_STAGES, true, sm, a, sa, b, sb, bi, y, M, N, K)
-        else LAUNCH_GEMM(gemm_i8_kernel, 64, I8_STAGES, false, sm, a, sa, b, sb, bi, y, M, N, K)
-    }
+    if (pick_bm(M, N) == 128) run_i8_bm<128>(a, sa, b, sb, bi, y, M, N, K, gelu, grouped, st);
+    else run_i8_bm<64>(a, sa, b, sb, bi, y, M, N, K, gelu, grouped, st);
 }
 
 void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *bias, void *Y, int M, int N, int K,
@@ -380,6 +464,11 @@ void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *b
         if (gelu) LAUNCH_GEMM(gemm_w8_kernel, 64, W8_STAGES, true, sm, a, b, sb, bi, y, M, N, K)
         else LAUNCH_GEMM(gemm_w8_kernel, 64, W8_STAGES, false, sm, a, b, sb, bi, y, M, N, K)
     }
+}
+
+void launch_quant_groups(const void *x, void *q, float *sT, int rows, int K, cudaStream_t st) {
+    const int threads = 256, rpb = threads / 32;
+    quant_groups_kernel<<<(rows + rpb - 1) / rpb, threads, 0, st>>>((const bf16 *)x, (int8_t *)q, sT, rows, K);
 }
 
 void launch_quant_rows(const void *x, void *q, float *s, int rows, int K, cudaStream_t st) {

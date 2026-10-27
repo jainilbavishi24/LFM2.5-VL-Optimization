@@ -59,6 +59,46 @@ def test_quant_rows(M, K):
           f"q mismatches {(q != rq).sum().item()}, scale max|d| {(s - rs).abs().max().item():.3g}")
 
 
+def ref_quant_groups(x):
+    xg = x.float().unflatten(-1, (-1, 64))
+    a = xg.abs().amax(-1).clamp_min(1e-8)
+    s = a / torch.full_like(a, 127.0)
+    q = torch.round(xg / s[..., None]).clamp(-127, 127).to(torch.int8).flatten(-2)
+    return q, s.t().contiguous()  # [K/64, M]
+
+
+def test_quant_groups(M, K):
+    x = torch.randn(M, K, device=dev, dtype=bf) * torch.rand(M, 1, device=dev, dtype=bf) * 4
+    x[0, 70] = 37.0
+    q, s = quantize_rows(x, 64)
+    rq, rs = ref_quant_groups(x)
+    check(f"quant_rows grouped {M}x{K}", torch.equal(q, rq) and torch.equal(s, rs),
+          f"q mismatches {(q != rq).sum().item()}, scale max|d| {(s - rs).abs().max().item():.3g}")
+
+
+def test_i8_grouped(M, K, N, bias, gelu):
+    x = torch.randn(M, K, device=dev, dtype=bf)
+    x[:, 5] *= 30  # outlier channel
+    w = torch.randn(N, K, device=dev, dtype=bf) * 0.02
+    b = torch.randn(N, device=dev, dtype=bf) if bias else None
+    xq, sxT = quantize_rows(x, 64)
+    wq, sw = quantize_int8(w)
+    y = torch.empty(M, N, device=dev, dtype=bf)
+    E.gemm_i8(xq, sxT, wq, sw, b, y, gelu)
+    r = torch.zeros(M, N, device=dev)
+    for g in range(K // 64):  # exact integer group sums, folded in fp32 in the kernel's order
+        part = (xq[:, g * 64:(g + 1) * 64].double() @ wq[:, g * 64:(g + 1) * 64].double().t()).float()
+        r = r + part * sxT[g][:, None]
+    r = r * sw[None, :]
+    if b is not None:
+        r = r + b.float()
+    if gelu:
+        r = F.gelu(r, approximate="tanh")
+    u = bf16_ulps(y, r.to(bf))
+    check(f"gemm_i8 grouped {M}x{K}x{N}{' bias' if bias else ''}{' gelu' if gelu else ''}", u <= (1 if gelu else 0),
+          f"max {u} bf16 ulp vs exact reference")
+
+
 def test_i8(M, K, N, bias, gelu):
     x = torch.randn(M, K, device=dev, dtype=bf)
     w = torch.randn(N, K, device=dev, dtype=bf) * 0.02
@@ -120,15 +160,19 @@ def speed():
           ("LM conv out", 2048, 2048, 10), ("LM w1|w3", 2048, 16384, 16), ("LM w2", 8192, 2048, 16)]
     for label, Mv, Ml in (("1080p", 9216, 2327), ("VGA", 1024, 272)):
         shapes = [(n, Mv, K, N, 27, True, g) for n, K, N, g in vision] + [(n, Ml, K, N, c, False, False) for n, K, N, c in lm]
-        tot = dict(cublas=0.0, int_mm=0.0, i8=0.0, quant=0.0, w8=0.0)
+        tot = dict(cublas=0.0, int_mm=0.0, i8=0.0, quant=0.0, w8=0.0, i8g=0.0, quantg=0.0)
         print(f"\n== speed, {label}: ms per GEMM ==")
         print(f"{'GEMM':<16}{'M x K x N':>18}{'cuBLAS':>8}{'int_mm':>8}{'ours i8':>8}{'+quant':>8}{'ours w8':>8}"
-              f"{'i8 gain':>8}{'x':>4}")
+              f"{'i8 gain':>8}{'ours g64':>9}{'+quant':>8}{'g gain':>8}{'x':>4}")
         for name, M, K, N, n, bias, gelu in shapes:
             x = torch.randn(M, K, device=dev, dtype=bf)
             w = torch.randn(N, K, device=dev, dtype=bf) * 0.02
             b = torch.randn(N, device=dev, dtype=bf) if bias else None
             xq, sx = quantize_rows(x) if K <= 2048 else ref_quant(x)
+            Kg = K + (-K % 128)  # grouped: K padded to a multiple of 128 (vision fc2 4304 -> 4352)
+            xg = F.pad(x, (0, Kg - K))
+            xgq, sxg = quantize_rows(xg, 64)
+            wgq, swg = quantize_int8(F.pad(w, (0, Kg - K)))
             wq, sw = quantize_int8(w)
             y = torch.empty(M, N, device=dev, dtype=bf)
             r = dict(
@@ -136,12 +180,15 @@ def speed():
                 int_mm=cuda_ms(lambda: torch._int_mm(xq, wq.t())) if M > 16 else float("nan"),
                 i8=cuda_ms(lambda: E.gemm_i8(xq, sx, wq, sw, b, y, gelu)),
                 quant=cuda_ms(lambda: quantize_rows(x)) if K <= 2048 else float("nan"),
-                w8=cuda_ms(lambda: E.gemm_w8(x, wq, sw, b, y, gelu)))
+                w8=cuda_ms(lambda: E.gemm_w8(x, wq, sw, b, y, gelu)),
+                i8g=cuda_ms(lambda: E.gemm_i8(xgq, sxg, wgq, swg, b, y, gelu)),
+                quantg=cuda_ms(lambda: quantize_rows(xg, 64)))
             for k in tot:
                 tot[k] += r[k] * n if r[k] == r[k] else 0
             print(f"{name:<16}{f'{M}x{K}x{N}':>18}{r['cublas']:8.3f}{r['int_mm']:8.3f}{r['i8']:8.3f}{r['quant']:8.3f}"
-                  f"{r['w8']:8.3f}{r['cublas'] / r['i8']:7.2f}x{n:4d}")
-        print(f"{'per request':<34}" + "".join(f"{tot[k]:8.2f}" for k in ("cublas", "int_mm", "i8", "quant", "w8")))
+                  f"{r['w8']:8.3f}{r['cublas'] / r['i8']:7.2f}x{r['i8g']:9.3f}{r['quantg']:8.3f}{r['cublas'] / r['i8g']:7.2f}x{n:4d}")
+        print(f"{'per request':<34}" + "".join(f"{tot[k]:8.2f}" for k in ("cublas", "int_mm", "i8", "quant", "w8"))
+              + f"{'':8}{tot['i8g']:9.2f}{tot['quantg']:8.2f}")
 
 
 def main():
@@ -154,6 +201,12 @@ def main():
                                 (272, 2048, 3072, False, False), (17, 2048, 2048, False, False), (1, 1152, 1152, True, False),
                                 (300, 1152, 1152, True, True)):
         test_i8(M, K, N, bias, gelu)
+    for M, K in ((1, 2048), (37, 1152), (2327, 8192), (9216, 4352)):
+        test_quant_groups(M, K)
+    for M, K, N, bias, gelu in ((9216, 1152, 3456, True, False), (9216, 4352, 1152, True, False),
+                                (2327, 8192, 2048, False, False), (1024, 1152, 4352, True, True), (17, 2048, 2048, False, False),
+                                (1, 1152, 1152, True, False)):
+        test_i8_grouped(M, K, N, bias, gelu)
     for M, K, N, bias, gelu in ((9216, 4304, 1152, True, False), (2327, 8192, 2048, False, False), (272, 8192, 2048, False, False),
                                 (9, 2048, 6144, False, False), (1, 2048, 2048, False, False), (1024, 1152, 4304, True, True)):
         test_w8(M, K, N, bias, gelu)
