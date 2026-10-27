@@ -47,4 +47,9 @@ if [[ ! -f $OUT/instances_val2017.json ]]; then
         unzip -p "$OUT/annotations_trainval2017.zip" annotations/instances_val2017.json > "$OUT/instances_val2017.json" &&
         rm "$OUT/annotations_trainval2017.zip"
 fi
+# CHAIR's COCO synonym list (Rohrbach et al. 2018; github.com/LisaAnne/Hallucination, no license: fetched, not committed)
+# and the WordNet data for singularizing nouns
+[[ -f $OUT/chair_synonyms.txt ]] || curl -sfL -o "$OUT/chair_synonyms.txt" \
+    https://raw.githubusercontent.com/LisaAnne/Hallucination/master/data/synonyms.txt
+"${PYTHON:-$ROOT/.venv-ref/bin/python}" -c "import nltk; nltk.download('wordnet', quiet=True)" || echo "nltk wordnet download failed"
 ls -la "$OUT"

@@ -9,6 +9,8 @@ Benchmarks (test/val parquet files from scripts/download_eval_data.sh, under dat
   textvqa   val shard 0 (~1670 scene-text questions)                  VQA accuracy (min(#humans agreeing / 3, 1))
   textvqa_full  all 5000 TextVQA val questions (3 shards)
   longform  detailed descriptions (256 tokens) of distinct COCO images, no ground truth (longform_compare.py)
+  coco_cap  COCO Captions val2017 (first shard), one-sentence captions vs 5 human captions: CIDEr (caption_compare.py)
+  coco_desc the same images, detailed descriptions (256 tokens): object hallucination, CHAIR (caption_compare.py)
 
     python benchmarks/eval_quality.py --variants baseline,fused_gemv_vcudnn+gpuprep [--limit pope=3000]
     python benchmarks/eval_compare.py results/eval/<run>      # paired comparison + McNemar test
@@ -91,6 +93,12 @@ def load_bench(name):
             seen.add(r["image_source"])
             items.append(dict(id=f"longform/{r['image_source']}", image=_img(r["image"]),
                               prompt="Describe this image in detail.", max_new=256, gt="", cat=None))
+    elif name in ("coco_cap", "coco_desc"):
+        for r in _rows("coco_cap_val0.parquet"):  # id = COCO image id; gt = the 5 human captions
+            cap = name == "coco_cap"
+            items.append(dict(id=f"{name}/{r['id']}", image=_img(r["image"]),
+                              prompt=r["question"] if cap else "Describe this image in detail.", max_new=64 if cap else 256,
+                              gt=list(r["answer"]), cat=None))
     else:
         raise KeyError(name)
     return items
@@ -174,8 +182,8 @@ def score_textvqa(pred, gts):
 
 
 def score(bench, item, pred):
-    if bench == "longform":
-        return 0.0  # no ground truth: see benchmarks/longform_compare.py
+    if bench in ("longform", "coco_cap", "coco_desc"):
+        return 0.0  # scored over the whole set: benchmarks/longform_compare.py, caption_compare.py
     if bench == "mmstar":
         return score_mmstar(pred, item["gt"])
     if bench == "pope":
