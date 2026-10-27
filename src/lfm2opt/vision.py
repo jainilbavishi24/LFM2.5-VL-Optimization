@@ -108,7 +108,8 @@ class FusedSiglip2Encoder:
 
     def _layers_int8(self, h, runs, T, L, D):
         """The encoder layers on INT8 weights: each LayerNorm writes the next GEMM's INT8 input directly
-        (add_layernorm_q); the attention output and the GELU output are quantized inside their Int8Linear."""
+        (add_layernorm_q), fc1 + GELU writes fc2's INT8 input (gemm_i8_q); only the attention output is quantized
+        separately, inside its Int8Linear."""
         from .int8 import qbuf
 
         rows, n_layers = T * L, len(self.layers)
@@ -122,7 +123,8 @@ class FusedSiglip2Encoder:
         for i, p in enumerate(self.layers):
             qkv = p["qkv"](xq).view(T, L, -1)
             y = p["o"](self._attention(qkv, runs, T, L))
-            f = p["fc1"](ln_q(y, p["ln2"], p["fc1"]), gelu=True)
+            # fc1 + GELU writes fc2's INT8 input directly when fc2 uses groups of 64 (the default)
+            f = p["fc1"](ln_q(y, p["ln2"], p["fc1"]), gelu=True, quant_out=p["fc2"].group == 64)
             y = p["fc2"](f).view(T, L, D)
             if i + 1 < n_layers:
                 xq = ln_q(y, self.layers[i + 1]["ln1"], self.layers[i + 1]["qkv"])

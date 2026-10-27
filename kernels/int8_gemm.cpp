@@ -5,6 +5,8 @@
 
 void launch_gemm_i8(const void *A, const float *sa, const void *B, const float *sb, const void *bias, void *Y, int M,
                     int N, int K, bool gelu, bool grouped, cudaStream_t st);
+void launch_gemm_i8_q(const void *A, const float *saT, const void *B, const float *sb, const void *bias, void *Yq,
+                      float *YsT, int M, int N, int K, bool gelu, cudaStream_t st);
 void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *bias, void *Y, int M, int N, int K,
                     bool gelu, cudaStream_t st);
 void launch_quant_rows(const void *x, void *q, float *s, int rows, int K, cudaStream_t st);
@@ -45,6 +47,25 @@ void gemm_i8(torch::Tensor xq, torch::Tensor sx, torch::Tensor w, torch::Tensor 
     launch_gemm_i8(xq.data_ptr(), sx.data_ptr<float>(), w.data_ptr(), sw.data_ptr<float>(),
                    bias.has_value() ? bias->data_ptr() : nullptr, y.data_ptr(), M, w.size(0), K, gelu, grouped,
                    at::cuda::getCurrentCUDAStream());
+}
+
+// grouped W8A8 with an INT8 output for the next W8A8 GEMM: (yq [M, N], ysT [N/64, M]) = quant(gemm_i8(...) as bf16)
+void gemm_i8_q(torch::Tensor xq, torch::Tensor sxT, torch::Tensor w, torch::Tensor sw, c10::optional<torch::Tensor> bias,
+               torch::Tensor yq, torch::Tensor ysT, bool gelu) {
+    CHECK_T(xq, at::kChar);
+    CHECK_T(sxT, at::kFloat);
+    CHECK_T(w, at::kChar);
+    CHECK_T(sw, at::kFloat);
+    CHECK_T(yq, at::kChar);
+    CHECK_T(ysT, at::kFloat);
+    const int K = xq.size(-1), M = xq.numel() / K, N = w.size(0);
+    TORCH_CHECK(sxT.dim() == 2 && K % 64 == 0 && sxT.size(0) == K / 64 && sxT.size(1) == M, "sxT shape");
+    TORCH_CHECK(w.dim() == 2 && w.size(1) == K && N % 128 == 0 && sw.numel() == N, "w [N, K] with N % 128 == 0");
+    TORCH_CHECK(yq.numel() == (int64_t)M * N && ysT.dim() == 2 && ysT.size(0) == N / 64 && ysT.size(1) == M, "yq / ysT shape");
+    if (bias.has_value()) { CHECK_T((*bias), at::kBFloat16); TORCH_CHECK(bias->numel() == N, "bias shape"); }
+    launch_gemm_i8_q(xq.data_ptr(), sxT.data_ptr<float>(), w.data_ptr(), sw.data_ptr<float>(),
+                     bias.has_value() ? bias->data_ptr() : nullptr, yq.data_ptr(), ysT.data_ptr<float>(), M, N, K, gelu,
+                     at::cuda::getCurrentCUDAStream());
 }
 
 // W8A16: y[M, N] = (x[M, K] . w[N, K]^T) * sw[n] (+ bias) (GELU), bf16 in / out
@@ -124,6 +145,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("add_rmsnorm_q", &add_rmsnorm_q, "LM prefill: h += y; INT8 (per row / group of 64) RMSNorm output");
     m.def("silu_mul_q", &silu_mul_q, "LM prefill: INT8 (per row / group of 64) SwiGLU output");
     m.def("gemm_i8", &gemm_i8, "W8A8 GEMM, int8 tensor cores, scales (+bias, GELU) in the epilogue, bf16 out");
+    m.def("gemm_i8_q", &gemm_i8_q, "grouped W8A8 GEMM writing the next W8A8 GEMM's INT8 input (+ group scales)");
     m.def("gemm_w8", &gemm_w8, "W8A16 GEMM, int8 weights converted in registers, bf16 tensor cores, bf16 out");
     m.def("quant_rows", &quant_rows, "bf16 -> int8 with one absmax scale per row");
 }

@@ -66,8 +66,16 @@ class Int8Linear:
         self.group = act_group(kind, self.K) if a8 else 0
         self.ext = int8_ext()
 
-    def __call__(self, x, gelu=False):
-        """x: bf16 [..., K], or an already quantized (int8 [..., K], scales) pair from a fused producer kernel."""
+    def __call__(self, x, gelu=False, quant_out=False):
+        """x: bf16 [..., K], or an already quantized (int8 [..., K], scales) pair from a fused producer kernel.
+        quant_out: return the output as the next W8A8 GEMM's input (int8 [M, N], scales [N/64, M]), quantized inside
+        this GEMM's epilogue (grouped W8A8 only, N % 128 == 0)."""
+        if quant_out:
+            xq, sx = x if isinstance(x, tuple) else quantize_rows(x.reshape(-1, self.K).contiguous(), 64)
+            M = xq.numel() // self.K
+            yq, ys = qbuf(M, self.N, 64, xq.device)
+            self.ext.gemm_i8_q(xq, sx, self.q, self.s, self.bias, yq, ys, gelu)
+            return yq, ys
         if isinstance(x, tuple):
             xq, sx = x
             y = torch.empty(xq.numel() // self.K, self.N, device=xq.device, dtype=torch.bfloat16)

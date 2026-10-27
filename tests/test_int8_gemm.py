@@ -104,6 +104,22 @@ def test_i8_grouped(M, K, N, bias, gelu):
           f"rel err {e_ours:.3e} (bf16 rounding of the exact result {e_round:.3e})")
 
 
+def test_i8_qout(M, K, N, bias, gelu):
+    """gemm_i8_q == gemm_i8 (bf16 out) followed by grouped quant_rows, exactly."""
+    x = torch.randn(M, K, device=dev, dtype=bf)
+    w = torch.randn(N, K, device=dev, dtype=bf) * 0.05
+    b = torch.randn(N, device=dev, dtype=bf) if bias else None
+    xq, sxT = quantize_rows(x, 64)
+    wq, sw = quantize_int8(w)
+    y = torch.empty(M, N, device=dev, dtype=bf)
+    E.gemm_i8(xq, sxT, wq, sw, b, y, gelu)
+    rq, rs = quantize_rows(y, 64)
+    q, s = torch.empty_like(rq), torch.empty_like(rs)
+    E.gemm_i8_q(xq, sxT, wq, sw, b, q, s, gelu)
+    check(f"gemm_i8_q {M}x{K}x{N}{' bias' if bias else ''}{' gelu' if gelu else ''}",
+          torch.equal(q, rq) and torch.equal(s, rs), f"q mismatches {(q != rq).sum().item()}")
+
+
 def test_fused_producers():
     """add_layernorm_q / add_rmsnorm_q / silu_mul_q == the unfused bf16 kernel followed by quant_rows (exactly)."""
     V, D = vision_ext(), ext()
@@ -250,6 +266,8 @@ def main():
     for M, K, N, bias, gelu in ((9216, 4304, 1152, True, False), (2327, 8192, 2048, False, False), (272, 8192, 2048, False, False),
                                 (9, 2048, 6144, False, False), (1, 2048, 2048, False, False), (1024, 1152, 4304, True, True)):
         test_w8(M, K, N, bias, gelu)
+    for M, K, N, bias, gelu in ((9216, 1152, 4352, True, True), (1024, 1152, 4352, True, True), (37, 2048, 2048, False, False)):
+        test_i8_qout(M, K, N, bias, gelu)
     test_fused_producers()
     print(f"\n{sum(results)}/{len(results)} passed")
     if not args.no_speed:

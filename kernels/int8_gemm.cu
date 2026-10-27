@@ -80,6 +80,10 @@ __device__ __forceinline__ void i8x4_to_bf16x4(int q, uint32_t &lo, uint32_t &hi
 // exact int -> float for |v| < 2^22 (a group of 64: |v| <= 127 * 127 * 64): integer add into the mantissa of 1.5 * 2^23
 __device__ __forceinline__ float i2f_small(int v) { return __int_as_float(v + 0x4B400000) - 12582912.f; }
 
+__device__ __forceinline__ signed char q8(float v, float sc) {
+    return (signed char)max(-127, min(127, __float2int_rn(v / sc)));
+}
+
 __device__ __forceinline__ float gelu_tanh(float v) {  // = F.gelu(approximate="tanh")
     return 0.5f * v * (1.f + tanhf(0.7978845608028654f * (v + 0.044715f * v * v * v)));
 }
@@ -115,11 +119,15 @@ __device__ __forceinline__ void store_tile(bf16 *Y, int M, int N, int row0, int 
 // ldmatrix phase reads (same logical chunk) land on 8 distinct 16-byte bank groups.
 __device__ __forceinline__ int swz_i8(int r, int c) { return (r * 4 + (c ^ ((r >> 1) & 3))) << 4; }
 
-template <int BM, int STAGES, bool GELU, bool GROUPED>
+// QOUT (with GROUPED): instead of BF16, write the output already quantized for the next W8A8 GEMM: INT8 Yq [M, N] and
+// one scale per row and group of 64 columns, YsT [N/64][M] (a 128-wide tile = 2 groups, each spread over 2 warps whose
+// row maxima meet in shared memory). The quantized value is the bf16-rounded output, as quant_rows would see it.
+template <int BM, int STAGES, bool GELU, bool GROUPED, bool QOUT>
 __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ A, const float *__restrict__ sa,
                                                       const int8_t *__restrict__ B, const float *__restrict__ sb,
                                                       const bf16 *__restrict__ bias, bf16 *__restrict__ Y, int M,
-                                                      int N, int K) {
+                                                      int N, int K, int8_t *__restrict__ Yq, float *__restrict__ YsT) {
+    static_assert(!QOUT || GROUPED, "QOUT reuses the fp32 accumulators of the grouped path");
     constexpr int BK = 64, MI = BM / 32;  // MI m16 tiles per warp (warp tile BM/2 x 32)
     extern __shared__ __align__(128) uint8_t smem[];
     uint8_t *sA = smem, *sB = smem + STAGES * BM * BK;
@@ -223,6 +231,58 @@ __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ 
     }
     cp_async_wait<0>();
 
+    if (QOUT) {
+        __syncthreads();  // every warp is done with the pipeline buffers: reuse them for the row maxima
+        float *red = reinterpret_cast<float *>(smem);  // [BM][4 warps along N]
+#pragma unroll
+        for (int i = 0; i < MI; ++i)
+#pragma unroll
+            for (int j = 0; j < 4; ++j) {  // final values, bf16-rounded exactly as store_tile writes them (N % 128 == 0)
+                const int col = n0 + wn * 32 + j * 8 + t4 * 2;
+                const float w0 = sb[col], w1 = sb[col + 1];
+                const float b0 = bias ? __bfloat162float(bias[col]) : 0.f, b1 = bias ? __bfloat162float(bias[col + 1]) : 0.f;
+#pragma unroll
+                for (int e = 0; e < 4; ++e) {
+                    float y = __fadd_rn(__fmul_rn(facc[GROUPED ? i : 0][j][e], (e & 1) ? w1 : w0), (e & 1) ? b1 : b0);
+                    if (GELU)
+                        y = gelu_tanh(y);
+                    facc[GROUPED ? i : 0][j][e] = __bfloat162float(__float2bfloat16_rn(y));
+                }
+            }
+#pragma unroll
+        for (int i = 0; i < MI; ++i)
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                float m = 0.f;
+#pragma unroll
+                for (int j = 0; j < 4; ++j)
+                    m = fmaxf(m, fmaxf(fabsf(facc[GROUPED ? i : 0][j][2 * h]), fabsf(facc[GROUPED ? i : 0][j][2 * h + 1])));
+                m = fmaxf(m, __shfl_xor_sync(0xffffffffu, m, 1));
+                m = fmaxf(m, __shfl_xor_sync(0xffffffffu, m, 2));
+                if (t4 == 0)
+                    red[(wm * (BM / 2) + i * 16 + g + 8 * h) * 4 + wn] = m;
+            }
+        __syncthreads();
+#pragma unroll
+        for (int i = 0; i < MI; ++i)
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                const int r = wm * (BM / 2) + i * 16 + g + 8 * h, row = m0 + r;
+                if (row >= M)
+                    continue;
+                const float sc = fmaxf(fmaxf(red[r * 4 + wn], red[r * 4 + (wn ^ 1)]), 1e-8f) / 127.f;
+#pragma unroll
+                for (int j = 0; j < 4; ++j) {
+                    char2 c;
+                    c.x = q8(facc[GROUPED ? i : 0][j][2 * h], sc);
+                    c.y = q8(facc[GROUPED ? i : 0][j][2 * h + 1], sc);
+                    *reinterpret_cast<char2 *>(Yq + (size_t)row * N + n0 + wn * 32 + j * 8 + t4 * 2) = c;
+                }
+                if (t4 == 0 && (wn & 1) == 0)
+                    YsT[(size_t)((n0 + wn * 32) >> 6) * M + row] = sc;
+            }
+        return;
+    }
 #pragma unroll
     for (int i = 0; i < MI; ++i)
 #pragma unroll
@@ -425,9 +485,6 @@ __device__ __forceinline__ float wsum(float v) {
     for (int o = 16; o > 0; o >>= 1)
         v += __shfl_xor_sync(0xffffffffu, v, o);
     return v;
-}
-__device__ __forceinline__ signed char q8(float v, float sc) {
-    return (signed char)max(-127, min(127, __float2int_rn(v / sc)));
 }
 
 // one warp per row holding v[c][0..3] = elements (c * 32 + lane) * 4 + 0..3: write its INT8 row and scale(s)
@@ -655,17 +712,17 @@ static int pick_bm(int M, int N) {
         k<<<dim3((N + BN - 1) / BN, (M + BM_ - 1) / BM_), NT, SMEM_, st>>>(__VA_ARGS__);                       \
     }
 
-template <int BM, bool GELU, bool GROUPED>
+template <int BM, bool GELU, bool GROUPED, bool QOUT = false>
 static void run_i8(const int8_t *a, const float *sa, const int8_t *b, const float *sb, const bf16 *bi, bf16 *y, int M,
-                   int N, int K, cudaStream_t st) {
+                   int N, int K, cudaStream_t st, int8_t *yq = nullptr, float *ysT = nullptr) {
     constexpr size_t sm = (size_t)I8_STAGES * ((BM + BN) * 64 + (GROUPED ? BM * 4 : 0));
-    auto k = gemm_i8_kernel<BM, I8_STAGES, GELU, GROUPED>;
+    auto k = gemm_i8_kernel<BM, I8_STAGES, GELU, GROUPED, QOUT>;
     static bool cfg = false;
     if (!cfg) {
         cudaFuncSetAttribute(k, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)sm);
         cfg = true;
     }
-    k<<<dim3((N + BN - 1) / BN, (M + BM - 1) / BM), NT, sm, st>>>(a, sa, b, sb, bi, y, M, N, K);
+    k<<<dim3((N + BN - 1) / BN, (M + BM - 1) / BM), NT, sm, st>>>(a, sa, b, sb, bi, y, M, N, K, yq, ysT);
 }
 
 template <int BM>
@@ -688,6 +745,21 @@ void launch_gemm_i8(const void *A, const float *sa, const void *B, const float *
     bf16 *y = (bf16 *)Y;
     if (pick_bm(M, N) == 128) run_i8_bm<128>(a, sa, b, sb, bi, y, M, N, K, gelu, grouped, st);
     else run_i8_bm<64>(a, sa, b, sb, bi, y, M, N, K, gelu, grouped, st);
+}
+
+// grouped W8A8 whose output is the next W8A8 GEMM's input: yq int8 [M, N] + ysT [N/64][M] (N % 128 == 0)
+void launch_gemm_i8_q(const void *A, const float *saT, const void *B, const float *sb, const void *bias, void *Yq,
+                      float *YsT, int M, int N, int K, bool gelu, cudaStream_t st) {
+    const int8_t *a = (const int8_t *)A, *b = (const int8_t *)B;
+    const bf16 *bi = (const bf16 *)bias;
+    int8_t *yq = (int8_t *)Yq;
+    if (pick_bm(M, N) == 128) {
+        if (gelu) run_i8<128, true, true, true>(a, saT, b, sb, bi, nullptr, M, N, K, st, yq, YsT);
+        else run_i8<128, false, true, true>(a, saT, b, sb, bi, nullptr, M, N, K, st, yq, YsT);
+    } else {
+        if (gelu) run_i8<64, true, true, true>(a, saT, b, sb, bi, nullptr, M, N, K, st, yq, YsT);
+        else run_i8<64, false, true, true>(a, saT, b, sb, bi, nullptr, M, N, K, st, yq, YsT);
+    }
 }
 
 void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *bias, void *Y, int M, int N, int K,
