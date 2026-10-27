@@ -295,6 +295,22 @@ def _fused_w8all_pf_vfused(net, processor):
     return _fused_variant(net, "int8", fused_prefill=True, prefill_int8=True, drop_bf16=True)
 
 
+@register("fused_w8_pf_v8")
+def _fused_w8_pf_v8(net, processor):
+    """Ablation of fused_w8all_pf_vfused: INT8 vision GEMMs only (LM prefill on BF16 weights, INT8 decode GEMV)."""
+    from .vision import patch_vision_tower
+
+    patch_vision_tower(net, int8=True)
+    return _fused_variant(net, "int8", fused_prefill=True)
+
+
+@register("fused_w8_pf8_vfused")
+def _fused_w8_pf8_vfused(net, processor):
+    """Ablation of fused_w8all_pf_vfused: INT8 LM prefill GEMMs only (BF16 fused vision encoder, INT8 decode GEMV)."""
+    _vision_fused(net, processor)
+    return _fused_variant(net, "int8", fused_prefill=True, prefill_int8=True)
+
+
 def apply_variant(name: str, net, processor):
     if name not in VARIANTS:
         raise KeyError(f"unknown variant {name!r}; available: {sorted(VARIANTS)}")
