@@ -15,6 +15,38 @@ Entry template:
 
 ---
 
+## 2026-10-27: Demo video: HF baseline vs ours BF16 vs ours INT8 on real images, replayed from measured timestamps (L40S)  (Claude)
+
+**Goal:** a demo we can show without a GPU: the same image + prompt answered by the three versions side by side, with real measured timing (slowed down so the difference is visible), plus memory and energy.
+
+**Setup:** L40S (node13, job 52246), commit 644d649 + the recorder. [demo/record.py](../demo/record.py): 15 cases ([demo/cases.json](../demo/cases.json): OCRBench, ChartQA, TextVQA, MMStar and COCO images from 148×60 px to 4961×7016 px, short answers and detailed descriptions, prompts as a user would type them). Per variant and case: 3 warm-ups, 7 traced runs, then an untraced loop of ≥ 3 s for energy (NVML counter). Timestamps are CUDA events: request start (decoded image in memory), inputs on the GPU, image features ready (wrapper around `get_image_features`), every answer token (HF: `lm_head` forward hook; ours: opt-in `StaticDecoder.trace`, one event after the prefill and after each graph replay), `generate()` returned. Peak memory per request: the CUDA graph of the request's length bucket only (the graphs of other buckets are dropped before each case). Run: `results/demo/20261027-175305_L40S_l40_demo/traces.json` (input images not committed).
+
+**Checks:** traced vs untraced mean time within 1 % for every case (the events add nothing); the same tokens in all 7 runs everywhere; one `shelf` question answered wrongly by all three (dropped from the video).
+
+**Result** (median of 7, ms to the complete answer; same answer as HF unless marked):
+
+| Case | Image | Tokens | HF | Ours BF16 | Ours INT8 |
+|---|---|---|---|---|---|
+| Handwritten word | 148×60 | 2 | 50.2 | 16.2 (3.1×) | 14.5 (3.5×) |
+| Bar chart | 800×557 | 4 | 58.5 | 24.7 (2.4×) | 20.0 (2.9×) |
+| Everyday photo | 640×480 | 17 | 177 | 117 (1.5×) | 69.8 (2.5×) |
+| Formula to LaTeX | 657×89 | 36 | 346 | 168 (2.1×) | 96.2 (3.6×) |
+| Scanned letter | 1778×2276 | 8 | 184 | 97.3 (1.9×) | 79.8 (2.3×) |
+| Function plot | 2560×2039 | 48 | 558 | 232 (2.4×) | 154 (3.6×) |
+| 35 MP receipt | 4961×7016 | 25 | 432 | 221 (2.0×) | 195 (2.2×) |
+| Detailed description | 1024×768 | 142 / 125 / 117 | 1409 | 493 (2.9×, worded differently) | 293 (4.8×, worded differently) |
+
+Over these 8: geometric-mean speed-up 2.2× (BF16) and 3.1× (INT8); energy per answer 66 % and 49 % of HF; peak memory per request HF 3.0–3.2 GB, ours BF16 4.3–4.5 GB, ours INT8 1.8–2.0 GB. Decode per token on the L40S: HF ~9 ms, BF16 3.4 ms (bandwidth-bound: 3.2 GB of weights at 864 GB/s), INT8 1.8 ms.
+
+**Observations:**
+- Long greedy answers are worded differently by our BF16 runtime too (same weights, different rounding in the fused kernels): 2 of the 3 detailed descriptions. Every difference we read was a rewording, with no change in correctness (the INT8 city description even names two signs, "#FindYourTown" and "HOGAN", that are really in the image). The video labels each lane "same answer as baseline" or "worded differently from baseline".
+- Very large images: HF's CPU preprocessing takes 124 ms for the 35 MP scan. Ours takes 54–82 ms; that is probably host-side copying of the 104 MB of pixels (PIL → numpy → pinned staging) rather than the GPU resize (not profiled yet).
+- Over the 8 video cases, ours draws more average board power than HF (BF16 242–327 W, INT8 223–324 W vs 164–245 W) but for a shorter time, so it uses less energy per answer.
+
+**Video:** [demo/render.py](../demo/render.py) replays the median run of each case: each token appears at its measured time, the phase bar (image prep / vision encoder / reading prompt / writing answer) fills on a shared time axis, and each case plays once at real speed and then slowed down by a stated factor (5–200×) with a real-time clock. Title, a how-to-read card (method, slow motion, the BF16 wording caveat) and a summary chart are included. Output: `presentations/demo/` (not committed; 2.5 min at 1080p30 plus one clip per case; regenerate with `python demo/render.py results/demo/<run> --cases ...`).
+
+---
+
 ## 2026-10-27: INT8 for prefill and the vision encoder: probes before writing kernels (L40S)  (Claude)
 
 **Goal:** INT8 is decode-only today (prefill and vision use BF16 weights, and the INT8 runtime keeps both copies, so it uses *more* memory than BF16). For the edge we want INT8 weights everywhere. Before writing kernels: is the INT8 GEMM faster on our prefill/vision shapes, and which scheme keeps the answers?

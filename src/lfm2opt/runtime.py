@@ -60,6 +60,7 @@ class StaticDecoder:
         self.calib = calib or {}  # int4 AWQ: {weight key: calibration inputs [M, K]} (collect_calibration)
         self.lin_inv_s = {}
         self.gemv = gemv  # fused path, batch 1: "cublas" (F.linear), "bf16" (our GEMV), "int8" / "int4" (O6: weight-only)
+        self.trace = None  # a list -> generate() appends a CUDA event per token (demo/record.py); no host sync
         if fused:
             self._prepare_fused()
 
@@ -462,6 +463,10 @@ class StaticDecoder:
         B = input_ids.shape[0]
         self.eos_bias.fill_(0.0 if stop_at_eos else float("-inf"))
         first, s = self.prefill(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
+        tr = self.trace
+        if tr is not None:
+            tr.append(torch.cuda.Event(enable_timing=True))
+            tr[-1].record()
         if s is None:
             return torch.cat([input_ids, first.view(B, 1)], dim=1)
         n = max_new_tokens - 1
@@ -473,6 +478,9 @@ class StaticDecoder:
             chunk = min(2 * chunk, check_every)
             for _ in range(k):
                 s["graph"].replay()
+                if tr is not None:
+                    tr.append(torch.cuda.Event(enable_timing=True))
+                    tr[-1].record()
             done += k
             if stop_at_eos and done < n and bool(
                     (torch.isin(first, self.eos) | torch.isin(s["out"][:, :done], self.eos).any(1)).all()):

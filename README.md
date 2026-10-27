@@ -27,6 +27,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | O7d fused vision encoder, O3b fused LM prefill, O2d GEMV epilogues | 6 | ✅ 1080p vision 77 → 54 ms, LM prefill 37 → 31 ms; first token incl. preprocessing 164 → 90 ms, TPOT 3.70 → 2.07–2.12 ms (3 repeats) |
 | Extension: INT8 weight-only GEMV (O6) | 6 | ✅ 1.11 ms/token; evaluated separately (it changes the model) |
 | Extension: INT8 everywhere (prefill + vision on our INT8 tensor-core GEMMs, no BF16 weight copies) | 7 | ✅ 27 Oct (L40S): peak memory 4.6 → **2.1 GB** (HF 3.3), 1080p first token 84.5 → 72.4 ms; 5 benchmarks within −0.36…+0.08 pp (p ≥ 0.18); long answers word differently (ROUGE-L −0.056) but score the same vs human references (CIDEr, CHAIR) |
+| Demo video: 8 real images (148×60 px to 35 MP), HF vs ours BF16 vs ours INT8 replayed from measured per-token timestamps | 7 | ✅ 27 Oct (L40S): time to the complete answer 2.2× (BF16) and 3.1× (INT8) faster than HF (geometric mean), up to 4.8× on a detailed description; energy per answer 66 % / 49 % of HF — see [experiment log](docs/experiment_log.md) |
 | Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
 | Main optimization work | 6 | — |
@@ -127,6 +128,7 @@ PAA_Project/
 ├── src/lfm2opt/              ← our Python package: model loading, runners, metrics, kernel bindings
 ├── kernels/                  ← custom CUDA/C++ kernels (fused short-conv, RMSNorm, GEMV, ...)
 ├── benchmarks/               ← benchmark scripts (latency / throughput / energy)
+├── demo/                     ← demo video: record.py (per-token GPU timestamps on real images), render.py (side-by-side MP4, no GPU)
 ├── profiling/
 │   ├── nsys/                 ← Nsight Systems scripts (reports are git-ignored)
 │   └── ncu/                  ← Nsight Compute scripts (reports are git-ignored)
@@ -184,6 +186,7 @@ Every script works the same on any NVIDIA GPU (T4, the course GPU server, later 
 | Nsight Systems timeline | `bash profiling/nsys/profile_nsys.sh img_small 32` | `.nsys-rep` + CSV summaries |
 | Nsight Compute, one phase | `bash profiling/ncu/profile_ncu.sh decode\|prefill\|vision img_small` | `.ncu-rep` + `*_metrics.csv` |
 | Bandwidth per kernel from ncu | `python profiling/ncu/analyze_ncu.py <..._metrics.csv> --steps 1` | table: time, MB, GB/s, % of peak |
+| Demo video (HF vs ours BF16 vs ours INT8, side by side) | `python demo/record.py` on the GPU, then `python demo/render.py results/demo/<run> --cases ...` anywhere | `results/demo/<run>/traces.json`; `presentations/demo/*.mp4` (not committed) |
 
 Workloads (fixed inputs, defined in `src/lfm2opt/workloads.py`): `text` (no image), `img_small` (640×480, 1 tile), `img_hd` (1280×720), `img_fhd` (1920×1080, multi-tile). Decoding is greedy with a fixed number of new tokens, so runs are comparable across GPUs and optimizations. Optimizations are registered as _variants_ in `src/lfm2opt/variants.py` and selected with `--variants` / `--variant`.
 

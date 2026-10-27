@@ -54,3 +54,8 @@ jobs/
 
 # Private docs
 docs/private/
+
+# Demo video: fonts (Google Fonts), dataset input images, rendered MP4s
+demo/fonts/
+results/demo/*/images/
+presentations/demo/
