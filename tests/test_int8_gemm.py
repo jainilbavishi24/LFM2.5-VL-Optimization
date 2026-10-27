@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from lfm2opt.int8 import quantize_rows  # noqa: E402
-from lfm2opt.kernels import int8_ext  # noqa: E402
+from lfm2opt.kernels import ext, int8_ext, vision_ext  # noqa: E402
 from lfm2opt.quant import quantize_int8  # noqa: E402
 
 torch.manual_seed(0)
@@ -98,6 +98,41 @@ def test_i8_grouped(M, K, N, bias, gelu):
     # the kernel folds each group with one fma (one rounding instead of the reference's two): <= 1 ulp
     check(f"gemm_i8 grouped {M}x{K}x{N}{' bias' if bias else ''}{' gelu' if gelu else ''}", u <= (2 if gelu else 1),
           f"max {u} bf16 ulp vs exact reference")
+
+
+def test_fused_producers():
+    """add_layernorm_q / add_rmsnorm_q / silu_mul_q == the unfused bf16 kernel followed by quant_rows (exactly)."""
+    V, D = vision_ext(), ext()
+    for grouped in (0, 64):
+        tag = "grouped" if grouped else "per row"
+        rows, H = 300, 1152
+        h0, y = torch.randn(rows, H, device=dev, dtype=bf), torch.randn(rows, H, device=dev, dtype=bf)
+        w, b = (torch.rand(H, device=dev) + 0.5).to(bf), torch.randn(H, device=dev, dtype=bf)
+        h1, h2, x = h0.clone(), h0.clone(), torch.empty_like(h0)
+        V.add_layernorm(h1, y, w, b, x, 1e-6)
+        rq, rs = quantize_rows(x, grouped)
+        q, s = torch.empty_like(rq), torch.empty_like(rs)
+        E.add_layernorm_q(h2, y, w, b, q, s, 1e-6)
+        check(f"add_layernorm_q {tag}", torch.equal(h1, h2) and torch.equal(q, rq) and torch.equal(s, rs),
+              f"q mismatches {(q != rq).sum().item()}, h equal {torch.equal(h1, h2)}")
+        rows, H = 257, 2048
+        h0, y = torch.randn(rows, H, device=dev, dtype=bf), torch.randn(rows, H, device=dev, dtype=bf)
+        w = (torch.rand(H, device=dev) + 0.5).to(bf)
+        h1, h2, x = h0.clone(), h0.clone(), torch.empty_like(h0)
+        D.add_rmsnorm(h1, y, w, x, 1e-5)
+        rq, rs = quantize_rows(x, grouped)
+        q, s = torch.empty_like(rq), torch.empty_like(rs)
+        E.add_rmsnorm_q(h2, y, w, q, s, 1e-5)
+        check(f"add_rmsnorm_q {tag}", torch.equal(h1, h2) and torch.equal(q, rq) and torch.equal(s, rs),
+              f"q mismatches {(q != rq).sum().item()}, h equal {torch.equal(h1, h2)}")
+        I = 8192
+        g = torch.randn(rows, 2 * I, device=dev, dtype=bf) * 2
+        a = torch.empty(rows, I, device=dev, dtype=bf)
+        D.silu_mul(g, a)
+        rq, rs = quantize_rows(a, 64) if grouped else ref_quant(a)  # per-row quant_rows needs K <= 2048
+        q, s = torch.empty_like(rq), torch.empty_like(rs)
+        E.silu_mul_q(g, q, s)
+        check(f"silu_mul_q {tag}", torch.equal(q, rq) and torch.equal(s, rs), f"q mismatches {(q != rq).sum().item()}")
 
 
 def test_i8(M, K, N, bias, gelu):
@@ -211,6 +246,7 @@ def main():
     for M, K, N, bias, gelu in ((9216, 4304, 1152, True, False), (2327, 8192, 2048, False, False), (272, 8192, 2048, False, False),
                                 (9, 2048, 6144, False, False), (1, 2048, 2048, False, False), (1024, 1152, 4304, True, True)):
         test_w8(M, K, N, bias, gelu)
+    test_fused_producers()
     print(f"\n{sum(results)}/{len(results)} passed")
     if not args.no_speed:
         speed()

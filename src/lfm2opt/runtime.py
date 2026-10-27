@@ -184,8 +184,10 @@ class StaticDecoder:
                 from .int8 import Int8Linear, a16_kinds
 
                 a16 = a16_kinds()
-                self.p8 = {key: Int8Linear(q=self.lin[key], scale=self.lin_scale[key], a8=key[0] not in a16)
+                self.p8 = {key: Int8Linear(q=self.lin[key], scale=self.lin_scale[key], a8=key[0] not in a16, kind=key[0])
                            for key in self.lin if key[0] != "head"}
+                assert all(l.a8 for l in self.p8.values()), "INT8 prefill: every layer kind runs W8A8 (fused producers)"
+                self.K8 = self.p8[("w13", 0)].ext
                 self.w8 = {key: Int8Linear(q=self.lin[key], scale=self.lin_scale[key], a8=False) for key in self.lin}
             if self.drop_bf16:
                 self._drop_bf16()
@@ -324,17 +326,13 @@ class StaticDecoder:
     def _wbf16(self, key):
         return self.lin_bf16[key] if key in self.lin_scale else self.lin[key]
 
-    def _plin(self, x, key, bias=None):
-        """Prefill GEMM for weight `key`: cuBLAS on the BF16 weights, or (prefill_int8) our INT8 GEMM."""
-        if not self.prefill_int8:
-            return F.linear(x, self._wbf16(key), bias)
-        y = self.p8[key](x)
-        return y if bias is None else y + bias
 
     @torch.no_grad()
     def _prefill_fused(self, input_ids, s, **model_inputs):
         """All prompt tokens at once: cuBLAS GEMMs on the merged BF16 weights + our fused kernels, k/v and conv state
         written straight into the static buffers. Returns the last position's logits [B, V]."""
+        if self.prefill_int8:
+            return self._prefill_int8(input_ids, s, **model_inputs)
         K, H = self.K, self.cfg.hidden_size
         B, T = input_ids.shape
         h = self._embed(input_ids, **model_inputs).reshape(B * T, H).contiguous()   # residual stream
@@ -343,27 +341,75 @@ class StaticDecoder:
         for i, layer in enumerate(self.layers):
             if self.is_attn[i]:
                 a = layer.self_attn
-                qkv = self._plin(x, ("qkv", i))
+                qkv = F.linear(x, self._wbf16(("qkv", i)))
                 q = torch.empty(B, self.n_heads, T, self.head_dim, device=h.device, dtype=h.dtype)
                 K.qk_norm_rope_kv_prefill(qkv, a.q_layernorm.weight, a.k_layernorm.weight, self.inv_freq,
                                           self.rope_scaling, q, s["k"][i], s["v"][i], self.eps)
                 o = F.scaled_dot_product_attention(q, s["k"][i][:, :, :T], s["v"][i][:, :, :T], is_causal=True,
                                                    scale=a.scaling, enable_gqa=True)
-                y = self._plin(o.transpose(1, 2).reshape(B * T, -1), ("o", i))
+                y = F.linear(o.transpose(1, 2).reshape(B * T, -1), self._wbf16(("o", i)))
             else:
                 c = layer.conv
-                bcx = self._plin(x, ("in", i), c.in_proj.bias)
+                bcx = F.linear(x, self._wbf16(("in", i)), c.in_proj.bias)
                 cy = torch.empty(B * T, H, device=h.device, dtype=h.dtype)
                 K.shortconv_prefill(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy, T)
-                y = self._plin(cy, ("out", i), c.out_proj.bias)
+                y = F.linear(cy, self._wbf16(("out", i)), c.out_proj.bias)
             K.add_rmsnorm(h, y, layer.ffn_norm.weight, x, self.eps)
-            g = self._plin(x, ("w13", i))
+            g = F.linear(x, self._wbf16(("w13", i)))
             act = torch.empty(B * T, g.shape[-1] // 2, device=h.device, dtype=h.dtype)
             K.silu_mul(g, act)
-            K.add_rmsnorm(h, self._plin(act, ("w2", i)), self.norm_w[i + 1], x, self.eps)
-        if self.prefill_int8:  # last position only: the decode GEMV (or W8A16 GEMM for large batches)
-            return self._linear(x.view(B, T, H)[:, -1].contiguous(), ("head", 0))
+            K.add_rmsnorm(h, F.linear(act, self._wbf16(("w2", i))), self.norm_w[i + 1], x, self.eps)
         return F.linear(x.view(B, T, H)[:, -1], self._wbf16(("head", 0)))                # x = embedding_norm(h)
+
+    @torch.no_grad()
+    def _prefill_int8(self, input_ids, s, **model_inputs):
+        """_prefill_fused on the INT8 weights (extension): every GEMM is our W8A8 kernel (lfm2opt.int8). The RMSNorm
+        and SwiGLU kernels write the next GEMM's INT8 input directly (add_rmsnorm_q, silu_mul_q); the attention and
+        short-conv outputs are quantized inside their Int8Linear. Head: last position only, INT8 decode GEMV."""
+        from .int8 import qbuf
+
+        K, K8, p8, H = self.K, self.K8, self.p8, self.cfg.hidden_size
+        B, T = input_ids.shape
+        R, n = B * T, len(self.layers)
+        h = self._embed(input_ids, **model_inputs).reshape(R, H).contiguous()   # residual stream
+
+        def norm_q(y, w, key):
+            xq = qbuf(R, H, p8[key].group, h.device)
+            K8.add_rmsnorm_q(h, y, w, *xq, self.eps)
+            return xq
+
+        def mixer(i):
+            return ("qkv", i) if self.is_attn[i] else ("in", i)
+
+        def add_bias(y, bias):
+            return y if bias is None else y + bias
+
+        xq = norm_q(None, self.norm_w[0], mixer(0))
+        for i, layer in enumerate(self.layers):
+            if self.is_attn[i]:
+                a = layer.self_attn
+                qkv = p8[("qkv", i)](xq)
+                q = torch.empty(B, self.n_heads, T, self.head_dim, device=h.device, dtype=h.dtype)
+                K.qk_norm_rope_kv_prefill(qkv, a.q_layernorm.weight, a.k_layernorm.weight, self.inv_freq,
+                                          self.rope_scaling, q, s["k"][i], s["v"][i], self.eps)
+                o = F.scaled_dot_product_attention(q, s["k"][i][:, :, :T], s["v"][i][:, :, :T], is_causal=True,
+                                                   scale=a.scaling, enable_gqa=True)
+                y = p8[("o", i)](o.transpose(1, 2).reshape(R, -1))
+            else:
+                c = layer.conv
+                bcx = add_bias(p8[("in", i)](xq), c.in_proj.bias)
+                cy = torch.empty(R, H, device=h.device, dtype=h.dtype)
+                K.shortconv_prefill(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy, T)
+                y = add_bias(p8[("out", i)](cy), c.out_proj.bias)
+            g = p8[("w13", i)](norm_q(y, layer.ffn_norm.weight, ("w13", i)))
+            aq = qbuf(R, g.shape[-1] // 2, p8[("w2", i)].group, h.device)
+            K8.silu_mul_q(g, *aq)
+            y = p8[("w2", i)](aq)
+            if i + 1 < n:
+                xq = norm_q(y, self.norm_w[i + 1], mixer(i + 1))
+        x = torch.empty_like(h)
+        K.add_rmsnorm(h, y, self.norm_w[n], x, self.eps)                                # x = embedding_norm(h)
+        return self._linear(x.view(B, T, H)[:, -1].contiguous(), ("head", 0))
 
     # ---------------------------------------------------------------- request
     @torch.no_grad()

@@ -52,6 +52,9 @@ class FusedSiglip2Encoder:
         self.int8 = int8
         if int8:
             from .int8 import Int8Linear, a16_kinds
+            from .kernels import int8_ext
+
+            self.ext8 = int8_ext()
 
             a16 = a16_kinds()
             for p in self.layers:
@@ -59,7 +62,8 @@ class FusedSiglip2Encoder:
                 for key, w, b, kind, pads in (("qkv", "wqkv", "bqkv", "vqkv", {}), ("o", "wo", "bo", "vout", {}),
                                               ("fc1", "w1", "b1", "fc1", dict(pad_n=pad)),
                                               ("fc2", "w2", "b2", "fc2", dict(pad_k=pad))):
-                    p[key] = Int8Linear(p.pop(w), p[b], a8=kind not in a16, **pads)
+                    p[key] = Int8Linear(p.pop(w), p[b], a8=kind not in a16, kind=kind, **pads)
+                assert all(p[k].a8 for k in ("qkv", "fc1")), "LayerNorm outputs are produced in INT8 (add_layernorm_q)"
             if drop_bf16:
                 for layer in vt.encoder.layers:
                     a, m = layer.self_attn, layer.mlp
@@ -102,6 +106,29 @@ class FusedSiglip2Encoder:
                 out[a:b, n:] = 0
         return out.view(T, L, -1)
 
+    def _layers_int8(self, h, runs, T, L, D):
+        """The encoder layers on INT8 weights: each LayerNorm writes the next GEMM's INT8 input directly
+        (add_layernorm_q); the attention output and the GELU output are quantized inside their Int8Linear."""
+        from .int8 import qbuf
+
+        rows, n_layers = T * L, len(self.layers)
+
+        def ln_q(y, ln, lin):
+            xq = qbuf(rows, D, lin.group, h.device)
+            self.ext8.add_layernorm_q(h, y, ln.weight, ln.bias, *xq, ln.eps)
+            return xq
+
+        xq = ln_q(None, self.layers[0]["ln1"], self.layers[0]["qkv"])
+        for i, p in enumerate(self.layers):
+            qkv = p["qkv"](xq).view(T, L, -1)
+            y = p["o"](self._attention(qkv, runs, T, L))
+            f = p["fc1"](ln_q(y, p["ln2"], p["fc1"]), gelu=True)
+            y = p["fc2"](f).view(T, L, D)
+            if i + 1 < n_layers:
+                xq = ln_q(y, self.layers[i + 1]["ln1"], self.layers[i + 1]["qkv"])
+            else:
+                h.add_(y)
+
     @torch.no_grad()
     def __call__(self, pixel_values, pixel_attention_mask, spatial_shapes, **kwargs):
         vt = self.vt
@@ -116,24 +143,21 @@ class FusedSiglip2Encoder:
         if self.attn == "cudnn_mask":
             valid = pixel_attention_mask.bool()
             self._mask = valid[:, None, None, :]
+        if self.int8:
+            self._layers_int8(h, runs, T, L, D)
+            return BaseModelOutputWithPooling(last_hidden_state=vt.post_layernorm(h), pooler_output=None)
         x = torch.empty_like(h)
         self._add_ln(h, None, self.layers[0]["ln1"], x)
         n_layers = len(self.layers)
         for i, p in enumerate(self.layers):
-            if self.int8:
-                qkv = p["qkv"](x)
-                y = p["o"](self._attention(qkv, runs, T, L))
-            else:
-                qkv = F.linear(x, p["wqkv"], p["bqkv"])
-                y = F.linear(self._attention(qkv, runs, T, L), p["wo"], p["bo"])
+            qkv = F.linear(x, p["wqkv"], p["bqkv"])
+            y = F.linear(self._attention(qkv, runs, T, L), p["wo"], p["bo"])
             self._add_ln(h, y, p["ln2"], x)
-            if self.int8:
-                f = p["fc1"](x.view(-1, D), gelu=True)
-            elif self.gelu_epilogue:
+            if self.gelu_epilogue:
                 f = torch._addmm_activation(p["b1"], x.view(-1, D), p["w1"].t(), use_gelu=True)
             else:
                 f = F.gelu(F.linear(x.view(-1, D), p["w1"], p["b1"]), approximate="tanh")
-            y = (p["fc2"](f) if self.int8 else F.linear(f, p["w2"], p["b2"])).view(T, L, D)
+            y = F.linear(f, p["w2"], p["b2"]).view(T, L, D)
             if i + 1 < n_layers:
                 self._add_ln(h, y, self.layers[i + 1]["ln1"], x)
             else:

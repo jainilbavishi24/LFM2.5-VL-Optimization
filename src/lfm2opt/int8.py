@@ -24,11 +24,22 @@ def a16_kinds():
     return set(filter(None, os.environ.get("LFM2_INT8_A16", "").split(",")))
 
 
-def act_group():
-    """Activation scale granularity for W8A8: 64 = per token and group of 64 channels (kernel tile), 0 = per token."""
+def act_group(kind=None, K=0):
+    """Activation scale granularity of a W8A8 layer: 64 = per token and group of 64 channels (one per K stage of the
+    kernel), 0 = per token. LFM2_INT8_GROUP=64 / 0 sets it for every kind; LFM2_INT8_GROUP_KINDS="fc2,w2" limits the
+    groups to those kinds (the rest per token). Inputs wider than 2048 (fc2, w2) are always grouped."""
     g = int(os.environ.get("LFM2_INT8_GROUP", "64"))
     assert g in (0, 64), "the kernel folds one scale per 64-wide K stage"
-    return g
+    kinds = set(filter(None, os.environ.get("LFM2_INT8_GROUP_KINDS", "").split(",")))
+    if K > 2048:
+        return 64
+    return g if (not kinds or kind in kinds) else 0
+
+
+def qbuf(rows, K, group, device):
+    """Empty (int8 [rows, K], scales) for a producer kernel that writes a W8A8 layer's input directly."""
+    return (torch.empty(rows, K, device=device, dtype=torch.int8),
+            torch.empty((K // 64, rows) if group else (rows,), device=device, dtype=torch.float32))
 
 
 def quantize_rows(x2, group=0):
@@ -41,7 +52,7 @@ def quantize_rows(x2, group=0):
 
 
 class Int8Linear:
-    def __init__(self, weight=None, bias=None, a8=True, q=None, scale=None, pad_n=0, pad_k=0):
+    def __init__(self, weight=None, bias=None, a8=True, q=None, scale=None, pad_n=0, pad_k=0, kind=None):
         """From a BF16 weight [N, K] (quantized here), or from an already quantized (q, scale) pair. pad_n / pad_k
         append zero output rows (and zero bias) / zero input columns, e.g. to make K a multiple of 128 for the
         grouped activation scales (SigLIP2's 4304-wide MLP -> 4352: fc1 pad_n=48, fc2 pad_k=48)."""
@@ -52,10 +63,16 @@ class Int8Linear:
             q, scale = quantize_int8(weight)
         self.q, self.s, self.bias, self.a8 = q, scale, bias, a8
         self.N, self.K = q.shape
-        self.group = act_group() if a8 else 0
+        self.group = act_group(kind, self.K) if a8 else 0
         self.ext = int8_ext()
 
     def __call__(self, x, gelu=False):
+        """x: bf16 [..., K], or an already quantized (int8 [..., K], scales) pair from a fused producer kernel."""
+        if isinstance(x, tuple):
+            xq, sx = x
+            y = torch.empty(xq.numel() // self.K, self.N, device=xq.device, dtype=torch.bfloat16)
+            self.ext.gemm_i8(xq, sx, self.q, self.s, self.bias, y, gelu)
+            return y.view(*xq.shape[:-1], self.N)
         x2 = x.reshape(-1, self.K)
         y = torch.empty(x2.shape[0], self.N, device=x.device, dtype=torch.bfloat16)
         if self.a8:

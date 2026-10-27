@@ -9,6 +9,11 @@ void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *b
                     bool gelu, cudaStream_t st);
 void launch_quant_rows(const void *x, void *q, float *s, int rows, int K, cudaStream_t st);
 void launch_quant_groups(const void *x, void *q, float *sT, int rows, int K, cudaStream_t st);
+void launch_add_layernorm_q(void *h, const void *y, const void *w, const void *b, void *q, float *s, int rows, int D,
+                            float eps, bool grouped, cudaStream_t st);
+void launch_add_rmsnorm_q(void *h, const void *y, const void *w, void *q, float *s, int rows, int H, float eps,
+                          bool grouped, cudaStream_t st);
+void launch_silu_mul_q(const void *g, void *q, float *s, int rows, int I, bool grouped, cudaStream_t st);
 
 #define CHECK_T(t, dt) TORCH_CHECK(t.is_cuda() && t.scalar_type() == dt && t.is_contiguous(), #t " must be contiguous CUDA " #dt)
 
@@ -69,7 +74,55 @@ void quant_rows(torch::Tensor x, torch::Tensor q, torch::Tensor s) {
     launch_quant_rows(x.data_ptr(), q.data_ptr(), s.data_ptr<float>(), rows, K, at::cuda::getCurrentCUDAStream());
 }
 
+static bool check_qs(const torch::Tensor &q, const torch::Tensor &s, int rows, int K) {
+    CHECK_T(q, at::kChar);
+    CHECK_T(s, at::kFloat);
+    const bool grouped = s.dim() == 2;
+    TORCH_CHECK(q.numel() == (int64_t)rows * K, "q shape");
+    TORCH_CHECK(grouped ? (K % 64 == 0 && s.size(0) == K / 64 && s.size(1) == rows) : s.numel() == rows, "s shape");
+    return grouped;
+}
+
+// vision: h += y (optional, in place); (q, s) = quant(LayerNorm(h) * w + b)
+void add_layernorm_q(torch::Tensor h, c10::optional<torch::Tensor> y, torch::Tensor w, torch::Tensor b, torch::Tensor q,
+                     torch::Tensor s, double eps) {
+    CHECK_T(h, at::kBFloat16);
+    CHECK_T(w, at::kBFloat16);
+    CHECK_T(b, at::kBFloat16);
+    if (y.has_value()) { CHECK_T((*y), at::kBFloat16); TORCH_CHECK(y->numel() == h.numel(), "y shape"); }
+    const int D = h.size(-1), rows = h.numel() / D;
+    TORCH_CHECK(D % 128 == 0 && D <= 2048 && w.numel() == D && b.numel() == D, "D must be a multiple of 128, <= 2048");
+    const bool grouped = check_qs(q, s, rows, D);
+    launch_add_layernorm_q(h.data_ptr(), y.has_value() ? y->data_ptr() : nullptr, w.data_ptr(), b.data_ptr(), q.data_ptr(),
+                           s.data_ptr<float>(), rows, D, (float)eps, grouped, at::cuda::getCurrentCUDAStream());
+}
+
+// LM prefill: h += y (optional, in place); (q, s) = quant(w * rmsnorm(h))
+void add_rmsnorm_q(torch::Tensor h, c10::optional<torch::Tensor> y, torch::Tensor w, torch::Tensor q, torch::Tensor s,
+                   double eps) {
+    CHECK_T(h, at::kBFloat16);
+    CHECK_T(w, at::kBFloat16);
+    if (y.has_value()) { CHECK_T((*y), at::kBFloat16); TORCH_CHECK(y->numel() == h.numel(), "y shape"); }
+    const int H = h.size(-1), rows = h.numel() / H;
+    TORCH_CHECK(w.numel() == H && H % 64 == 0, "w shape");
+    const bool grouped = check_qs(q, s, rows, H);
+    launch_add_rmsnorm_q(h.data_ptr(), y.has_value() ? y->data_ptr() : nullptr, w.data_ptr(), q.data_ptr(),
+                         s.data_ptr<float>(), rows, H, (float)eps, grouped, at::cuda::getCurrentCUDAStream());
+}
+
+// LM prefill: g [rows, 2I] = w1 | w3 outputs -> (q, s) = quant(silu(g1) * g3)
+void silu_mul_q(torch::Tensor g, torch::Tensor q, torch::Tensor s) {
+    CHECK_T(g, at::kBFloat16);
+    const int I = g.size(-1) / 2, rows = g.numel() / (2 * I);
+    TORCH_CHECK(I % 64 == 0 && I <= 20000, "I shape");
+    const bool grouped = check_qs(q, s, rows, I);
+    launch_silu_mul_q(g.data_ptr(), q.data_ptr(), s.data_ptr<float>(), rows, I, grouped, at::cuda::getCurrentCUDAStream());
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+    m.def("add_layernorm_q", &add_layernorm_q, "vision: h += y; INT8 (per row / group of 64) LayerNorm output");
+    m.def("add_rmsnorm_q", &add_rmsnorm_q, "LM prefill: h += y; INT8 (per row / group of 64) RMSNorm output");
+    m.def("silu_mul_q", &silu_mul_q, "LM prefill: INT8 (per row / group of 64) SwiGLU output");
     m.def("gemm_i8", &gemm_i8, "W8A8 GEMM, int8 tensor cores, scales (+bias, GELU) in the epilogue, bf16 out");
     m.def("gemm_w8", &gemm_w8, "W8A16 GEMM, int8 weights converted in registers, bf16 tensor cores, bf16 out");
     m.def("quant_rows", &quant_rows, "bf16 -> int8 with one absmax scale per row");

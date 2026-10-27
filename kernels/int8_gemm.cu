@@ -11,6 +11,10 @@
 //                     mma.m16n8k16 bf16 -> fp32 accumulation; y = acc * sw[n] + b[n]
 //   quant_rows:       X bf16 -> int8 + per-row scale (absmax / 127, round half to even), one warp per row
 //   quant_groups:     the same with one scale per row and group of 64 (written transposed, [K/64][M])
+//   add_layernorm_q / add_rmsnorm_q / silu_mul_q: the vision / LM norm and SwiGLU kernels with the next GEMM's INT8
+//                     input as output (per row or per group of 64): the bf16 value is computed exactly as in the
+//                     unfused kernel (vision_ops.cu, lfm2_decode.cu) and quantized in registers, so the activation
+//                     never makes a bf16 round trip through memory and needs no extra launch
 //
 // Tiles: BM (64 | 128) x 128 x 64 bytes of K per stage, 8 warps (2 x 4, warp tile BM/2 x 32), cp.async multistage
 // pipeline, XOR-swizzled shared memory (conflict-free ldmatrix / LDS), zero-filled M / N / K tails.
@@ -409,6 +413,217 @@ __global__ void quant_groups_kernel(const bf16 *__restrict__ x, int8_t *__restri
     }
 }
 
+// ------------------------------------------------------------------------------------------------ fused producers
+__device__ __forceinline__ float wmax(float v) {
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1)
+        v = fmaxf(v, __shfl_xor_sync(0xffffffffu, v, o));
+    return v;
+}
+__device__ __forceinline__ float wsum(float v) {
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1)
+        v += __shfl_xor_sync(0xffffffffu, v, o);
+    return v;
+}
+__device__ __forceinline__ signed char q8(float v, float sc) {
+    return (signed char)max(-127, min(127, __float2int_rn(v / sc)));
+}
+
+// one warp per row holding v[c][0..3] = elements (c * 32 + lane) * 4 + 0..3: write its INT8 row and scale(s)
+template <int MAXC, bool GROUPED>
+__device__ __forceinline__ void warp_quant_store(const float (&v)[MAXC][4], int C, int8_t *__restrict__ q,
+                                                 float *__restrict__ s, int row, int rows, int K, int lane) {
+    float sc_row = 0.f;
+    if (!GROUPED) {
+        float amax = 0.f;
+#pragma unroll
+        for (int c = 0; c < MAXC; ++c)
+            if (c < C)
+                amax = fmaxf(amax, fmaxf(fmaxf(fabsf(v[c][0]), fabsf(v[c][1])), fmaxf(fabsf(v[c][2]), fabsf(v[c][3]))));
+        sc_row = fmaxf(wmax(amax), 1e-8f) / 127.f;
+        if (lane == 0)
+            s[row] = sc_row;
+    }
+#pragma unroll
+    for (int c = 0; c < MAXC; ++c)
+        if (c < C) {
+            float sc = sc_row;
+            if (GROUPED) {  // lanes 0-15: group 2c, lanes 16-31: group 2c + 1
+                float amax = fmaxf(fmaxf(fabsf(v[c][0]), fabsf(v[c][1])), fmaxf(fabsf(v[c][2]), fabsf(v[c][3])));
+#pragma unroll
+                for (int o = 8; o > 0; o >>= 1)
+                    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+                sc = fmaxf(amax, 1e-8f) / 127.f;
+                if ((lane & 15) == 0)
+                    s[(size_t)(2 * c + (lane >> 4)) * rows + row] = sc;
+            }
+            char4 o;
+            o.x = q8(v[c][0], sc);
+            o.y = q8(v[c][1], sc);
+            o.z = q8(v[c][2], sc);
+            o.w = q8(v[c][3], sc);
+            *reinterpret_cast<char4 *>(q + (size_t)row * K + (c * 32 + lane) * 4) = o;
+        }
+}
+
+// vision: h += y (bf16-rounded); x = LayerNorm(h) * w + b, rounded to bf16 exactly as vision_ops.cu add_layernorm,
+// then quantized. One warp per row, D <= 2048, D % 128 == 0.
+template <bool GROUPED>
+__global__ void add_layernorm_q_kernel(bf16 *__restrict__ h, const bf16 *__restrict__ y, const bf16 *__restrict__ w,
+                                       const bf16 *__restrict__ b, int8_t *__restrict__ q, float *__restrict__ s,
+                                       int rows, int D, float eps) {
+    constexpr int MAXC = 16;
+    const int row = (blockIdx.x * blockDim.x + threadIdx.x) >> 5, lane = threadIdx.x & 31;
+    if (row >= rows)
+        return;
+    const int C = D >> 7;
+    bf16 *hr = h + (size_t)row * D;
+    const bf16 *yr = y ? y + (size_t)row * D : nullptr;
+    float v[MAXC][4];
+    float sum = 0.f;
+#pragma unroll
+    for (int c = 0; c < MAXC; ++c) {
+        if (c < C) {
+            const int i = (c * 32 + lane) * 4;
+            const uint2 u = *reinterpret_cast<const uint2 *>(hr + i);
+            const __nv_bfloat162 a0 = *reinterpret_cast<const __nv_bfloat162 *>(&u.x), a1 = *reinterpret_cast<const __nv_bfloat162 *>(&u.y);
+            v[c][0] = __low2float(a0); v[c][1] = __high2float(a0); v[c][2] = __low2float(a1); v[c][3] = __high2float(a1);
+            if (yr) {
+                const uint2 t = *reinterpret_cast<const uint2 *>(yr + i);
+                const __nv_bfloat162 t0 = *reinterpret_cast<const __nv_bfloat162 *>(&t.x), t1 = *reinterpret_cast<const __nv_bfloat162 *>(&t.y);
+                const float tf[4] = {__low2float(t0), __high2float(t0), __low2float(t1), __high2float(t1)};
+#pragma unroll
+                for (int j = 0; j < 4; ++j) v[c][j] = __bfloat162float(__float2bfloat16_rn(v[c][j] + tf[j]));
+                uint2 o;
+                *reinterpret_cast<__nv_bfloat162 *>(&o.x) = __floats2bfloat162_rn(v[c][0], v[c][1]);
+                *reinterpret_cast<__nv_bfloat162 *>(&o.y) = __floats2bfloat162_rn(v[c][2], v[c][3]);
+                *reinterpret_cast<uint2 *>(hr + i) = o;
+            }
+            sum += v[c][0] + v[c][1] + v[c][2] + v[c][3];
+        }
+    }
+    const float mean = wsum(sum) / D;
+    float qs = 0.f;
+#pragma unroll
+    for (int c = 0; c < MAXC; ++c)
+        if (c < C)
+#pragma unroll
+            for (int j = 0; j < 4; ++j) { const float d = v[c][j] - mean; qs += d * d; }
+    const float rstd = rsqrtf(wsum(qs) / D + eps);
+#pragma unroll
+    for (int c = 0; c < MAXC; ++c) {
+        if (c < C) {
+            const int i = (c * 32 + lane) * 4;
+            const uint2 uw = *reinterpret_cast<const uint2 *>(w + i), ub = *reinterpret_cast<const uint2 *>(b + i);
+            const __nv_bfloat162 w0 = *reinterpret_cast<const __nv_bfloat162 *>(&uw.x), w1 = *reinterpret_cast<const __nv_bfloat162 *>(&uw.y);
+            const __nv_bfloat162 b0 = *reinterpret_cast<const __nv_bfloat162 *>(&ub.x), b1 = *reinterpret_cast<const __nv_bfloat162 *>(&ub.y);
+            const float wf[4] = {__low2float(w0), __high2float(w0), __low2float(w1), __high2float(w1)};
+            const float bf[4] = {__low2float(b0), __high2float(b0), __low2float(b1), __high2float(b1)};
+#pragma unroll
+            for (int j = 0; j < 4; ++j) v[c][j] = __bfloat162float(__float2bfloat16_rn((v[c][j] - mean) * rstd * wf[j] + bf[j]));
+        }
+    }
+    warp_quant_store<MAXC, GROUPED>(v, C, q, s, row, rows, D, lane);
+}
+
+// LM prefill: h += y (bf16-rounded); x = bf16(w * bf16(h * rsqrt(mean(h^2) + eps))) exactly as lfm2_decode.cu
+// add_rmsnorm (one 256-thread block per row, same reduction order), then quantized.
+constexpr int RN_THREADS = 256;
+template <bool ADD, bool GROUPED>
+__global__ void add_rmsnorm_q_kernel(bf16 *__restrict__ h, const bf16 *__restrict__ y, const bf16 *__restrict__ w,
+                                     int8_t *__restrict__ q, float *__restrict__ s, int rows, int H, float eps) {
+    extern __shared__ float rsm[];  // H floats + reduction scratch
+    float *hv = rsm, *red = rsm + H;
+    const size_t off = (size_t)blockIdx.x * H;
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    float ss = 0.f;
+    for (int i = threadIdx.x; i < H; i += RN_THREADS) {
+        float v = __bfloat162float(h[off + i]);
+        if (ADD) {
+            v = __bfloat162float(__float2bfloat16(v + __bfloat162float(y[off + i])));
+            h[off + i] = __float2bfloat16(v);
+        }
+        hv[i] = v;
+        ss += v * v;
+    }
+    ss = wsum(ss);  // block_sum<8> of lfm2_decode.cu
+    if (lane == 0)
+        red[warp] = ss;
+    __syncthreads();
+    ss = wsum(lane < RN_THREADS / 32 ? red[lane] : 0.f);
+    __syncthreads();
+    const float rs = rsqrtf(ss / H + eps);
+    float amax = 0.f;
+    for (int i = threadIdx.x; i < H; i += RN_THREADS) {
+        const float n = __bfloat162float(__float2bfloat16(hv[i] * rs));
+        const float x = __bfloat162float(__float2bfloat16(__bfloat162float(w[i]) * n));
+        hv[i] = x;
+        amax = fmaxf(amax, fabsf(x));
+    }
+    if (GROUPED) {
+        __syncthreads();
+        for (int gi = warp; gi < H / 64; gi += RN_THREADS / 32) {
+            const float a = hv[gi * 64 + lane], b = hv[gi * 64 + 32 + lane];
+            const float sc = fmaxf(wmax(fmaxf(fabsf(a), fabsf(b))), 1e-8f) / 127.f;
+            q[off + gi * 64 + lane] = q8(a, sc);
+            q[off + gi * 64 + 32 + lane] = q8(b, sc);
+            if (lane == 0)
+                s[(size_t)gi * rows + blockIdx.x] = sc;
+        }
+    } else {
+        amax = wmax(amax);
+        if (lane == 0)
+            red[warp] = amax;
+        __syncthreads();
+        const float sc = fmaxf(wmax(lane < RN_THREADS / 32 ? red[lane] : 0.f), 1e-8f) / 127.f;
+        if (threadIdx.x == 0)
+            s[blockIdx.x] = sc;
+        for (int i = threadIdx.x; i < H; i += RN_THREADS)
+            q[off + i] = q8(hv[i], sc);
+    }
+}
+
+// LM prefill SwiGLU: g = [rows, 2I] (w1 | w3 outputs); a = bf16(bf16(silu(g1)) * g3) exactly as lfm2_decode.cu
+// silu_mul, then quantized (the w2 input). One 256-thread block per row; a goes through shared memory.
+template <bool GROUPED>
+__global__ void silu_mul_q_kernel(const bf16 *__restrict__ g, int8_t *__restrict__ q, float *__restrict__ s, int rows,
+                                  int I) {
+    extern __shared__ float rsm[];  // I floats + scratch
+    float *av = rsm, *red = rsm + I;
+    const bf16 *gr = g + (size_t)blockIdx.x * 2 * I;
+    const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    float amax = 0.f;
+    for (int i = threadIdx.x; i < I; i += RN_THREADS) {
+        const float a = __bfloat162float(gr[i]), u = __bfloat162float(gr[I + i]);
+        const float v = __bfloat162float(__float2bfloat16(__bfloat162float(__float2bfloat16(a / (1.f + __expf(-a)))) * u));
+        av[i] = v;
+        amax = fmaxf(amax, fabsf(v));
+    }
+    const size_t off = (size_t)blockIdx.x * I;
+    if (GROUPED) {
+        __syncthreads();
+        for (int gi = warp; gi < I / 64; gi += RN_THREADS / 32) {
+            const float a = av[gi * 64 + lane], b = av[gi * 64 + 32 + lane];
+            const float sc = fmaxf(wmax(fmaxf(fabsf(a), fabsf(b))), 1e-8f) / 127.f;
+            q[off + gi * 64 + lane] = q8(a, sc);
+            q[off + gi * 64 + 32 + lane] = q8(b, sc);
+            if (lane == 0)
+                s[(size_t)gi * rows + blockIdx.x] = sc;
+        }
+    } else {
+        amax = wmax(amax);
+        if (lane == 0)
+            red[warp] = amax;
+        __syncthreads();
+        const float sc = fmaxf(wmax(lane < RN_THREADS / 32 ? red[lane] : 0.f), 1e-8f) / 127.f;
+        if (threadIdx.x == 0)
+            s[blockIdx.x] = sc;
+        for (int i = threadIdx.x; i < I; i += RN_THREADS)
+            q[off + i] = q8(av[i], sc);
+    }
+}
+
 }  // namespace
 
 // 48 KB of shared memory per block at BM = 128: two blocks per SM on Ada (100 KB) and Ampere (Jetson Orin)
@@ -495,6 +710,41 @@ void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *b
 void launch_quant_groups(const void *x, void *q, float *sT, int rows, int K, cudaStream_t st) {
     const int threads = 256, rpb = threads / 32;
     quant_groups_kernel<<<(rows + rpb - 1) / rpb, threads, 0, st>>>((const bf16 *)x, (int8_t *)q, sT, rows, K);
+}
+
+void launch_add_layernorm_q(void *h, const void *y, const void *w, const void *b, void *q, float *s, int rows, int D,
+                            float eps, bool grouped, cudaStream_t st) {
+    const int threads = 256, rpb = threads / 32, blocks = (rows + rpb - 1) / rpb;
+    if (grouped)
+        add_layernorm_q_kernel<true><<<blocks, threads, 0, st>>>((bf16 *)h, (const bf16 *)y, (const bf16 *)w,
+                                                                 (const bf16 *)b, (int8_t *)q, s, rows, D, eps);
+    else
+        add_layernorm_q_kernel<false><<<blocks, threads, 0, st>>>((bf16 *)h, (const bf16 *)y, (const bf16 *)w,
+                                                                  (const bf16 *)b, (int8_t *)q, s, rows, D, eps);
+}
+
+void launch_add_rmsnorm_q(void *h, const void *y, const void *w, void *q, float *s, int rows, int H, float eps,
+                          bool grouped, cudaStream_t st) {
+    const size_t sm = (H + 32) * sizeof(float);
+    bf16 *hh = (bf16 *)h;
+    const bf16 *yy = (const bf16 *)y, *ww = (const bf16 *)w;
+    int8_t *qq = (int8_t *)q;
+    if (y && grouped) add_rmsnorm_q_kernel<true, true><<<rows, RN_THREADS, sm, st>>>(hh, yy, ww, qq, s, rows, H, eps);
+    else if (y) add_rmsnorm_q_kernel<true, false><<<rows, RN_THREADS, sm, st>>>(hh, yy, ww, qq, s, rows, H, eps);
+    else if (grouped) add_rmsnorm_q_kernel<false, true><<<rows, RN_THREADS, sm, st>>>(hh, yy, ww, qq, s, rows, H, eps);
+    else add_rmsnorm_q_kernel<false, false><<<rows, RN_THREADS, sm, st>>>(hh, yy, ww, qq, s, rows, H, eps);
+}
+
+void launch_silu_mul_q(const void *g, void *q, float *s, int rows, int I, bool grouped, cudaStream_t st) {
+    const size_t sm = (I + 32) * sizeof(float);
+    static bool cfg = false;
+    if (!cfg) {  // I = 8192: 32 KB of shared memory, more for wider models
+        cudaFuncSetAttribute(silu_mul_q_kernel<true>, cudaFuncAttributeMaxDynamicSharedMemorySize, 96 * 1024);
+        cudaFuncSetAttribute(silu_mul_q_kernel<false>, cudaFuncAttributeMaxDynamicSharedMemorySize, 96 * 1024);
+        cfg = true;
+    }
+    if (grouped) silu_mul_q_kernel<true><<<rows, RN_THREADS, sm, st>>>((const bf16 *)g, (int8_t *)q, s, rows, I);
+    else silu_mul_q_kernel<false><<<rows, RN_THREADS, sm, st>>>((const bf16 *)g, (int8_t *)q, s, rows, I);
 }
 
 void launch_quant_rows(const void *x, void *q, float *s, int rows, int K, cudaStream_t st) {
