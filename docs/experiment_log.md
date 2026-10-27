@@ -48,7 +48,51 @@ Entry template:
 - **W8A8 costs something measurable**, mostly from two layer kinds: the inputs of the vision **fc2** (after GELU) and of the LM **w2** (after SwiGLU), the classic outlier activations. Without them, each remaining kind is at the W8A16 level.
 - **SmoothQuant made vision much worse** (calibrated on one image; per-row weight scales absorb the large smoothing factors). Not pursued further for now.
 
-**Takeaway / next step:** INT8 for prefill/vision is worth doing only with our own kernels: an INT8 tensor-core GEMM with the scales (+ bias / GELU) applied in the epilogue, BF16 out, and activation quantization fused into the norm kernels that produce the GEMM inputs. Candidate configuration: W8A8 everywhere except fc2 and w2 (their inputs keep BF16 activations), then a benchmark-level quality check. Decision pending with the team (effort vs ~−30 % GEMM time on the first token).
+**Takeaway / next step:** INT8 for prefill/vision is worth doing only with our own kernels: an INT8 tensor-core GEMM with the scales (+ bias / GELU) applied in the epilogue, BF16 out, and activation quantization fused into the norm kernels that produce the GEMM inputs. Candidate configuration: W8A8 everywhere except fc2 and w2 (their inputs keep BF16 activations), then a benchmark-level quality check. Decision (team): build it, W8A8 + W8A16.
+
+---
+
+## 2026-10-27: INT8 prefill / vision kernels (L40S)  (Claude)
+
+**Goal:** the kernels the probes asked for: INT8 GEMMs with the scales applied before the BF16 store, and INT8 activations produced by the kernels that already write them.
+
+**What we built** ([kernels/int8_gemm.cu](../kernels/int8_gemm.cu), [src/lfm2opt/int8.py](../src/lfm2opt/int8.py), tests in [tests/test_int8_gemm.py](../tests/test_int8_gemm.py)):
+- **`gemm_i8` (W8A8):**
+  - `mma.sync.m16n8k32` s8 tensor cores; 128 (or 64) × 128 tiles, 64 bytes of K per stage, 3-stage `cp.async` pipeline, XOR-swizzled shared memory read with `ldmatrix`.
+  - Epilogue in registers: `(acc · sx[m]) · sw[n] + bias`, optional GELU, one BF16 store.
+  - **Bit-exact** vs the fp64 product of the same INT8 operands (GELU: ≤ 1 ulp). Speed = cuBLAS's own INT8 GEMM (which writes int32): 41.3 vs 41.1 ms of GEMMs per 1080p request; cuBLAS BF16 62.6 ms.
+- **`gemm_w8` (W8A16):** INT8 weights converted to BF16 in registers (PRMT/FADD magic-number trick instead of the quarter-rate I2F), BF16 mma. Correct (more accurate than cuBLAS on dequantized weights) but 1.2–1.4× slower than cuBLAS BF16: BF16 math at ~78 % of cuBLAS efficiency. Tried 64-element K stages and the faster conversion: no real change. Kept only for the decode fallback at large batches.
+- **Activation granularity (the decisive quality lever):** one scale per token **and group of 64 channels**.
+  - Kernel: `quant_rows` writes the scales transposed `[K/64][M]`; the GEMM loads one row of scales per K stage (`cp.async` 4 B) and folds the stage's exact int32 sums into fp32 (`acc = fma(float(part), s, acc)`, magic-number int→float, exact for |part| < 2²²). The fold of tile i−1 is interleaved with the mma of tile i.
+  - SigLIP2's 4304-wide MLP is zero-padded to 4352 (fc1 rows / fc2 columns), so groups divide it.
+  - Cost: the fold is ~3 ALU ops per accumulator per 64 MACs, about ¾ of the ALU issue rate at full INT8 tensor speed (same ratio on Ampere / the Jetson). Grouped GEMMs: 52.3 ms per 1080p request (per-token 41.3, cuBLAS BF16 62.6). 64-row tiles: no better overall (53.3).
+- **Fused producers:** `add_layernorm_q` (vision), `add_rmsnorm_q`, `silu_mul_q` (LM prefill) compute the BF16 value exactly as the unfused kernels and write the next GEMM's INT8 input (+ scales) directly. Bit-identical to unfused kernel + quantization (6/6 tests).
+- **Integration:** `FusedSiglip2Encoder(int8=True)`, `StaticDecoder(prefill_int8=True, drop_bf16=True)`, variant `fused_w8all_pf_vfused`: INT8 weights only (decode GEMV, prefill and vision GEMMs), no BF16 copies of quantized weights kept (merged copies, large-batch copies and the HF modules' weights are freed; lm_head stays if tied to the embedding).
+- Tests: 33/33 (quantization exact, W8A8 bit-exact, grouped within the BF16 rounding error of the exact result, W8A16 ≤ cuBLAS error, producers exact).
+
+**Granularity decided on a larger probe** (106 cases = 6 fixed + 100 benchmark images; BF16 one-pass vs decode noise floor 98.14 %; `profiling/reports/int8_quality_n106_a.json`):
+
+| Scheme (vision + LM) | Teacher-forced agree | KL | First token (100) | Vision rel. err vs FP32 |
+|---|---|---|---|---|
+| W8A16 | 97.89 % | 0.0015 | 96 % | 6.2 % (BF16: 5.0 %) |
+| **W8A8, groups of 64 everywhere** | **98.04 %** | 0.0020 | 97 % | 8.0 % |
+| W8A8, groups of 128 | 97.88 % | 0.0022 | 97 % | 8.8 % |
+| W8A8 per token, groups of 64 for fc2 / w2 only | 97.44 % | 0.0036 | 96 % | 11.3 % |
+| W8A8 per token, fc2 / w2 W8A16 | 97.48 % | 0.0035 | 94 % | 11.1 % |
+
+**First-token components** ([profiling/ttft_probe.py](../profiling/ttft_probe.py) `--int8`, CUDA events, median of 10; BF16 = our fused stack):
+
+| Input | Vision BF16 → INT8 | LM prefill BF16 → INT8 |
+|---|---|---|
+| 1080p | 57.7 → **46.2 ms** (−20 %) | 31.3 → **24.8 ms** (−21 %) |
+| 720p | 19.1 → 16.4 | 12.3 → 9.4 |
+| VGA | 7.1 → 8.9 (slower) | 5.1 → 4.4 |
+| text | – | 4.0 → 3.8 |
+
+- VGA vision is launch-bound (1024 patches per GEMM): the INT8 path has more kernels per layer (separate quantization of the attention and GELU outputs) and more Python per call. A CUDA graph for the vision encoder (fixed shapes per tile count) would remove this for BF16 and INT8 alike.
+- Teacher-forced vs HF BF16, whole INT8 stack: 62/63, 60/63, 62/63 tokens; every flip at a near-tie (margin ≤ 0.125).
+
+**Next:** end-to-end speed / energy / peak memory and the full 5-benchmark + long-answer quality of `fused_w8all_pf_vfused` (job 52058).
 
 ---
 
