@@ -3,7 +3,9 @@
 Correctness, random data at the model's shapes plus odd M (tails):
   quant_rows  must equal torch's per-row absmax quantization exactly
   gemm_i8     integer products are exact, so it must equal the fp64 product of the same int8 operands with the same
-              fp32 scaling (bit-exact without GELU; GELU: <= 1 bf16 ulp from torch's tanh GELU)
+              fp32 scaling (bit-exact without GELU; GELU: <= 1 bf16 ulp from torch's tanh GELU); grouped scales: within
+              5 % of the bf16 rounding error of the exact (fp64) result
+  producers   add_layernorm_q / add_rmsnorm_q / silu_mul_q must equal the unfused bf16 kernel + quantization exactly
   gemm_w8     fp32 accumulation like cuBLAS: its error vs an fp64 reference must be on the level of cuBLAS BF16's
               error on the dequantized weights
 Speed: every first-token GEMM shape at 1080p and VGA, CUDA events, median.
@@ -85,19 +87,21 @@ def test_i8_grouped(M, K, N, bias, gelu):
     wq, sw = quantize_int8(w)
     y = torch.empty(M, N, device=dev, dtype=bf)
     E.gemm_i8(xq, sxT, wq, sw, b, y, gelu)
-    r = torch.zeros(M, N, device=dev)
-    for g in range(K // 64):  # exact integer group sums, folded in fp32 in the kernel's order
-        part = (xq[:, g * 64:(g + 1) * 64].double() @ wq[:, g * 64:(g + 1) * 64].double().t()).float()
-        r = r + part * sxT[g][:, None]
-    r = r * sw[None, :]
+    r = torch.zeros(M, N, device=dev, dtype=torch.float64)
+    for g in range(K // 64):  # exact integer group sums with the same scales, in fp64
+        part = xq[:, g * 64:(g + 1) * 64].double() @ wq[:, g * 64:(g + 1) * 64].double().t()
+        r = r + part * sxT[g].double()[:, None]
+    r = r * sw.double()[None, :]
     if b is not None:
-        r = r + b.float()
+        r = r + b.double()
     if gelu:
         r = F.gelu(r, approximate="tanh")
-    u = bf16_ulps(y, r.to(bf))
-    # the kernel folds each group with one fma (one rounding instead of the reference's two): <= 1 ulp
-    check(f"gemm_i8 grouped {M}x{K}x{N}{' bias' if bias else ''}{' gelu' if gelu else ''}", u <= (2 if gelu else 1),
-          f"max {u} bf16 ulp vs exact reference")
+    # the fp32 fold (one fma per group) differs from fp64 by ~1e-7 relative to the partial sums, which is many bf16
+    # ulps on outputs near zero after cancellation: compare norms with the unavoidable bf16 output rounding instead
+    e_ours = ((y.double() - r).norm() / r.norm()).item()
+    e_round = ((r.to(bf).double() - r).norm() / r.norm()).item()
+    check(f"gemm_i8 grouped {M}x{K}x{N}{' bias' if bias else ''}{' gelu' if gelu else ''}", e_ours <= 1.05 * e_round + 1e-6,
+          f"rel err {e_ours:.3e} (bf16 rounding of the exact result {e_round:.3e})")
 
 
 def test_fused_producers():
