@@ -55,6 +55,7 @@ class FusedSiglip2Encoder:
             from .kernels import int8_ext
 
             self.ext8 = int8_ext()
+            self.qout = os.environ.get("LFM2_INT8_QOUT", "1") != "0"  # fc1 epilogue writes fc2's INT8 input (A/B)
 
             a16 = a16_kinds()
             for p in self.layers:
@@ -124,7 +125,7 @@ class FusedSiglip2Encoder:
             qkv = p["qkv"](xq).view(T, L, -1)
             y = p["o"](self._attention(qkv, runs, T, L))
             # fc1 + GELU writes fc2's INT8 input directly when fc2 uses groups of 64 (the default)
-            f = p["fc1"](ln_q(y, p["ln2"], p["fc1"]), gelu=True, quant_out=p["fc2"].group == 64)
+            f = p["fc1"](ln_q(y, p["ln2"], p["fc1"]), gelu=True, quant_out=self.qout and p["fc2"].group == 64)
             y = p["fc2"](f).view(T, L, D)
             if i + 1 < n_layers:
                 xq = ln_q(y, self.layers[i + 1]["ln1"], self.layers[i + 1]["qkv"])

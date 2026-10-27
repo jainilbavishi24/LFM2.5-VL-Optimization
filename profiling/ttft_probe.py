@@ -65,6 +65,10 @@ def main():
                         vt(**kw)
                 r["vision_hf_cudnn"] = cuda_ms(hf_cudnn, args.repeats)
                 r["vision_fused"] = cuda_ms(lambda: enc(**kw), args.repeats)
+                if args.int8:  # ablation: fc2's input quantized by a separate kernel instead of fc1's epilogue
+                    enc.qout = False
+                    r["vision_fused_noqout"] = cuda_ms(lambda: enc(**kw), args.repeats)
+                    enc.qout = True
             emb = dec._embed(ids, **mm)
             T = ids.shape[1]
             r["prefill_hf"] = cuda_ms(lambda: lm(inputs_embeds=emb, use_cache=True), args.repeats)
