@@ -5,6 +5,7 @@ INT8 kernel would (integer products are exact in FP32), then compared with the u
 Schemes (weights: symmetric INT8, one scale per output row, round-to-nearest, as lfm2opt.quant.quantize_int8):
   w8a16    INT8 weights, BF16 activations (dequantized weights, BF16 GEMM)
   w8a8     + activations INT8 with one dynamic scale per token (INT8 tensor-core GEMM)
+  w8a8x    W8A8 except the kinds in LFM2_INT8_A16 (default fc2, w2), which stay W8A16: the shipped mix
   w8a8_sq  + SmoothQuant (alpha 0.5): per input channel x / s, W * s, s from calibration prompts that are not in the
            test set (variants.CALIB_PROMPTS); layers that share an input (q|k|v, w1|w3) share s, so it can be applied
            inside the kernel that quantizes that input
@@ -24,6 +25,7 @@ import argparse
 import copy
 import io
 import json
+import os
 import statistics
 import sys
 import time
@@ -50,6 +52,7 @@ KINDS = {  # module-name suffix -> (kind, input group for SmoothQuant)
 }
 VKINDS = {"self_attn.q_proj": "vqkv", "self_attn.k_proj": "vqkv", "self_attn.v_proj": "vqkv", "self_attn.out_proj": "vout",
           "mlp.fc1": "fc1", "mlp.fc2": "fc2"}
+A16 = set(filter(None, os.environ.get("LFM2_INT8_A16", "fc2,w2").split(",")))
 TEXT_PROMPTS = ["Explain in detail how a bicycle works.", "What are the main causes of climate change?",
                 "Summarize the plot of Romeo and Juliet."]
 DEFAULT_CONFIGS = ("w8a16:vision,w8a16:lm,w8a16:all,w8a8:vision,w8a8:lm,w8a8:all,"
@@ -126,7 +129,7 @@ class Patch:
 
     def __enter__(self):
         for name, (m, scope, kind, grp) in self.sel.items():
-            a8 = self.scheme.startswith("w8a8") and kind != "head"
+            a8 = self.scheme.startswith("w8a8") and kind != "head" and not (self.scheme == "w8a8x" and kind in A16)
             s = self.smooth.get(name) if (self.smooth is not None and a8) else None
             w = m.weight.float() * (s[None, :] if s is not None else 1)
             q, sc = quantize_int8(w)

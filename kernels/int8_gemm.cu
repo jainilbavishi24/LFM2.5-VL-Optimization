@@ -186,18 +186,17 @@ __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ 
 }
 
 // ------------------------------------------------------------------------------------------------ W8A16
-// Per stage: X tile BM x 32 bf16 (64-byte rows, 4 chunks), W tile BN x 32 int8 (32-byte rows, 2 chunks).
+// Per stage: X tile BM x 64 bf16 (128-byte rows, 8 chunks), W tile BN x 64 int8 (64-byte rows, 4 chunks).
 // Fragments are read with plain LDS: for each k16 step a thread (g = lane / 4, t = lane % 4) takes the 4 consecutive
 // k at 4t..4t+3 of its row, for X (one 64-bit load) and for W (one 32-bit load = 4 int8). The mma's logical k slots
 // {2t, 2t+1, 2t+8, 2t+9} are mapped to those physical k for both operands alike, so the dot product is unchanged.
-__device__ __forceinline__ int swz_xa(int r, int c) { return (r * 4 + (c ^ (r & 2))) << 4; }       // 64-bit LDS
-__device__ __forceinline__ int swz_wb(int r, int c) { return (r * 2 + (c ^ ((r >> 2) & 1))) << 4; }  // 32-bit LDS
+__device__ __forceinline__ int swz_xa(int r, int c) { return (r * 8 + (c ^ ((r & 3) << 1))) << 4; }  // 64-bit LDS
 
 template <int BM, int STAGES, bool GELU>
 __global__ void __launch_bounds__(NT) gemm_w8_kernel(const bf16 *__restrict__ A, const int8_t *__restrict__ B,
                                                       const float *__restrict__ sb, const bf16 *__restrict__ bias,
                                                       bf16 *__restrict__ Y, int M, int N, int K) {
-    constexpr int BK = 32, MI = BM / 32;
+    constexpr int BK = 64, MI = BM / 32;
     extern __shared__ __align__(128) uint8_t smem[];
     uint8_t *sA = smem, *sB = smem + STAGES * BM * BK * 2;
     const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31, wm = warp >> 2, wn = warp & 3;
@@ -206,16 +205,16 @@ __global__ void __launch_bounds__(NT) gemm_w8_kernel(const bf16 *__restrict__ A,
     auto load = [&](int stage, int kt) {
         const int k0 = kt * BK;
 #pragma unroll
-        for (int it = 0; it < BM * 4 / NT; ++it) {
-            const int i = tid + it * NT, r = i >> 2, c = i & 3, gr = m0 + r, gk = k0 + c * 8;
+        for (int it = 0; it < BM * 8 / NT; ++it) {
+            const int i = tid + it * NT, r = i >> 3, c = i & 7, gr = m0 + r, gk = k0 + c * 8;
             const bool p = gr < M && gk < K;
             cp_async16(smem_u32(sA + stage * BM * BK * 2 + swz_xa(r, c)), A + (p ? (size_t)gr * K + gk : 0), p);
         }
 #pragma unroll
-        for (int it = 0; it < BN * 2 / NT; ++it) {
-            const int i = tid + it * NT, r = i >> 1, c = i & 1, gr = n0 + r, gk = k0 + c * 16;
+        for (int it = 0; it < BN * 4 / NT; ++it) {
+            const int i = tid + it * NT, r = i >> 2, c = i & 3, gr = n0 + r, gk = k0 + c * 16;
             const bool p = gr < N && gk < K;
-            cp_async16(smem_u32(sB + stage * BN * BK + swz_wb(r, c)), B + (p ? (size_t)gr * K + gk : 0), p);
+            cp_async16(smem_u32(sB + stage * BN * BK + swz_i8(r, c)), B + (p ? (size_t)gr * K + gk : 0), p);
         }
     };
 
@@ -243,7 +242,7 @@ __global__ void __launch_bounds__(NT) gemm_w8_kernel(const bf16 *__restrict__ A,
         cp_async_commit();
         const uint8_t *a_s = sA + (kt % STAGES) * BM * BK * 2, *b_s = sB + (kt % STAGES) * BN * BK;
 #pragma unroll
-        for (int ks = 0; ks < 2; ++ks) {  // two k16 steps per stage
+        for (int ks = 0; ks < 4; ++ks) {  // four k16 steps per stage
             uint32_t af[MI][4], bfr[4][2];
 #pragma unroll
             for (int i = 0; i < MI; ++i)
@@ -257,7 +256,7 @@ __global__ void __launch_bounds__(NT) gemm_w8_kernel(const bf16 *__restrict__ A,
 #pragma unroll
             for (int j = 0; j < 4; ++j) {
                 const int r = wn * 32 + j * 8 + g;
-                const int q = *reinterpret_cast<const int *>(b_s + swz_wb(r, ks) + t4 * 4);
+                const int q = *reinterpret_cast<const int *>(b_s + swz_i8(r, ks) + t4 * 4);
                 i8x4_to_bf16x4(q, bfr[j][0], bfr[j][1]);
             }
 #pragma unroll
@@ -324,7 +323,7 @@ __global__ void quant_rows_kernel(const bf16 *__restrict__ x, int8_t *__restrict
 }  // namespace
 
 // 48 KB of shared memory per block at BM = 128: two blocks per SM on Ada (100 KB) and Ampere (Jetson Orin)
-constexpr int I8_STAGES = 3, W8_STAGES = 4;
+constexpr int I8_STAGES = 3, W8_STAGES = 3;
 
 // BM = 128 for prefill-sized M; 64 when 128-row tiles would leave most SMs idle (short prompts, one image tile)
 static int pick_bm(int M, int N) {
@@ -373,11 +372,11 @@ void launch_gemm_w8(const void *A, const void *B, const float *sb, const void *b
     bf16 *y = (bf16 *)Y;
     const int bm = pick_bm(M, N);
     if (bm == 128) {
-        constexpr size_t sm = (size_t)W8_STAGES * (128 * 64 + BN * 32);
+        constexpr size_t sm = (size_t)W8_STAGES * (128 * 128 + BN * 64);
         if (gelu) LAUNCH_GEMM(gemm_w8_kernel, 128, W8_STAGES, true, sm, a, b, sb, bi, y, M, N, K)
         else LAUNCH_GEMM(gemm_w8_kernel, 128, W8_STAGES, false, sm, a, b, sb, bi, y, M, N, K)
     } else {
-        constexpr size_t sm = (size_t)W8_STAGES * (64 * 64 + BN * 32);
+        constexpr size_t sm = (size_t)W8_STAGES * (64 * 128 + BN * 64);
         if (gelu) LAUNCH_GEMM(gemm_w8_kernel, 64, W8_STAGES, true, sm, a, b, sb, bi, y, M, N, K)
         else LAUNCH_GEMM(gemm_w8_kernel, 64, W8_STAGES, false, sm, a, b, sb, bi, y, M, N, K)
     }
