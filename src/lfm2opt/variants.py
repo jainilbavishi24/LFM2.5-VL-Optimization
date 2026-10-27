@@ -81,12 +81,12 @@ def _cudagraph(net, processor):
     return net
 
 
-def _fused_variant(net, gemv, fused_prefill=False):
+def _fused_variant(net, gemv, fused_prefill=False, **opts):
     """O1 + O2-O4: the CUDA-graph decode runtime with our fused kernels (kernels/lfm2_decode.cu) and merged
     q|k|v and w1|w3 projections: ~140 kernels per step instead of ~700. Needs the CUDA extension (.venv-ref)."""
     from .runtime import StaticDecoder
 
-    dec = StaticDecoder(net, fused=True, gemv=gemv, fused_prefill=fused_prefill)
+    dec = StaticDecoder(net, fused=True, gemv=gemv, fused_prefill=fused_prefill, **opts)
 
     def generate(input_ids=None, attention_mask=None, max_new_tokens=1, min_new_tokens=None, do_sample=False,
                  pad_token_id=None, **model_inputs):
@@ -282,6 +282,16 @@ def _fused_w8_pf_vfused(net, processor):
     """Extension (changes the model): the full stack with INT8 weight-only decode GEMVs (prefill/vision stay BF16)."""
     _vision_fused(net, processor)
     return _fused_variant(net, "int8", fused_prefill=True)
+
+
+@register("fused_w8all_pf_vfused")
+def _fused_w8all_pf_vfused(net, processor):
+    """Extension (changes the model): INT8 weights everywhere, no BF16 copies kept. Decode: INT8 weight-only GEMV;
+    prefill and vision: our INT8 tensor-core GEMMs (lfm2opt.int8), W8A8 except vision fc2 / LM w2 (W8A16)."""
+    from .vision import patch_vision_tower
+
+    patch_vision_tower(net, int8=True, drop_bf16=True)
+    return _fused_variant(net, "int8", fused_prefill=True, prefill_int8=True, drop_bf16=True)
 
 
 def apply_variant(name: str, net, processor):

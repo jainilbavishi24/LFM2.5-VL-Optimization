@@ -6,6 +6,8 @@ Schemes (weights: symmetric INT8, one scale per output row, round-to-nearest, as
   w8a16    INT8 weights, BF16 activations (dequantized weights, BF16 GEMM)
   w8a8     + activations INT8 with one dynamic scale per token (INT8 tensor-core GEMM)
   w8a8x    W8A8 except the kinds in LFM2_INT8_A16 (default fc2, w2), which stay W8A16: the shipped mix
+  w8a8g<G> / w8a8xg<G>  activations with one scale per token *and group of G input channels* (K zero-padded to a
+           multiple of G): for every kind / only for the LFM2_INT8_A16 kinds (the others per token)
   w8a8_sq  + SmoothQuant (alpha 0.5): per input channel x / s, W * s, s from calibration prompts that are not in the
            test set (variants.CALIB_PROMPTS); layers that share an input (q|k|v, w1|w3) share s, so it can be applied
            inside the kernel that quantizes that input
@@ -26,6 +28,7 @@ import copy
 import io
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -129,7 +132,10 @@ class Patch:
 
     def __enter__(self):
         for name, (m, scope, kind, grp) in self.sel.items():
-            a8 = self.scheme.startswith("w8a8") and kind != "head" and not (self.scheme == "w8a8x" and kind in A16)
+            m_ = re.fullmatch(r"w8a8(x?)(?:g(\d+))?(_sq)?", self.scheme) if self.scheme.startswith("w8a8") else None
+            x_only, G = (bool(m_.group(1)), int(m_.group(2) or 0)) if m_ else (False, 0)
+            a8 = m_ is not None and kind != "head" and not (x_only and not G and kind in A16)
+            G = G if (G and (not x_only or kind in A16)) else 0
             s = self.smooth.get(name) if (self.smooth is not None and a8) else None
             w = m.weight.float() * (s[None, :] if s is not None else 1)
             q, sc = quantize_int8(w)
@@ -141,10 +147,16 @@ class Patch:
             b = m.bias.float() if m.bias is not None else None
             inv = (1.0 / s) if s is not None else None
 
-            def fwd(x, wd=wd, b=b, inv=inv):
+            def fwd(x, wd=wd, b=b, inv=inv, G=G):
                 xf = x.float() if inv is None else x.float() * inv
-                sx = xf.abs().amax(-1, keepdim=True).clamp_min(1e-8) / 127
-                xf = torch.round(xf / sx).clamp(-127, 127) * sx
+                if G:  # per token and group of G channels (zero padding does not change the group maxima)
+                    K = xf.shape[-1]
+                    xg = F.pad(xf, (0, -K % G)).unflatten(-1, (-1, G))
+                    sx = xg.abs().amax(-1, keepdim=True).clamp_min(1e-8) / 127
+                    xf = (torch.round(xg / sx).clamp(-127, 127) * sx).flatten(-2)[..., :K]
+                else:
+                    sx = xf.abs().amax(-1, keepdim=True).clamp_min(1e-8) / 127
+                    xf = torch.round(xf / sx).clamp(-127, 127) * sx
                 return F.linear(xf, wd, b).to(x.dtype)
             m.forward = fwd
         return self

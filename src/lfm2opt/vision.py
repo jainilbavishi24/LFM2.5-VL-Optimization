@@ -9,6 +9,9 @@ out GEMM, residual add, LayerNorm, fc1 GEMM, GELU, fc2 GEMM, residual add. Here:
   * GELU (tanh) fused into the fc1 GEMM epilogue (cuBLASLt GELU_BIAS via torch._addmm_activation): the 9216 x 4304
     activation is written once instead of written, read and written again;
   * residual add + next LayerNorm fused into one kernel (kernels/vision_ops.cu, add_layernorm).
+  * int8=True (extension, changes the weights): every encoder GEMM on INT8 weights through kernels/int8_gemm.cu,
+    W8A8 on INT8 tensor cores except the kinds in LFM2_INT8_A16 (default fc2), W8A16 there; GELU stays in the fc1
+    epilogue. The BF16 copies are not kept (drop_bf16 also frees the HF modules' weights).
 
     from lfm2opt.vision import patch_vision_tower; patch_vision_tower(net)
 """
@@ -24,7 +27,8 @@ from .kernels import vision_ext
 
 
 class FusedSiglip2Encoder:
-    def __init__(self, vt, attn: str = "flash_varlen", gelu_epilogue: bool = True, fuse_ln: bool = True):
+    def __init__(self, vt, attn: str = "flash_varlen", gelu_epilogue: bool = True, fuse_ln: bool = True,
+                 int8: bool = False, drop_bf16: bool = False):
         """attn: "flash_varlen" (default) / "cudnn_varlen": padding-free runs on the flash / cuDNN kernel without a mask;
         "cudnn_mask": HF semantics (padding mask), for ablation."""
         self.vt = vt
@@ -44,6 +48,21 @@ class FusedSiglip2Encoder:
                 w1=layer.mlp.fc1.weight, b1=layer.mlp.fc1.bias, w2=layer.mlp.fc2.weight, b2=layer.mlp.fc2.bias,
             ))
         self.ext = vision_ext() if fuse_ln else None
+        self.int8 = int8
+        if int8:
+            from .int8 import Int8Linear, a16_kinds
+
+            a16 = a16_kinds()
+            for p in self.layers:
+                for key, w, b, kind in (("qkv", "wqkv", "bqkv", "vqkv"), ("o", "wo", "bo", "vout"),
+                                        ("fc1", "w1", "b1", "fc1"), ("fc2", "w2", "b2", "fc2")):
+                    p[key] = Int8Linear(p.pop(w), p[b], a8=kind not in a16)
+            if drop_bf16:
+                for layer in vt.encoder.layers:
+                    a, m = layer.self_attn, layer.mlp
+                    for lin in (a.q_proj, a.k_proj, a.v_proj, a.out_proj, m.fc1, m.fc2):
+                        lin.weight = torch.nn.Parameter(lin.weight.new_empty(0), requires_grad=False)
+            torch.cuda.empty_cache()
 
     def _add_ln(self, h, y, ln, x):
         """h += y (y may be None); x = ln(h)."""
@@ -98,14 +117,20 @@ class FusedSiglip2Encoder:
         self._add_ln(h, None, self.layers[0]["ln1"], x)
         n_layers = len(self.layers)
         for i, p in enumerate(self.layers):
-            qkv = F.linear(x, p["wqkv"], p["bqkv"])
-            y = F.linear(self._attention(qkv, runs, T, L), p["wo"], p["bo"])
+            if self.int8:
+                qkv = p["qkv"](x)
+                y = p["o"](self._attention(qkv, runs, T, L))
+            else:
+                qkv = F.linear(x, p["wqkv"], p["bqkv"])
+                y = F.linear(self._attention(qkv, runs, T, L), p["wo"], p["bo"])
             self._add_ln(h, y, p["ln2"], x)
-            if self.gelu_epilogue:
+            if self.int8:
+                f = p["fc1"](x.view(-1, D), gelu=True)
+            elif self.gelu_epilogue:
                 f = torch._addmm_activation(p["b1"], x.view(-1, D), p["w1"].t(), use_gelu=True)
             else:
                 f = F.gelu(F.linear(x.view(-1, D), p["w1"], p["b1"]), approximate="tanh")
-            y = F.linear(f, p["w2"], p["b2"]).view(T, L, D)
+            y = (p["fc2"](f) if self.int8 else F.linear(f, p["w2"], p["b2"])).view(T, L, D)
             if i + 1 < n_layers:
                 self._add_ln(h, y, self.layers[i + 1]["ln1"], x)
             else:

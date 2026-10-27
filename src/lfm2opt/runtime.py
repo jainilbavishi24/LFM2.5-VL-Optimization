@@ -23,9 +23,15 @@ from transformers.models.lfm2.modeling_lfm2 import apply_rotary_pos_emb
 class StaticDecoder:
     def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16,
                  gemv: str = "cublas", w4_group: int = 128, w4_clip: bool = False, w4_keep_int8: tuple = (),
-                 calib: dict | None = None, fused_prefill: bool = False):
+                 calib: dict | None = None, fused_prefill: bool = False, prefill_int8: bool = False,
+                 drop_bf16: bool = False):
         self.net = net
         self.fused_prefill = fused_prefill  # O3b: prompt through our kernels straight into the static buffers
+        # extension: prefill GEMMs on the INT8 decode weights too (lfm2opt.int8: W8A8, W8A16 for LFM2_INT8_A16 kinds);
+        # drop_bf16 then frees every BF16 copy of the quantized weights (merged copies and the HF modules' own)
+        self.prefill_int8, self.drop_bf16 = prefill_int8, drop_bf16
+        assert not (prefill_int8 or drop_bf16) or (fused and fused_prefill and gemv == "int8"), \
+            "INT8 prefill needs the fused runtime with fused prefill and INT8 decode weights"
         self.epilogue_fusion = os.environ.get("LFM2_EPI", "1") != "0"  # O2d (decode, batch 1, our GEMV)
         self.lm = net.model.language_model
         self.lm_head = net.lm_head
@@ -174,7 +180,34 @@ class StaticDecoder:
                         self.lin[key], self.calib[key].to(self.device), self.w4_group, clip_search=self.w4_clip)
                 else:
                     self.lin[key], self.lin_scale[key] = quantize_int4(self.lin[key], self.w4_group, self.w4_clip)
+            if self.prefill_int8:
+                from .int8 import Int8Linear, a16_kinds
+
+                a16 = a16_kinds()
+                self.p8 = {key: Int8Linear(q=self.lin[key], scale=self.lin_scale[key], a8=key[0] not in a16)
+                           for key in self.lin if key[0] != "head"}
+                self.w8 = {key: Int8Linear(q=self.lin[key], scale=self.lin_scale[key], a8=False) for key in self.lin}
+            if self.drop_bf16:
+                self._drop_bf16()
             torch.cuda.empty_cache()
+
+    def _drop_bf16(self):
+        """Free the BF16 weights that the INT8 runtime no longer reads (edge memory footprint): the merged q|k|v and
+        w1|w3 copies, the copies kept for large batches, and the HF modules' own weights. lm_head stays if it is tied
+        to the token embedding (still needed for the lookup)."""
+        self.lin_bf16, self.w_qkv, self.w_13 = {}, {}, {}
+        tied = self.lm_head.weight.data_ptr() == self.lm.embed_tokens.weight.data_ptr()
+        mods = [] if tied else [self.lm_head]
+        for i, layer in enumerate(self.layers):
+            if self.is_attn[i]:
+                a = layer.self_attn
+                mods += [a.q_proj, a.k_proj, a.v_proj, a.out_proj]
+            else:
+                mods += [layer.conv.in_proj, layer.conv.out_proj]
+            f = layer.feed_forward
+            mods += [f.w1, f.w2, f.w3]
+        for m in mods:
+            m.weight = torch.nn.Parameter(m.weight.new_empty(0), requires_grad=False)
 
     def _epi_ok(self, B, key):
         """O2d epilogue-fused GEMV: batch 1, our BF16 / INT8 kernel (LFM2_EPI=0 to compare without it)."""
@@ -190,6 +223,9 @@ class StaticDecoder:
         if (self.gemv == "cublas" or B > 8 or (B > 1 and w.dtype == torch.uint8)
                 or (B > 4 and w.dtype == torch.bfloat16)):
             if w.dtype != torch.bfloat16:  # quantized decode weights: large batches use the kept BF16 copy
+                if self.drop_bf16:  # ... or, without one, our W8A16 tensor-core GEMM
+                    y = self.w8[key](x)
+                    return y if bias is None else y + bias
                 w = self.lin_bf16[key]
             return F.linear(x, w, bias)
         y = torch.empty(B, w.shape[0], device=x.device, dtype=x.dtype)
@@ -288,6 +324,13 @@ class StaticDecoder:
     def _wbf16(self, key):
         return self.lin_bf16[key] if key in self.lin_scale else self.lin[key]
 
+    def _plin(self, x, key, bias=None):
+        """Prefill GEMM for weight `key`: cuBLAS on the BF16 weights, or (prefill_int8) our INT8 GEMM."""
+        if not self.prefill_int8:
+            return F.linear(x, self._wbf16(key), bias)
+        y = self.p8[key](x)
+        return y if bias is None else y + bias
+
     @torch.no_grad()
     def _prefill_fused(self, input_ids, s, **model_inputs):
         """All prompt tokens at once: cuBLAS GEMMs on the merged BF16 weights + our fused kernels, k/v and conv state
@@ -300,24 +343,26 @@ class StaticDecoder:
         for i, layer in enumerate(self.layers):
             if self.is_attn[i]:
                 a = layer.self_attn
-                qkv = F.linear(x, self._wbf16(("qkv", i)))
+                qkv = self._plin(x, ("qkv", i))
                 q = torch.empty(B, self.n_heads, T, self.head_dim, device=h.device, dtype=h.dtype)
                 K.qk_norm_rope_kv_prefill(qkv, a.q_layernorm.weight, a.k_layernorm.weight, self.inv_freq,
                                           self.rope_scaling, q, s["k"][i], s["v"][i], self.eps)
                 o = F.scaled_dot_product_attention(q, s["k"][i][:, :, :T], s["v"][i][:, :, :T], is_causal=True,
                                                    scale=a.scaling, enable_gqa=True)
-                y = F.linear(o.transpose(1, 2).reshape(B * T, -1), self._wbf16(("o", i)))
+                y = self._plin(o.transpose(1, 2).reshape(B * T, -1), ("o", i))
             else:
                 c = layer.conv
-                bcx = F.linear(x, self._wbf16(("in", i)), c.in_proj.bias)
+                bcx = self._plin(x, ("in", i), c.in_proj.bias)
                 cy = torch.empty(B * T, H, device=h.device, dtype=h.dtype)
                 K.shortconv_prefill(bcx, s["conv"][i], self.conv_w[i], c.conv.bias, cy, T)
-                y = F.linear(cy, self._wbf16(("out", i)), c.out_proj.bias)
+                y = self._plin(cy, ("out", i), c.out_proj.bias)
             K.add_rmsnorm(h, y, layer.ffn_norm.weight, x, self.eps)
-            g = F.linear(x, self._wbf16(("w13", i)))
+            g = self._plin(x, ("w13", i))
             act = torch.empty(B * T, g.shape[-1] // 2, device=h.device, dtype=h.dtype)
             K.silu_mul(g, act)
-            K.add_rmsnorm(h, F.linear(act, self._wbf16(("w2", i))), self.norm_w[i + 1], x, self.eps)
+            K.add_rmsnorm(h, self._plin(act, ("w2", i)), self.norm_w[i + 1], x, self.eps)
+        if self.prefill_int8:  # last position only: the decode GEMV (or W8A16 GEMM for large batches)
+            return self._linear(x.view(B, T, H)[:, -1].contiguous(), ("head", 0))
         return F.linear(x.view(B, T, H)[:, -1], self._wbf16(("head", 0)))                # x = embedding_norm(h)
 
     # ---------------------------------------------------------------- request
@@ -338,6 +383,7 @@ class StaticDecoder:
             s["pos"].fill_(T)
             s["step"].zero_()
             return first, (s if max_new_tokens > 1 else None)
+        assert not self.drop_bf16, "padded batches need the HF prefill, whose BF16 weights were dropped"
         out = self.net(input_ids=input_ids, attention_mask=attention_mask, use_cache=True, logits_to_keep=1,
                        **model_inputs)
         logits = out.logits[:, -1]

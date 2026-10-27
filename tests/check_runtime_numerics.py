@@ -36,6 +36,7 @@ def main():
     ap.add_argument("--w4-int8", default="", help="int4: weight kinds kept in INT8 (qkv,o,in,out,w13,w2,head)")
     ap.add_argument("--fused-prefill", action="store_true", help="prompt through our prefill kernels (O3b)")
     ap.add_argument("--vision-fused", action="store_true", help="fused SigLIP2 encoder (O7d)")
+    ap.add_argument("--int8-all", action="store_true", help="extension: INT8 prefill and (with --vision-fused) vision GEMMs")
     ap.add_argument("--awq", action="store_true", help="int4: AWQ scales calibrated on variants.CALIB_PROMPTS")
     args = ap.parse_args()
 
@@ -51,10 +52,10 @@ def main():
     dec = StaticDecoder(net, keep_logits=True, fused=args.fused or args.gemv != "cublas", gemv=args.gemv,
                         w4_group=args.w4_group, w4_clip=args.w4_clip,
                         w4_keep_int8=tuple(k for k in args.w4_int8.split(",") if k), calib=calib,
-                        fused_prefill=args.fused_prefill)
+                        fused_prefill=args.fused_prefill, prefill_int8=args.int8_all)
     if args.vision_fused:  # HF reference keeps HF's vision tower: compare to an unpatched copy of the forward
         from lfm2opt.vision import FusedSiglip2Encoder
-        venc = FusedSiglip2Encoder(net.model.vision_tower)
+        venc = FusedSiglip2Encoder(net.model.vision_tower, int8=args.int8_all)
     report = {}
     for name in args.workloads.split(","):
         wl = WORKLOADS[name]

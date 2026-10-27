@@ -39,12 +39,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workloads", default="text,img_small,img_hd,img_fhd")
     ap.add_argument("--repeats", type=int, default=20)
+    ap.add_argument("--int8", action="store_true", help="ours = the INT8 extension (vision + prefill GEMMs on INT8)")
     args = ap.parse_args()
 
     net, proc = load()
     vt = net.model.vision_tower
-    enc = FusedSiglip2Encoder(vt)
-    dec = StaticDecoder(net, fused=True, gemv="bf16", fused_prefill=True)
+    enc = FusedSiglip2Encoder(vt, int8=args.int8)
+    dec = StaticDecoder(net, fused=True, gemv="int8" if args.int8 else "bf16", fused_prefill=True, prefill_int8=args.int8)
     lm = net.model.language_model
     cudnn = [SDPBackend.CUDNN_ATTENTION, SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]
     with torch.inference_mode():
