@@ -5,7 +5,7 @@
 //   gemm_i8  (W8A8):  X int8 with one scale per row (token), W int8 with one scale per row (output channel);
 //                     mma.m16n8k32 s8 -> exact int32 accumulation; y = (acc * sx[m]) * sw[n] + b[n]
 //                     Grouped: one X scale per row and group of 64 input channels (sxT[K/64][M]): after each
-//                     64-wide K stage the int32 partial sums are folded into fp32, acc += float(part) * sxT[g][m]
+//                     64-wide K stage the int32 partial sums are folded into fp32, acc = fma(float(part), sxT[g][m], acc)
 //                     (outlier channels then only coarsen their own group: W8A8 at the W8A16 quality level)
 //   gemm_w8  (W8A16): X bf16, W int8; W converted to bf16 in registers (exact: |q| <= 127) right before the
 //                     mma.m16n8k16 bf16 -> fp32 accumulation; y = acc * sw[n] + b[n]
@@ -18,6 +18,7 @@
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
 #include <cstdint>
+#include <cstdlib>
 
 typedef __nv_bfloat16 bf16;
 
@@ -167,45 +168,54 @@ __global__ void __launch_bounds__(NT) gemm_i8_kernel(const int8_t *__restrict__ 
             load((kt + STAGES - 1) % STAGES, kt + STAGES - 1);
         cp_async_commit();
         const uint8_t *a_s = sA + (kt % STAGES) * BM * BK, *b_s = sB + (kt % STAGES) * BN * BK;
+        uint32_t af[2][MI][4], bfr[2][4][2];  // both k32 steps of the stage
 #pragma unroll
-        for (int ks = 0; ks < 2; ++ks) {  // two k32 steps per 64-byte stage
-            uint32_t af[MI][4], bfr[4][2];
+        for (int ks = 0; ks < 2; ++ks) {
 #pragma unroll
             for (int i = 0; i < MI; ++i) {  // a0..a3 = rows 0-7 / 8-15 x k 0-15 / 16-31
                 const int r = wm * (BM / 2) + i * 16 + (lane & 15), c = ks * 2 + (lane >> 4);
-                ldmatrix_x4(af[i], smem_u32(a_s + swz_i8(r, c)));
+                ldmatrix_x4(af[ks][i], smem_u32(a_s + swz_i8(r, c)));
             }
 #pragma unroll
             for (int j = 0; j < 4; j += 2) {  // b0, b1 of two n8 tiles
                 const int r = wn * 32 + j * 8 + (lane & 7) + ((lane >> 4) << 3), c = ks * 2 + ((lane >> 3) & 1);
                 uint32_t t[4];
                 ldmatrix_x4(t, smem_u32(b_s + swz_i8(r, c)));
-                bfr[j][0] = t[0];
-                bfr[j][1] = t[1];
-                bfr[j + 1][0] = t[2];
-                bfr[j + 1][1] = t[3];
-            }
-#pragma unroll
-            for (int i = 0; i < MI; ++i)
-#pragma unroll
-                for (int j = 0; j < 4; ++j)
-                    mma_s8(acc[i][j], af[i], bfr[j][0], bfr[j][1]);
-        }
-        if (GROUPED) {  // fold this group's int32 sums into fp32 with its per-row scale (mul and add rounded separately)
-            const float *s_s = sS + (kt % STAGES) * BM;
-#pragma unroll
-            for (int i = 0; i < MI; ++i) {
-                const float s0 = s_s[wm * (BM / 2) + i * 16 + g], s1 = s_s[wm * (BM / 2) + i * 16 + g + 8];
-#pragma unroll
-                for (int j = 0; j < 4; ++j)
-#pragma unroll
-                    for (int e = 0; e < 4; ++e) {
-                        facc[GROUPED ? i : 0][j][e] =
-                            __fadd_rn(facc[GROUPED ? i : 0][j][e], __fmul_rn(i2f_small(acc[i][j][e]), e < 2 ? s0 : s1));
-                        acc[i][j][e] = 0;
-                    }
+                bfr[ks][j][0] = t[0];
+                bfr[ks][j][1] = t[1];
+                bfr[ks][j + 1][0] = t[2];
+                bfr[ks][j + 1][1] = t[3];
             }
         }
+        // GROUPED: fold this group's int32 sums into fp32 with the row's scale. Tile i - 1 is folded right after the
+        // last mma of tile i is issued, so the ALU work overlaps the tensor cores instead of following all of them.
+        const float *s_s = sS + (kt % STAGES) * BM;
+        auto fold = [&](int i) {
+            const float s0 = s_s[wm * (BM / 2) + i * 16 + g], s1 = s_s[wm * (BM / 2) + i * 16 + g + 8];
+#pragma unroll
+            for (int j = 0; j < 4; ++j)
+#pragma unroll
+                for (int e = 0; e < 4; ++e) {
+                    facc[GROUPED ? i : 0][j][e] =
+                        __fmaf_rn(i2f_small(acc[i][j][e]), e < 2 ? s0 : s1, facc[GROUPED ? i : 0][j][e]);
+                    acc[i][j][e] = 0;
+                }
+        };
+#pragma unroll
+        for (int i = 0; i < MI; ++i)
+#pragma unroll
+            for (int j = 0; j < 4; ++j)
+                mma_s8(acc[i][j], af[0][i], bfr[0][j][0], bfr[0][j][1]);
+#pragma unroll
+        for (int i = 0; i < MI; ++i) {
+#pragma unroll
+            for (int j = 0; j < 4; ++j)
+                mma_s8(acc[i][j], af[1][i], bfr[1][j][0], bfr[1][j][1]);
+            if (GROUPED && i > 0)
+                fold(i - 1);
+        }
+        if (GROUPED)
+            fold(MI - 1);
     }
     cp_async_wait<0>();
 
@@ -364,25 +374,38 @@ __global__ void quant_groups_kernel(const bf16 *__restrict__ x, int8_t *__restri
     if (row >= rows)
         return;
     const bf16 *xr = x + (size_t)row * K;
-    for (int c = 0; c < (K >> 7); ++c) {
-        const int i = (c * 32 + lane) * 4;
-        const uint2 u = *reinterpret_cast<const uint2 *>(xr + i);
-        const __nv_bfloat162 a = *reinterpret_cast<const __nv_bfloat162 *>(&u.x);
-        const __nv_bfloat162 b = *reinterpret_cast<const __nv_bfloat162 *>(&u.y);
-        const float v[4] = {__low2float(a), __high2float(a), __low2float(b), __high2float(b)};
-        float amax = fmaxf(fmaxf(fabsf(v[0]), fabsf(v[1])), fmaxf(fabsf(v[2]), fabsf(v[3])));
+    const int C = K >> 7;
+    for (int c0 = 0; c0 < C; c0 += 4) {  // 4 chunks per round: their loads are in flight together
+        float v[4][4];
 #pragma unroll
-        for (int o = 8; o > 0; o >>= 1)
-            amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
-        const float sc = fmaxf(amax, 1e-8f) / 127.f;
-        if ((lane & 15) == 0)
-            sT[(size_t)(2 * c + (lane >> 4)) * rows + row] = sc;
-        char4 o;
-        o.x = (signed char)max(-127, min(127, __float2int_rn(v[0] / sc)));
-        o.y = (signed char)max(-127, min(127, __float2int_rn(v[1] / sc)));
-        o.z = (signed char)max(-127, min(127, __float2int_rn(v[2] / sc)));
-        o.w = (signed char)max(-127, min(127, __float2int_rn(v[3] / sc)));
-        *reinterpret_cast<char4 *>(q + (size_t)row * K + i) = o;
+        for (int u = 0; u < 4; ++u)
+            if (c0 + u < C) {
+                const uint2 w = *reinterpret_cast<const uint2 *>(xr + ((c0 + u) * 32 + lane) * 4);
+                const __nv_bfloat162 a = *reinterpret_cast<const __nv_bfloat162 *>(&w.x);
+                const __nv_bfloat162 b = *reinterpret_cast<const __nv_bfloat162 *>(&w.y);
+                v[u][0] = __low2float(a);
+                v[u][1] = __high2float(a);
+                v[u][2] = __low2float(b);
+                v[u][3] = __high2float(b);
+            }
+#pragma unroll
+        for (int u = 0; u < 4; ++u)
+            if (c0 + u < C) {
+                const int c = c0 + u;
+                float amax = fmaxf(fmaxf(fabsf(v[u][0]), fabsf(v[u][1])), fmaxf(fabsf(v[u][2]), fabsf(v[u][3])));
+#pragma unroll
+                for (int o = 8; o > 0; o >>= 1)
+                    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+                const float sc = fmaxf(amax, 1e-8f) / 127.f;
+                if ((lane & 15) == 0)
+                    sT[(size_t)(2 * c + (lane >> 4)) * rows + row] = sc;
+                char4 o;
+                o.x = (signed char)max(-127, min(127, __float2int_rn(v[u][0] / sc)));
+                o.y = (signed char)max(-127, min(127, __float2int_rn(v[u][1] / sc)));
+                o.z = (signed char)max(-127, min(127, __float2int_rn(v[u][2] / sc)));
+                o.w = (signed char)max(-127, min(127, __float2int_rn(v[u][3] / sc)));
+                *reinterpret_cast<char4 *>(q + (size_t)row * K + (c * 32 + lane) * 4) = o;
+            }
     }
 }
 
@@ -393,6 +416,9 @@ constexpr int I8_STAGES = 3, W8_STAGES = 3;
 
 // BM = 128 for prefill-sized M; 64 when 128-row tiles would leave most SMs idle (short prompts, one image tile)
 static int pick_bm(int M, int N) {
+    static const int force = getenv("LFM2_INT8_BM") ? atoi(getenv("LFM2_INT8_BM")) : 0;  // 64 / 128: for A/B tests
+    if (force)
+        return force;
     static int sms = 0;
     if (!sms) {
         int dev = 0;
