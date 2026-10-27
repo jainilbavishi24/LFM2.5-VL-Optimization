@@ -51,9 +51,17 @@ __device__ __forceinline__ void mma_bf16(float (&c)[4], const uint32_t (&a)[4], 
                  : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
 }
 
-__device__ __forceinline__ uint32_t i8x2_to_bf16x2(int lo, int hi) {
-    __nv_bfloat162 r = __floats2bfloat162_rn((float)lo, (float)hi);  // exact for |q| <= 127
-    return *reinterpret_cast<uint32_t *>(&r);
+// 4 int8 -> 2 x bf16x2 without the (quarter-rate) int -> float conversions: q + 128 is placed in the mantissa of
+// 2^23 (fp32 bits 0x4B0000uu), 2^23 + 128 is subtracted (exact), and the upper halves of the small-integer fp32 values
+// are their exact bf16 encodings. 1 LOP + 6 PRMT + 4 FADD per 4 weights (the trick vLLM's Marlin kernels use).
+__device__ __forceinline__ void i8x4_to_bf16x4(int q, uint32_t &lo, uint32_t &hi) {
+    const uint32_t u = (uint32_t)q ^ 0x80808080u, base = 0x4B000000u;
+    const float a = __uint_as_float(__byte_perm(u, base, 0x7650)) - 8388736.f;
+    const float b = __uint_as_float(__byte_perm(u, base, 0x7651)) - 8388736.f;
+    const float c = __uint_as_float(__byte_perm(u, base, 0x7652)) - 8388736.f;
+    const float d = __uint_as_float(__byte_perm(u, base, 0x7653)) - 8388736.f;
+    lo = __byte_perm(__float_as_uint(a), __float_as_uint(b), 0x7632);
+    hi = __byte_perm(__float_as_uint(c), __float_as_uint(d), 0x7632);
 }
 
 __device__ __forceinline__ float gelu_tanh(float v) {  // = F.gelu(approximate="tanh")
@@ -250,8 +258,7 @@ __global__ void __launch_bounds__(NT) gemm_w8_kernel(const bf16 *__restrict__ A,
             for (int j = 0; j < 4; ++j) {
                 const int r = wn * 32 + j * 8 + g;
                 const int q = *reinterpret_cast<const int *>(b_s + swz_wb(r, ks) + t4 * 4);
-                bfr[j][0] = i8x2_to_bf16x2((q << 24) >> 24, (q << 16) >> 24);
-                bfr[j][1] = i8x2_to_bf16x2((q << 8) >> 24, q >> 24);
+                i8x4_to_bf16x4(q, bfr[j][0], bfr[j][1]);
             }
 #pragma unroll
             for (int i = 0; i < MI; ++i)

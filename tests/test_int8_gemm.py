@@ -31,7 +31,8 @@ results = []
 
 
 def ref_quant(x):
-    s = x.float().abs().amax(-1).clamp_min(1e-8) / 127
+    a = x.float().abs().amax(-1).clamp_min(1e-8)
+    s = a / torch.full_like(a, 127.0)  # true division (tensor / scalar would multiply by 1/127: 1 ulp off)
     return torch.round(x.float() / s[:, None]).clamp(-127, 127).to(torch.int8), s
 
 
