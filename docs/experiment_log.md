@@ -52,6 +52,32 @@ Entry template:
 
 ---
 
+## 2026-10-27: does the INT8 long-answer drift cost accuracy? Reference-scored captions and hallucination (L40S)  (Claude)
+
+**Goal:** INT8 everywhere drifted measurably from the FP32 answers (ROUGE-L −0.056), but drift is not error. Before considering quantization-aware training (team decision: measure first), score the outputs against human references.
+
+**Setup:**
+- Data: COCO Captions val2017, first shard (lmms-lab-encoder/COCO-Caption2017; 5 human captions per image) + COCO val2017 object annotations ([scripts/download_eval_data.sh](../scripts/download_eval_data.sh)).
+- `coco_cap`: 1000 images, the lmms-eval caption prompt, CIDEr-D / BLEU-4 / ROUGE-L (pycocoevalcap, PTB tokenizer).
+- `coco_desc`: 500 of the same images, "Describe this image in detail." (256 tokens), object hallucination with **CHAIR** (Rohrbach et al., EMNLP 2018): COCO objects mentioned that are neither annotated nor in the human captions. Port of the authors' rules in [benchmarks/caption_compare.py](../benchmarks/caption_compare.py); nouns singularized with WordNet (+ "-men → -man") instead of pattern.en.
+- Paired bootstrap over images (2000 resamples) vs the HF baseline. Job 52192, `results/eval/20261027-151452_L40S_l40_coco_captions`.
+
+**Result:**
+
+| Variant | CIDEr | ΔCIDEr [95 % CI] | BLEU-4 | CHAIR_s | CHAIR_i | ΔCHAIR_i [95 % CI] | object recall | words |
+|---|---|---|---|---|---|---|---|---|
+| HF baseline | 122.8 | | 34.5 | 17.8 % | 5.78 % | | 73.4 % | 64.7 |
+| ours BF16 | 123.3 | +0.5 [−0.6, +1.5] | 34.8 | 17.6 % | 5.69 % | −0.09 [−0.72, +0.54] | 73.5 % | 65.6 |
+| INT8 decode only | 123.3 | +0.5 [−0.7, +1.6] | 34.8 | 18.2 % | 5.79 % | +0.01 [−0.74, +0.74] | 73.3 % | 64.8 |
+| **INT8 everywhere** | **123.3** | **+0.5 [−1.1, +2.1]** | 34.7 | 17.4 % | 5.86 % | +0.08 [−0.74, +0.90] | 73.6 % | 63.5 |
+
+- Every interval contains 0: against human references, INT8 everywhere captions as well as the baseline and hallucinates no more objects in long descriptions. The ROUGE-L drift vs FP32 is a change of wording, not of correctness.
+- Generation time per description: HF 744 ms, ours BF16 300 ms, INT8 everywhere 164 ms (4.5×); energy 143.8 → 51.0 J per description.
+
+**Takeaway / next step:** no retraining needed for INT8 everywhere; quantization-aware training is not pursued. INT8 everywhere stays a separately reported extension, now with reference-scored long-answer evidence.
+
+---
+
 ## 2026-10-27: INT8 prefill / vision kernels (L40S)  (Claude)
 
 **Goal:** the kernels the probes asked for: INT8 GEMMs with the scales applied before the BF16 store, and INT8 activations produced by the kernels that already write them.

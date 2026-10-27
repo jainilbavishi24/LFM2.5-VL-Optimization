@@ -26,7 +26,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Quality evaluation on standard VLM benchmarks (MMStar, POPE, OCRBench, ChartQA, TextVQA) | 6 | ✅ 14 Oct: our BF16 stack and INT8 are within ±0.3 pp of the baseline, no significant difference (McNemar) |
 | O7d fused vision encoder, O3b fused LM prefill, O2d GEMV epilogues | 6 | ✅ 1080p vision 77 → 54 ms, LM prefill 37 → 31 ms; first token incl. preprocessing 164 → 90 ms, TPOT 3.70 → 2.07–2.12 ms (3 repeats) |
 | Extension: INT8 weight-only GEMV (O6) | 6 | ✅ 1.11 ms/token; evaluated separately (it changes the model) |
-| Extension: INT8 everywhere (prefill + vision on our INT8 tensor-core GEMMs, no BF16 weight copies) | 7 | ✅ 27 Oct (L40S): peak memory 4.6 → **2.1 GB** (HF 3.3), 1080p first token 84.5 → 72.4 ms; 5 benchmarks within −0.36…+0.08 pp (p ≥ 0.18); long answers drift more (ROUGE-L −0.056 vs HF BF16) |
+| Extension: INT8 everywhere (prefill + vision on our INT8 tensor-core GEMMs, no BF16 weight copies) | 7 | ✅ 27 Oct (L40S): peak memory 4.6 → **2.1 GB** (HF 3.3), 1080p first token 84.5 → 72.4 ms; 5 benchmarks within −0.36…+0.08 pp (p ≥ 0.18); long answers word differently (ROUGE-L −0.056) but score the same vs human references (CIDEr, CHAIR) |
 | Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
 | Main optimization work | 6 | — |
@@ -263,8 +263,9 @@ Full grids from the night of 13–14 Oct; details, correctness checks and pitfal
 | J/token | 1.43 | 0.76 | 0.45 | 0.45 |
 | 5 benchmarks vs baseline | | ±0.2 pp | ±0.2 pp | −0.36…+0.08 pp, p ≥ 0.18 |
 | long answers, ROUGE-L vs FP32 (HF BF16 0.813) | | 0.826 | 0.802 | **0.757** (−0.056, CI [−0.077, −0.034]) |
+| COCO Captions CIDEr (1000) / CHAIR_i, long descriptions (500) | 122.8 / 5.78 % | 123.3 / 5.69 % | 123.3 / 5.79 % | **123.3 / 5.86 %** (both n.s.) |
 
-Short answers are unchanged, but W8A8 activations make long answers drift measurably more than BF16 or weight-only INT8, mostly from the vision encoder (INT8 vision alone −0.050, INT8 LM prefill alone −0.030); whether that drift costs accuracy needs a reference-scored long-answer test.
+W8A8 activations make long answers drift measurably more from the FP32 wording than BF16 or weight-only INT8 (mostly the vision encoder: INT8 vision alone −0.050, INT8 LM prefill alone −0.030), **but not less correct**: scored against human references, INT8 everywhere matches the baseline on COCO Captions (CIDEr 123.3 vs 122.8, Δ CI [−1.1, +2.1]) and does not hallucinate more objects in 500 detailed descriptions (CHAIR_i 5.86 vs 5.78 %, Δ CI [−0.74, +0.90]; [benchmarks/caption_compare.py](benchmarks/caption_compare.py)). No retraining needed.
 
 Prefill/vision: cuDNN attention for SigLIP2 (`vision_cudnn`, O7a) cuts 1080p TTFT 116 → 102 ms (vision 73.5 → 62.9 ms). Generalization: on LFM2.5-VL-3B, TPOT 6.50 → 4.95 ms with the fused BF16 runtime (2.50 ms with INT8). Batched decode (img_small): batch 4 2929 tok/s (HF 1039), batch 16 ~5900 tok/s (HF 3987).
 

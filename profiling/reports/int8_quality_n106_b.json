@@ -1,0 +1,19 @@
+{
+  "cases": 106,
+  "gen": 64,
+  "decode_agree_bf16": 98.14268867924528,
+  "vision_rel_err_bf16": 4.966372794932821,
+  "results": [
+    {
+      "scheme": "w8a8xg64",
+      "scope": "all",
+      "tf_agree": 97.64150943396226,
+      "tf_agree_min": 92.1875,
+      "dlogit_median": 0.53125,
+      "kl_mean": 0.002945396954738447,
+      "first_token_agree": 96.0,
+      "n_first": 100,
+      "vision_rel_err": 8.522610042642043
+    }
+  ]
+}
