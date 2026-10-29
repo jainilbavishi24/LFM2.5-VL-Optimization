@@ -123,6 +123,7 @@ PAA_Project/
 │   ├── model_selection.md    ← why LFM2.5-VL-1.6B (vs 3B, vs Qwen2-VL)
 │   ├── inference_pipeline.md ← code walkthrough of the inference path, with file/line refs
 │   ├── pipeline_explained.md ← every stage explained with tensor shapes; who studies what
+│   ├── project_walkthrough.md ← the whole project as a story: code, how to run it, profiling tools and how to read their output
 │   ├── experiment_log.md     ← dated log of experiments, measurements, decisions
 │   └── notes/                ← optimization_plan.md (plan + TODO + open questions), gpu_sessions.md (how we use the 2 h GPU slots)
 ├── src/lfm2opt/              ← our Python package: model loading, runners, metrics, kernel bindings
