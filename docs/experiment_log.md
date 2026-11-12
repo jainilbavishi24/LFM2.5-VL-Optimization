@@ -15,6 +15,45 @@ Entry template:
 
 ---
 
+## 2026-11-12: First run on an NVIDIA DGX Spark (GB10): an edge-class Blackwell with 273 GB/s  (Claude)
+
+**Why:** the edge target. The Spark's GB10 (Blackwell, sm_121, 48 SMs, 128 GB LPDDR5x unified memory at 273 GB/s, 140 W SoC) has the same memory system as Jetson AGX Thor, so its batch-1 decode numbers carry over to Thor. It is a desktop box, not an embedded module, and is reported as such.
+
+**Setup:**
+- Access: borrowed account over SSH (`ssh spark`, a ControlMaster connection opened with the password once). All our files live in `~/PAA_Team21`; nothing else on the account is touched.
+- [scripts/spark/env.sh](../scripts/spark/env.sh) keeps every cache there (HF, pip, torch extensions, CUDA cache, TMPDIR). [scripts/spark/setup.sh](../scripts/spark/setup.sh) builds the venv (system Python 3.12 has headers), installs torch 2.11.0+cu130 aarch64 + requirements, downloads the weights and checks GPU/BF16/NVML. [scripts/spark/bg.sh](../scripts/spark/bg.sh) runs a command detached with a log.
+- Network: no IPv6 route; pypi.org is slow (~20 s per index page), download.pytorch.org and Hugging Face are fine. The laptop → Spark link is too slow for bulk copies (it stalled at 40 MB), so everything big is downloaded on the Spark.
+- Code: commit 1695ed3 (`-dirty` = an editor reformat of `kernels/lfm2_decode.cu`, identical apart from whitespace, plus the new spark scripts). Driver 580.178.04, CUDA 13.0, transformers 5.19.0.
+- NVML on GB10: the energy counter and power/clock samples work; power limit and max clocks are "not supported" (`nvml_error` in env.json).
+- Machine shared with other users (7 logged in, idle GPU, load ~0.1).
+
+**Correctness:**
+- `tests/test_kernels.py`: **109/109** on sm_121.
+- `tests/check_runtime_numerics.py --fused` (64 tokens): argmax agrees 63/63, 62/63, 63/63 (text / VGA / 1080p); the one flip is at an exact tie (top-2 margin 0.0).
+- `tests/test_preprocess.py`: 26 of 28 cases differ from the HF CPU processor by **one pixel level** (max diff 0.00784 = 2/255 after normalization) on ~3 % of pixels. Cause: on aarch64 PyTorch's CPU capability is `DEFAULT`, so the uint8 antialiased resize does not use the AVX2 int16 fixed-point path that our kernels replicate (bit-exact on every x86 host so far, 28/28). The Arm generic path itself differs from a float resize by up to one level (85–94 % equal). So HF's own preprocessing is platform-dependent at the one-level scale; our GPU output equals HF on x86.
+
+**Speed and energy** (batch 1, 5 repeats, `--no-phases`; `results/raw/20261112-190517_GB10_spark_base`, `…190631_GB10_spark_ours`; ours with GPU preprocessing):
+
+| | HF baseline | ours BF16 (`fused_gemv_pf_vfused`) | INT8 everywhere (`fused_w8all_pf_vfused`) |
+|---|---|---|---|
+| TPOT text / VGA / 1080p | 15.16 / 15.22 / 15.60 ms | **9.88 / 9.89 / 10.19** (1.53×) | **4.89 / 4.92 / 5.26** (3.0–3.1×) |
+| First token (generate) text / VGA / 1080p | 18.1 / 50.2 / 371.1 ms | 14.6 / 34.2 / 247.1 | 7.7 / 30.7 / 243.0 |
+| Preprocessing text / VGA / 1080p | 0.2 / 7.3 / 28.9 ms (CPU) | 0.2 / 0.9 / 4.2 (GPU) | 0.2 / 0.9 / 5.4 |
+| First token incl. preprocessing | 18.3 / 57.5 / 400.0 ms | 14.8 / 35.1 / 251.3 (1.2 / 1.6 / 1.6×) | 7.9 / 31.6 / 248.4 (2.3 / 1.8 / 1.6×) |
+| J/token | 0.326–0.346 | 0.208–0.217 (−36 %) | 0.122–0.135 (−62 %) |
+| J per 128-token answer text / VGA / 1080p | 41.7 / 44.2 / 62.3 | 26.7 / 28.3 / 42.0 | 15.9 / 17.1 / 30.0 |
+| Peak GPU memory | 3.0–3.3 GB | 4.3–4.6 GB | 1.8–2.1 GB |
+
+- **Decode is at its floor:** 2.34 GB / 273 GB/s = 8.6 ms, and our BF16 step takes 9.9 ms (1.15×). HF eager loses ~5 ms per token to launch/CPU overhead even on the Spark's fast Arm cores.
+- **INT8 matters most here:** half the bytes → 4.9 ms, 3.1× HF. On a 273 GB/s device it is the setting that makes the biggest difference, as expected from the bandwidth table.
+- **Short-prompt first token is weight-bound too:** the 18-token text prompt still reads every weight once, so BF16 cannot go below ~8.6 ms (14.6 measured) while INT8 gets 7.7 ms.
+- **1080p first token is compute-bound** (vision + 2.3 k-token prefill on 48 SMs): INT8 barely helps (247 → 243 ms). Worth a ttft_probe / gemm_efficiency look on GB10.
+- **Energy:** the Spark's HF baseline already uses 0.33 J/token (L40S HF: 1.43); ours brings it to 0.21 (BF16) and 0.12 J/token (INT8).
+
+**Takeaway / next step:** everything ports to GB10 unchanged and decode reaches 1.15× its bandwidth floor. Next on the Spark: repeats for error bars, the quality eval (5 benchmarks, to confirm the Arm preprocessing difference does not matter), ttft_probe and an ncu pass on GB10.
+
+---
+
 ## 2026-10-27: Demo video: HF baseline vs ours BF16 vs ours INT8 on real images, replayed from measured timestamps (L40S)  (Claude)
 
 **Goal:** a demo we can show without a GPU: the same image + prompt answered by the three versions side by side, with real measured timing (slowed down so the difference is visible), plus memory and energy.

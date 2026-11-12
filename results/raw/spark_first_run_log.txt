@@ -1,0 +1,56 @@
++ nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+NVIDIA GB10, 580.178.04
++ python tests/test_kernels.py
++ tail -5
+PASS  gemv_epi swiglu bf16 [16384x2048]  bit-identical=True  max|err| 0
+PASS  gemv_epi shortconv bf16 [6144x2048] (+state)  bit-identical=True  max|err| 0
+PASS  gemv_epi swiglu int8 [16384x2048]  bit-identical=True  max|err| 0
+PASS  gemv_epi shortconv int8 [6144x2048] (+state)  bit-identical=True  max|err| 0
+109/109 passed
++ python tests/test_preprocess.py
++ tail -3
+FAIL 2048x512  photo tiles=(5, 1024, 768) ids=True meta=True exact=96.7135% maxdiff=0.00784
+FAIL 2048x512  noise tiles=(5, 1024, 768) ids=True meta=True exact=96.7331% maxdiff=0.00784
+26 failures
++ python tests/check_runtime_numerics.py --workloads text,img_small,img_fhd --gen 64 --fused
++ tail -8
+text      T=   18  argmax agree 63/63  max|dlogit| 0.188  median 0.125  first token ok (max|dlogit| nan)  flips at near-ties: []
+img_small T=  252  argmax agree 62/63  max|dlogit| 0.250  median 0.125  first token ok (max|dlogit| nan)  flips at near-ties: [0.0]
+img_fhd   T= 2327  argmax agree 63/63  max|dlogit| 0.250  median 0.125  first token ok (max|dlogit| nan)  flips at near-ties: []
++ python benchmarks/bench.py --variants baseline --workloads text,img_small,img_fhd --gen-lens 1,128 --repeats 5 --no-phases --tag spark_base
+[bench] run 20261112-190517_GB10_spark_base on NVIDIA GB10 (sm_121), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> ~/PAA_Team21/PAA_Project/results/raw/20261112-190517_GB10_spark_base
+[bench] idle power 4.7 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 19.2s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     18.1 ms  E/run=   0.32 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1943.5 ms  E/run=  41.72 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     50.2 ms  E/run=   2.17 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1982.7 ms  E/run=  44.15 J  mem=3.02 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    371.1 ms  E/run=  18.29 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   2352.5 ms  E/run=  62.26 J  mem=3.26 GB
+[bench] done -> ~/PAA_Team21/PAA_Project/results/raw/20261112-190517_GB10_spark_base
++ python benchmarks/bench.py --variants fused_gemv_pf_vfused,fused_w8all_pf_vfused --preprocess gpu --workloads text,img_small,img_fhd --gen-lens 1,128 --repeats 5 --no-phases --tag spark_ours
+[bench] run 20261112-190631_GB10_spark_ours on NVIDIA GB10 (sm_121), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> ~/PAA_Team21/PAA_Project/results/raw/20261112-190631_GB10_spark_ours
+[bench] idle power 5.2 W
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 27.9s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     14.6 ms  E/run=   0.31 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1268.9 ms  E/run=  26.67 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     34.2 ms  E/run=   1.41 J  mem=4.30 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1290.2 ms  E/run=  28.33 J  mem=4.31 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    247.1 ms  E/run=  14.45 J  mem=4.61 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   1541.5 ms  E/run=  41.95 J  mem=4.61 GB
+[bench] variant=fused_w8all_pf_vfused dtype=bf16 attn=sdpa loaded in 28.5s
+[bench] fused_w8all_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      7.7 ms  E/run=   0.36 J  mem=1.79 GB
+[bench] fused_w8all_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    628.9 ms  E/run=  15.90 J  mem=1.79 GB
+[bench] fused_w8all_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     30.7 ms  E/run=   1.41 J  mem=1.81 GB
+[bench] fused_w8all_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    655.1 ms  E/run=  17.12 J  mem=1.82 GB
+[bench] fused_w8all_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    243.0 ms  E/run=  12.83 J  mem=2.10 GB
+[bench] fused_w8all_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    911.6 ms  E/run=  29.98 J  mem=2.10 GB
+[bench] done -> ~/PAA_Team21/PAA_Project/results/raw/20261112-190631_GB10_spark_ours
++ for d in results/raw/*_spark_*/
++ python benchmarks/summarize.py results/raw/20261112-190517_GB10_spark_base/
++ for d in results/raw/*_spark_*/
++ python benchmarks/summarize.py results/raw/20261112-190631_GB10_spark_ours/
++ echo FIRST_RUN_DONE
+FIRST_RUN_DONE
