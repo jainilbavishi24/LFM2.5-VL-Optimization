@@ -41,9 +41,20 @@ lmms-lab-encoder/textvqa data/validation-00001-of-00003.parquet 311190265 textvq
 lmms-lab-encoder/textvqa data/validation-00002-of-00003.parquet 298732781 textvqa_val2.parquet
 lmms-lab-encoder/COCO-Caption2017 data/val-00000-of-00002.parquet 423508333 coco_cap_val0.parquet
 EOF
-# Calibration images for GPTQ (lfm2opt.gptq): COCO test2017 (no labels, not used by any benchmark above), first shard
-pget "$HF/lmms-lab-encoder/COCO-Caption2017/resolve/main/data/test-00000-of-00014.parquet" \
-    "$ROOT/data/calib/coco_test0.parquet" 476252063
+# Calibration images for GPTQ (lfm2opt.gptq): COCO test2017 (no labels, not used by any benchmark above). The 476 MB
+# shard goes to local scratch ($CALIB_TMP, default /tmp); only 256 evenly spaced images are kept (~40 MB).
+CAL="$ROOT/data/calib/coco_test0_256.parquet"
+if [[ ! -f $CAL ]]; then
+    T="${CALIB_TMP:-/tmp}/paa_calib_$$"
+    pget "$HF/lmms-lab-encoder/COCO-Caption2017/resolve/main/data/test-00000-of-00014.parquet" "$T/coco_test0.parquet" 476252063 &&
+        mkdir -p "$(dirname "$CAL")" && "${PYTHON:-$ROOT/.venv-ref/bin/python}" - "$T/coco_test0.parquet" "$CAL" <<'PY'
+import sys, numpy as np, pyarrow.parquet as pq
+t = pq.read_table(sys.argv[1], columns=["image", "file_name"])
+pq.write_table(t.take(np.linspace(0, t.num_rows - 1, 256).round().astype(int)), sys.argv[2])
+print("calibration images:", sys.argv[2])
+PY
+    rm -rf "$T"
+fi
 # COCO val2017 object annotations (CHAIR hallucination metric for long descriptions): only the instances file is kept
 if [[ ! -f $OUT/instances_val2017.json ]]; then
     pget http://images.cocodataset.org/annotations/annotations_trainval2017.zip "$OUT/annotations_trainval2017.zip" 252907541 &&

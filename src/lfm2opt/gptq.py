@@ -16,12 +16,14 @@ see prompt or image-token activations (prefill keeps its own weights), so those 
 """
 
 import io
+import os
+from pathlib import Path
 
 import torch
 
 from .env import REPO_ROOT
 
-CALIB_PARQUET = REPO_ROOT / "data" / "calib" / "coco_test0.parquet"   # scripts/download_eval_data.sh
+CALIB_PARQUET = REPO_ROOT / "data" / "calib" / "coco_test0_256.parquet"   # 256 test2017 images, scripts/download_eval_data.sh
 IMAGE_PROMPTS = [
     "Give a detailed description of this picture.", "What is happening in this picture?",
     "List the objects you can see and where they are.", "Write a short caption for this image.",
@@ -184,6 +186,7 @@ def calib_samples(n_images=96):
     from PIL import Image
 
     t = pq.read_table(CALIB_PARQUET, columns=["image"])
+    assert n_images <= t.num_rows, f"{CALIB_PARQUET} has {t.num_rows} images"
     idx = torch.linspace(0, t.num_rows - 1, n_images).round().long().tolist()
     out = []
     for j, i in enumerate(idx):
@@ -254,10 +257,11 @@ def _key_modules(net):
 
 def gptq_decode_weights(net, processor, group=128, n_images=96, fmt="int4"):
     """GPTQ INT4 for every decode weight, keyed like StaticDecoder.lin: {key: (packed uint8, fp32 scales)}.
-    Cached in models/gptq/ (git-ignored): calibration + GPTQ take a few minutes once per configuration."""
+    Cached in models/gptq/ (git-ignored; LFM2_GPTQ_CACHE overrides the directory, e.g. node-local scratch):
+    calibration + GPTQ take a few minutes once per configuration."""
     assert fmt == "int4", "the runtime GEMV reads INT4 (NVFP4 is evaluated in the quality probe only)"
     name = getattr(net.config, "_name_or_path", "model").rstrip("/").split("/")[-1]
-    cache = REPO_ROOT / "models" / "gptq" / f"{name}_int4_g{group}_n{n_images}.pt"
+    cache = Path(os.environ.get("LFM2_GPTQ_CACHE", REPO_ROOT / "models" / "gptq")) / f"{name}_int4_g{group}_n{n_images}.pt"
     if cache.exists():
         return torch.load(cache, map_location="cuda")
     mods = dict(net.named_modules())

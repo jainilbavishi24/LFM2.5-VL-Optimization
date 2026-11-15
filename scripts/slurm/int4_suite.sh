@@ -13,6 +13,11 @@ STEPS="${STEPS:-tests probe numerics bench longform coco full}"
 W4="fused_w4_pf_vfused+gpuprep,fused_w4gptq_pf_vfused+gpuprep,fused_w4gptq64_pf_vfused+gpuprep"
 BENCH="$PY benchmarks/bench.py --workloads text,img_small,img_hd,img_fhd --gen-lens 1,128 --batch-sizes 1 --warmup 2 --repeats 10 --no-phases --idle-seconds 2"
 
+# GPTQ weight caches (~0.65 GB each) on node-local scratch: the team home is at its 50 GB quota
+export LFM2_GPTQ_CACHE="${LFM2_GPTQ_CACHE:-/tmp/paa_team21_gptq_$SLURM_JOB_ID}"
+mkdir -p "$LFM2_GPTQ_CACHE" && df -h "$LFM2_GPTQ_CACHE" | tail -1
+trap 'rm -rf "$LFM2_GPTQ_CACHE"' EXIT
+
 step() { local name="$1"; shift; echo "[int4] $(date +%T) $name start"; "$@"; echo "[int4] $(date +%T) $name rc=$?"; }
 latest() { ls -d results/eval/*_"$1" | tail -1; }
 
