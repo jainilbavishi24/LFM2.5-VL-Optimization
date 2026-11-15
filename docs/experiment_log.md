@@ -15,6 +15,73 @@ Entry template:
 
 ---
 
+## 2026-11-15/16: INT4 revisited with GPTQ (no training) and NVFP4, on the L40S  (Claude)
+
+**Question:** INT4 was dropped as too lossy (O6b: round-to-nearest, 86–93 % argmax agreement). Before considering quantization-aware training: does a calibration-only method, GPTQ, make 4-bit decode weights keep the answers? And does NVIDIA's NVFP4 format help?
+
+**What we built:**
+- [src/lfm2opt/gptq.py](../src/lfm2opt/gptq.py): GPTQ (Frantar et al., 2023) with group-wise scales and per-group clipping, plus an NVFP4 quantizer (E2M1 values, FP8 E4M3 scale per 16, fp32 per tensor).
+  - Calibration: 96 COCO **test2017** images (no labels, in none of our benchmarks; 256 kept in `data/calib/`) × 8 generic instructions + 16 text prompts. The BF16 model answers each greedily.
+  - The input Hessians use only the **decode positions** (the GEMVs never see prompt or image-token activations): 6,864 rows.
+  - Output: the same INT4 layout as `gemv_w4`, so no new kernel is needed.
+  - Cached per configuration (`LFM2_GPTQ_CACHE`; the job used node-local `/tmp` because the team home is at its 50 GB quota).
+- Variants: `fused_w4_pf_vfused` (RTN, group 128), `fused_w4gptq_pf_vfused` (GPTQ g128), `fused_w4gptq64_pf_vfused` (GPTQ g64). All are decode-only INT4 on the full BF16 stack.
+- [profiling/int4_quality_probe.py](../profiling/int4_quality_probe.py), [tests/test_gptq.py](../tests/test_gptq.py) (identity Hessian = RTN exactly, GPTQ < RTN output error, packing round trip, NVFP4 on grid, `gemv_w4` on GPTQ weights: all pass), [scripts/slurm/int4_suite.sh](../scripts/slurm/int4_suite.sh).
+- Job 66649 (node13), log `results/raw/l40_int4_suite_log.txt`.
+
+**Probe: 4-bit in every LM weight, prompt included** (106 cases, teacher-forced 64 tokens; BF16 noise floor 98.14 %; `profiling/reports/20261115-235010_L40S_int4_quality.json`):
+
+| Scheme | Agreement | KL | First token | Layer output error (w2 / o) |
+|---|---|---|---|---|
+| INT8 per row (reference) | 98.66 % | 0.0007 | 98 % | 0.01 / 0.01 % |
+| RTN INT4 g128 / g128c / g64c / g32c | 88.6 / 90.2 / 90.4 / 91.5 % | 0.061 → 0.033 | 85–92 % | 1.13 / 1.43 → 0.59 / 0.70 % |
+| RTN NVFP4 (g16) | 91.9 % | 0.031 | 91 % | 0.63 / 0.80 % |
+| GPTQ INT4 g128c / g64c / g32c | 91.0 / 91.3 / 92.3 % | 0.049 → 0.027 | 84–89 % | **0.17 / 0.18 → 0.11 / 0.12 %** |
+| GPTQ NVFP4 (g16) | 92.1 % | 0.032 | 88 % | 0.12 / 0.14 % |
+| GPTQ g128c / g64c + lm_head INT8 | 91.6 / 91.9 % | | 85 / 90 % | |
+
+- GPTQ cuts each layer's output error 4–8× on the calibration inputs. But when the *prompt* also runs on these weights, agreement improves only by 1–2 points: GPTQ was calibrated on decode inputs only, and the image-token activations of the prompt are not in its Hessians.
+- **NVFP4 brings no accuracy advantage** over INT4 with a group of 32 (RTN 91.9 vs 91.5 %, GPTQ 92.1 vs 92.3 %). A new NVFP4 GEMV is not worth writing.
+- `lm_head` is not the weak spot (+0.6 points kept in INT8); the loss is spread over the layers.
+
+**Runtime numerics, decode-only INT4** (prompt on BF16 weights, as deployed; teacher-forced 128 tokens × 3 inputs vs HF): RTN g128 **334/381 = 87.7 %** (flips at margins up to 2.2), GPTQ g128 **346/381 = 90.8 %**, GPTQ g64 **356/381 = 93.4 %** (flips ≤ 1.0), INT8 373/381 = 97.9 % (flips ≤ 0.19). Median |Δlogit|: INT4 1.4–2.8, INT8 0.25–0.31.
+
+**Speed and energy** (same session, batch 1, 10 repeats, 128 tokens; `results/raw/20261115-235449_L40S_l40_int4day_base`, `…235601_L40S_l40_int4day_ours`):
+
+| | HF | ours BF16 | INT8 | INT4 RTN | **INT4 GPTQ g128** | INT4 GPTQ g64 |
+|---|---|---|---|---|---|---|
+| TPOT text / 1080p | 8.83 / 8.95 ms | 3.29 / 3.34 | 1.77 / 1.83 | 1.06 / 1.13 | **1.06 / 1.14** (8.0×) | 1.07 / 1.29 |
+| J/token | 1.52–1.55 | 0.80 | 0.46–0.47 | 0.33–0.34 | **0.32–0.35** | 0.35–0.36 |
+| peak memory | 3.0–3.3 GB | 4.3–4.6 | 5.4–5.7 | 4.9–5.2 | 4.9–5.2 | 4.9–5.2 |
+
+- INT4 decode is **1.65× faster than INT8** and 8× faster than HF. GPTQ costs nothing at run time (same format). Group 64 loads twice the scales: slower at 1080p (1.29 ms).
+- Memory is *not* lower: prefill and vision keep their BF16 weights. INT4 everywhere would need INT4 prefill/vision GEMMs, and the probe says the prompt in 4-bit costs more accuracy.
+
+**Quality, decode-only INT4** (baselines = the earlier L40S runs with the same code and GPU):
+
+| | RTN g128 | **GPTQ g128** | GPTQ g64 |
+|---|---|---|---|
+| MMStar / POPE / OCRBench / ChartQA | +0.60 / −0.02 / −0.20 / +0.28 pp (n.s.) | +0.07 / −0.02 / −0.50 / −0.04 (all p ≥ 0.46) | +0.07 / −0.02 / −0.20 / −0.32 (p ≥ 0.17) |
+| TextVQA (5000) | **−0.62 pp, p = 0.002** | −0.33, p = 0.09 | −0.30, p = 0.12 |
+| same answers (5 benchmarks) | 80–99 % | 80–100 % | 82–99 % |
+| COCO CIDEr (1000; HF 122.8) | **118.3, Δ −4.5 [−7.5, −1.7]** | 122.2, Δ −0.6 [−3.1, +1.8] | 125.4, Δ +2.6 [+0.3, +4.9] |
+| CHAIR_i, 500 long descriptions (HF 5.78 %) | **7.13 %, Δ +1.35 [+0.15, +2.55]** | 5.89 %, Δ +0.11 [−0.91, +1.19] | 6.11 %, Δ +0.33 [−0.75, +1.44] |
+| object recall / words per description | 71.8 % / 57.0 | 73.7 % / 65.0 | 72.8 % / 63.4 |
+| long answers vs FP32: ROUGE-L / common prefix (HF BF16 0.813 / 41.7) | 0.539 / 9.0 tokens | 0.599 / 12.1 | 0.605 / 11.9 |
+
+`results/eval/20261115-235816_L40S_l40_w4_longform` (with copies of the reference runs' files), `…20261116-000127_…_l40_w4_coco`, `…000644_…_l40_w4_fullsize`.
+
+**Conclusions:**
+- **Round-to-nearest INT4 measurably hurts:** TextVQA −0.6 pp (p = 0.002), CIDEr −4.5, +1.35 points of hallucinated objects, shorter descriptions.
+- **GPTQ removes every measurable loss without training:** no benchmark differs significantly (19,000 questions), CIDEr and CHAIR are within their CIs, and object recall and length match HF.
+- It still rewords long answers much more than INT8 (ROUGE-L vs FP32 0.60 vs 0.80; it leaves the FP32 wording after ~12 tokens instead of ~39). Reference-scored quality says this is a change of wording, not of correctness. The CIs are about twice as wide as INT8's: "not measurably worse", not "identical".
+- **GPTQ g128 is the INT4 setting** (same quality as g64, faster at long context).
+- Quantization-aware training is not needed for decode-only INT4. It would only be worth trying for INT4 *everywhere* (prompt and vision in 4-bit), where the probe shows a calibration-only method falls short.
+
+**Next:** INT4 GPTQ on the DGX Spark (bandwidth-bound: the largest expected gain, ~3 ms/token vs 4.9 INT8); optionally GPTQ calibrated on prefill rows as well, for INT4 prefill.
+
+---
+
 ## 2026-11-12: First run on an NVIDIA DGX Spark (GB10): an edge-class Blackwell with 273 GB/s  (Claude)
 
 **Why:** the edge target. The Spark's GB10 (Blackwell, sm_121, 48 SMs, 128 GB LPDDR5x unified memory at 273 GB/s, 140 W SoC) has the same memory system as Jetson AGX Thor, so its batch-1 decode numbers carry over to Thor. It is a desktop box, not an embedded module, and is reported as such.

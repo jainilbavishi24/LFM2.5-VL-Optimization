@@ -839,7 +839,7 @@ Our CUDA-graph runtime is also about 40× more repeatable than eager HF, because
 | `torch.compile` on the vision tower | Slower than cuBLAS + cuDNN (118 vs 98 ms). |
 | cuDNN instead of flash for the padding-free vision attention | Slower. |
 | O2d first version | Slower; redesigned. |
-| INT4 GEMV (round-to-nearest, AWQ-style, group sizes, mixed precision) | 0.76 ms/token, but only 86–93 % argmax agreement. Too lossy without GPTQ-class methods. |
+| INT4 GEMV (round-to-nearest, AWQ-style, group sizes, mixed precision) | 0.76 ms/token, but only 86–93 % argmax agreement. Too lossy with round-to-nearest; later revisited with GPTQ (section 10.3). |
 
 ---
 
@@ -969,6 +969,21 @@ The variant is `fused_w8all_pf_vfused`.
 | COCO CIDEr / CHAIR_i | 122.8 / 5.78 % | 123.3 / 5.69 % | 123.3 / 5.86 % (n.s.) |
 
 Long answers are *worded* differently from FP32 more often (ROUGE-L −0.056; the vision encoder is the main source). But scored against human references they are just as correct and hallucinate no more, so **no retraining was needed**.
+
+---
+
+### 10.3 INT4 revisited with GPTQ (no training)
+
+Round-to-nearest INT4 (the dropped O6b) measurably hurts: TextVQA −0.6 pp (p = 0.002), COCO CIDEr −4.5, more hallucinated objects.
+
+**GPTQ** ([src/lfm2opt/gptq.py](../src/lfm2opt/gptq.py)) rounds each weight column in turn and pushes its rounding error onto the columns not yet rounded, using the layer's input Hessian from calibration answers. The calibration answers are on COCO test2017 images, which none of our benchmarks use. GPTQ writes the same INT4 layout, so the existing `gemv_w4` kernel runs it.
+
+Decode-only GPTQ INT4 (group 128, variant `fused_w4gptq_pf_vfused`) on the L40S:
+- **1.06 ms/token**: 1.65× faster than INT8 and 8× faster than HF.
+- No significant change on the 5 benchmarks, COCO CIDEr or CHAIR.
+- It rewords long answers more than INT8 does.
+
+NVFP4 was simulated and is no more accurate than INT4 with group 32. Training (QAT) was not needed. Run: `bash scripts/slurm/submit.sh int4_suite 6 "bash scripts/slurm/int4_suite.sh"`.
 
 ---
 
