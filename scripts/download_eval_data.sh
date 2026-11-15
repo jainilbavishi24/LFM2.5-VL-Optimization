@@ -41,6 +41,9 @@ lmms-lab-encoder/textvqa data/validation-00001-of-00003.parquet 311190265 textvq
 lmms-lab-encoder/textvqa data/validation-00002-of-00003.parquet 298732781 textvqa_val2.parquet
 lmms-lab-encoder/COCO-Caption2017 data/val-00000-of-00002.parquet 423508333 coco_cap_val0.parquet
 EOF
+# Calibration images for GPTQ (lfm2opt.gptq): COCO test2017 (no labels, not used by any benchmark above), first shard
+pget "$HF/lmms-lab-encoder/COCO-Caption2017/resolve/main/data/test-00000-of-00014.parquet" \
+    "$ROOT/data/calib/coco_test0.parquet" 476252063
 # COCO val2017 object annotations (CHAIR hallucination metric for long descriptions): only the instances file is kept
 if [[ ! -f $OUT/instances_val2017.json ]]; then
     pget http://images.cocodataset.org/annotations/annotations_trainval2017.zip "$OUT/annotations_trainval2017.zip" 252907541 &&

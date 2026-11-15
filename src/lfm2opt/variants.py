@@ -284,6 +284,37 @@ def _fused_w8_pf_vfused(net, processor):
     return _fused_variant(net, "int8", fused_prefill=True)
 
 
+def _w4_variant(net, processor, gptq_group=None):
+    """Extension (changes the model): the full BF16 stack (fused prefill + fused vision on BF16 weights) with 4-bit
+    weight-only decode GEMVs (kernels/lfm2_decode.cu gemv_w4, batch 1). gptq_group=None: round-to-nearest, group 128
+    (O6b, dropped as too lossy); else GPTQ INT4 with that group size (lfm2opt.gptq, calibrated on COCO test2017)."""
+    _vision_fused(net, processor)
+    if gptq_group is None:
+        return _fused_variant(net, "int4", fused_prefill=True)
+    from .gptq import gptq_decode_weights
+
+    pre = gptq_decode_weights(net, processor, group=gptq_group)
+    return _fused_variant(net, "int4", fused_prefill=True, w4_group=gptq_group, w4_pre=pre)
+
+
+@register("fused_w4_pf_vfused")
+def _fused_w4_pf_vfused(net, processor):
+    """Extension: INT4 round-to-nearest (group 128) decode on the full stack."""
+    return _w4_variant(net, processor)
+
+
+@register("fused_w4gptq_pf_vfused")
+def _fused_w4gptq_pf_vfused(net, processor):
+    """Extension: GPTQ INT4 (group 128) decode on the full stack."""
+    return _w4_variant(net, processor, 128)
+
+
+@register("fused_w4gptq64_pf_vfused")
+def _fused_w4gptq64_pf_vfused(net, processor):
+    """Extension: GPTQ INT4 (group 64) decode on the full stack."""
+    return _w4_variant(net, processor, 64)
+
+
 @register("fused_w8all_pf_vfused")
 def _fused_w8all_pf_vfused(net, processor):
     """Extension (changes the model): INT8 weights everywhere, no BF16 copies kept. Decode: INT8 weight-only GEMV;

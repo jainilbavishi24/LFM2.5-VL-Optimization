@@ -24,7 +24,7 @@ class StaticDecoder:
     def __init__(self, net, bucket: int = 256, keep_logits: bool = False, fused: bool = False, attn_splits: int = 16,
                  gemv: str = "cublas", w4_group: int = 128, w4_clip: bool = False, w4_keep_int8: tuple = (),
                  calib: dict | None = None, fused_prefill: bool = False, prefill_int8: bool = False,
-                 drop_bf16: bool = False):
+                 drop_bf16: bool = False, w4_pre: dict | None = None):
         self.net = net
         self.fused_prefill = fused_prefill  # O3b: prompt through our kernels straight into the static buffers
         # extension: prefill GEMMs on the INT8 decode weights too (lfm2opt.int8: W8A8, W8A16 for LFM2_INT8_A16 kinds);
@@ -58,6 +58,7 @@ class StaticDecoder:
         self.attn_splits = attn_splits  # fused path: flash-decoding splits over positions (0 = one block per head)
         self.w4_group, self.w4_clip, self.w4_keep_int8 = w4_group, w4_clip, set(w4_keep_int8)  # int4 options
         self.calib = calib or {}  # int4 AWQ: {weight key: calibration inputs [M, K]} (collect_calibration)
+        self.w4_pre = w4_pre or {}  # int4: precomputed {weight key: (packed, scales)}, e.g. GPTQ (lfm2opt.gptq)
         self.lin_inv_s = {}
         self.gemv = gemv  # fused path, batch 1: "cublas" (F.linear), "bf16" (our GEMV), "int8" / "int4" (O6: weight-only)
         self.trace = None  # a list -> generate() appends a CUDA event per token (demo/record.py); no host sync
@@ -176,6 +177,8 @@ class StaticDecoder:
             for key in list(self.lin):
                 if self.gemv == "int8" or key[0] in self.w4_keep_int8:     # mixed precision: sensitive ones in INT8
                     self.lin[key], self.lin_scale[key] = quantize_int8(self.lin[key])
+                elif key in self.w4_pre:
+                    self.lin[key], self.lin_scale[key] = self.w4_pre[key]
                 elif key in self.calib:
                     self.lin[key], self.lin_scale[key], self.lin_inv_s[key] = quantize_int4_awq(
                         self.lin[key], self.calib[key].to(self.device), self.w4_group, clip_search=self.w4_clip)

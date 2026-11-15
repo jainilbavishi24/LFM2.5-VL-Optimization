@@ -38,6 +38,7 @@ def main():
     ap.add_argument("--vision-fused", action="store_true", help="fused SigLIP2 encoder (O7d)")
     ap.add_argument("--int8-all", action="store_true", help="extension: INT8 prefill and (with --vision-fused) vision GEMMs")
     ap.add_argument("--awq", action="store_true", help="int4: AWQ scales calibrated on variants.CALIB_PROMPTS")
+    ap.add_argument("--gptq", action="store_true", help="int4: GPTQ weights (lfm2opt.gptq, group --w4-group)")
     args = ap.parse_args()
 
     net, processor = load()
@@ -49,10 +50,15 @@ def main():
         img = WORKLOADS["img_small"].image()
         calib = collect_calibration(net, [(build_inputs(processor, img if i % 2 == 0 else None, p), 64)
                                           for i, p in enumerate(CALIB_PROMPTS)])
+    w4_pre = None
+    if args.gptq:
+        from lfm2opt.gptq import gptq_decode_weights
+
+        w4_pre = gptq_decode_weights(net, processor, group=args.w4_group)
     dec = StaticDecoder(net, keep_logits=True, fused=args.fused or args.gemv != "cublas", gemv=args.gemv,
                         w4_group=args.w4_group, w4_clip=args.w4_clip,
                         w4_keep_int8=tuple(k for k in args.w4_int8.split(",") if k), calib=calib,
-                        fused_prefill=args.fused_prefill, prefill_int8=args.int8_all)
+                        fused_prefill=args.fused_prefill, prefill_int8=args.int8_all, w4_pre=w4_pre)
     if args.vision_fused:  # HF reference keeps HF's vision tower: compare to an unpatched copy of the forward
         from lfm2opt.vision import FusedSiglip2Encoder
         venc = FusedSiglip2Encoder(net.model.vision_tower, int8=args.int8_all)
