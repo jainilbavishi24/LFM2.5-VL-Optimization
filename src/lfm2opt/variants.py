@@ -288,12 +288,13 @@ def _w4_variant(net, processor, gptq_group=None):
     """Extension (changes the model): the full BF16 stack (fused prefill + fused vision on BF16 weights) with 4-bit
     weight-only decode GEMVs (kernels/lfm2_decode.cu gemv_w4, batch 1). gptq_group=None: round-to-nearest, group 128
     (O6b, dropped as too lossy); else GPTQ INT4 with that group size (lfm2opt.gptq, calibrated on COCO test2017)."""
-    _vision_fused(net, processor)
     if gptq_group is None:
+        _vision_fused(net, processor)
         return _fused_variant(net, "int4", fused_prefill=True)
     from .gptq import gptq_decode_weights
 
-    pre = gptq_decode_weights(net, processor, group=gptq_group)
+    pre = gptq_decode_weights(net, processor, group=gptq_group)  # calibrated on the unmodified HF model (cached)
+    _vision_fused(net, processor)
     return _fused_variant(net, "int4", fused_prefill=True, w4_group=gptq_group, w4_pre=pre)
 
 
