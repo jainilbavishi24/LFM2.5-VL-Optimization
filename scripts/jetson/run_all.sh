@@ -8,6 +8,7 @@
 # demo     demo/record.py on the 8 video cases (HF / ours BF16 / ours INT8 everywhere)
 # eval     5 benchmarks, 200 questions each
 # gemv     GEMV microbenchmark, old vs new int8/int4 conversion
+# eval_quant  INT8 everywhere / INT4 GPTQ on the same subset, one process per variant
 # bench2   quantized variants again after the conversion change (tag jetson_ours_bp)
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -50,6 +51,13 @@ for s in $STEPS; do
                 --variants baseline,fused_gemv_pf_vfused+gpuprep,fused_w8all_pf_vfused+gpuprep,fused_w4gptq_pf_vfused+gpuprep \
                 --tag jetson_subset
             step eval_compare $PY benchmarks/eval_compare.py "$(ls -d results/eval/*_jetson_subset | tail -1)" --md ;;
+        eval_quant)  # INT8 everywhere and INT4 on the same 1000 questions, one process each (15 GB shared memory)
+            for v in fused_w8all_pf_vfused+gpuprep fused_w4gptq_pf_vfused+gpuprep; do
+                step "eval $v" $PY benchmarks/eval_quality.py --benches mmstar,pope,ocrbench,chartqa,textvqa --limit 200 \
+                    --variants "$v" --tag jetson_subset_q
+            done
+            step eval_compare $PY benchmarks/eval_compare.py "$(ls -d results/eval/*_jetson_subset | tail -1)" \
+                results/eval/*_jetson_subset_q --md ;;
         *) echo "[jetson] unknown step $s" ;;
     esac
 done
