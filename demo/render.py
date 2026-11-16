@@ -369,7 +369,7 @@ def howto_frames(n_runs, warmup):
         ("Measured, not simulated", f"Every case ran {warmup} warm-up + {n_runs} timed times per model on the GPU; "
                                     "the video replays the median run from its CUDA-event timestamps. The clock starts "
                                     "with the decoded image in memory and stops when the answer is complete."),
-        ("Slow motion", "Answers take tens to hundreds of milliseconds. Each case plays once at real speed, then "
+        ("Slow motion", "Answers take from tens of milliseconds to seconds. Each case plays once at real speed, then "
                         "slowed down by the factor shown at the top right; the real-time clock keeps counting real "
                         "milliseconds."),
         ("Fair comparison", "Greedy decoding, batch 1, stop at end of answer, measured one after another on the same "

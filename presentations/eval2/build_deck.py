@@ -280,6 +280,23 @@ mem = {v: jet(v, "peak_mem_gb", "img_fhd") for v in ("baseline", "fused_gemv_pf_
 ttft = {v: [jet(v, "ttft_ms", wl, 1) for wl in ("text", "img_small", "img_fhd")]
         for v in ("baseline", "fused_gemv_pf_vfused", "fused_w8all_pf_vfused")}
 EV = eval_subset()
+
+
+def demo_summary():
+    """Geometric-mean speed-up and energy share vs HF over the Jetson demo cases (demo/video_jetson.json)."""
+    import math
+    cfg = json.loads((ROOT / "demo" / "video_jetson.json").read_text())
+    tr = json.loads((ROOT / cfg["run"] / "traces.json").read_text())
+    by = {(x["variant"], x["key"]): x for x in tr}
+    out = {}
+    for v in ("fused_gemv_pf_vfused+gpuprep", "fused_w8all_pf_vfused+gpuprep"):
+        sp = [by[("baseline", k)]["wall_ms_median"] / by[(v, k)]["wall_ms_median"] for k in cfg["cases"]]
+        en = [by[(v, k)]["energy_j_per_answer"] / by[("baseline", k)]["energy_j_per_answer"] for k in cfg["cases"]]
+        out[v] = (math.exp(sum(map(math.log, sp)) / len(sp)), 100 * math.exp(sum(map(math.log, en)) / len(en)))  # as the video
+    return out
+
+
+DEMO = demo_summary()
 GEMV = gemv_table()
 
 # ----------------------------------------------------------------------------------------------- 1 title
@@ -539,6 +556,8 @@ text(sl, 8.6, 2.0, 4.1, 2.2, [
     "8 real images (148×60 px to 35 MP) and prompts, answered by HF, ours BF16 and ours INT8 side by side",
     "every word appears at its GPU timestamp measured on the Jetson; shown at real speed, then slowed down",
     "here: function plot, 2.2 s after the request; INT8 has finished, same answer as HF",
+    "over the 8 cases: BF16 {:.2f}× faster at {:.0f} % of HF's energy, INT8 {:.2f}× at {:.0f} %".format(
+        *DEMO["fused_gemv_pf_vfused+gpuprep"], *DEMO["fused_w8all_pf_vfused+gpuprep"]),
 ], size=13, bullets=True)
 text(sl, 8.6, 4.3, 4.1, 0.4, "The live proof", size=16, bold=True)
 text(sl, 8.6, 4.75, 4.1, 1.6, [
