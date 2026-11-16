@@ -71,6 +71,12 @@ Entry template:
 
 INT4 is still above its byte floor (~6 ms): x loads and FMAs per weight are the limit on 8 SMs. Next would be packed half2 math or keeping x in registers across more rows.
 
+**End-of-answer check every 4 steps instead of 16** ([src/lfm2opt/runtime.py](../src/lfm2opt/runtime.py) `generate`, found in the first Jetson demo recording):
+- With `stop_at_eos` the CUDA-graph loop checks for EOS (a host sync) after 1, 2, 4, 8, 16 steps, then every `check_every`, which was 16.
+- A 17-token answer therefore ran 31 steps: the cats case took 947 ms for BF16 although its steps are a steady 24.4 ms (`token_ms` in the trace). The junk tokens after EOS were cut from the answer, so only time was lost.
+- That was invisible on the L40S (3 ms/step) but costs up to 0.4 s per answer on the Jetson. Now 4: at most 3 wasted steps, one more sync per 4 steps.
+- Fixed-length benchmarks (`bench.py`) never stop at EOS and are unaffected. The ms per question of the Jetson eval subset and of the first demo recording include the waste; the demo was re-recorded.
+
 **Quality on the board** (5 benchmarks × 200 questions, same prompts, greedy, `results/eval/20261117-025745_Orin_jetson_subset`): HF vs our BF16 stack MMStar 52.5 / 52.5, POPE 86.0 / 86.5, OCRBench 79.0 / 79.0, ChartQA 79.5 / 79.5, TextVQA 78.1 / 78.1. All McNemar p = 1.0; 94–99.5 % identical answers; 1.3–1.5× faster per question. The first try of INT8 everywhere and INT4 in the same process ran out of the 15 GB shared memory (NvMap error 12); they now run one process per variant (`eval_quant` step).
 
 ---
