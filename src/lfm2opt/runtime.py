@@ -459,10 +459,11 @@ class StaticDecoder:
 
     @torch.no_grad()
     def generate(self, input_ids, max_new_tokens: int, attention_mask=None, stop_at_eos: bool = False,
-                 check_every: int = 16, **model_inputs):
+                 check_every: int = 4, **model_inputs):
         """Greedy. Default: fixed length (EOS masked) like the benchmark. stop_at_eos=True: EOS allowed, and the replay
         loop stops once every row has produced one (checked after 1, 2, 4, ... steps, then every `check_every`: each
-        check is a host sync; tokens after a row's EOS are junk, cut them like HF does). Returns [B, prompt + new] ids."""
+        check is a host sync; tokens after a row's EOS are junk, cut them like HF does). check_every was 16: up to 15
+        wasted steps per answer, ~0.4 s on the Jetson (25 ms/step); 4 costs one sync per 4 steps. Returns [B, prompt + new]."""
         B = input_ids.shape[0]
         self.eos_bias.fill_(0.0 if stop_at_eos else float("-inf"))
         first, s = self.prefill(input_ids, max_new_tokens, attention_mask=attention_mask, **model_inputs)
