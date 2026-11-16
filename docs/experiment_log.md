@@ -77,6 +77,13 @@ INT4 is still above its byte floor (~6 ms): x loads and FMAs per weight are the 
 - That was invisible on the L40S (3 ms/step) but costs up to 0.4 s per answer on the Jetson. Now 4: at most 3 wasted steps, one more sync per 4 steps.
 - Fixed-length benchmarks (`bench.py`) never stop at EOS and are unaffected. The ms per question of the Jetson eval subset and of the first demo recording include the waste; the demo was re-recorded.
 
+**Demo on the Jetson** (`results/demo/20261117-040831_Orin_jetson_demo`, `demo/video_jetson.json`; same 8 cases and protocol as the L40S video; recorded after the EOS-check fix).
+- Time to the complete answer: geometric mean **1.67×** faster than HF for our BF16 stack and **2.06×** for INT8 everywhere. Energy per answer 75 % / 56 % of HF (whole module). Peak memory 3.2 / 4.5 / 2.0 GB.
+- Detailed description: HF 8.12 s, ours BF16 4.63 s, INT8 2.45 s. 35 MP scan: 2.89 / 1.93 / 1.77 s.
+- The first token of the large images is 1.2–1.5 s in every lane (vision encoder on 8 SMs), so the speed-up is largest for long answers.
+- Video: `presentations/demo/LFM2.5-VL_demo_Jetson_OrinNX.mp4` (not committed; `python demo/render.py ... --name LFM2.5-VL_demo_Jetson_OrinNX`).
+- Live check: `bash demo/live_jetson.sh --quick --only handwriting,cats` (`results/demo/*_Orin_live`): 6/6 answers identical to the video. Ours within 1 % of the video's times; HF within 4–13 % (CPU-bound).
+
 **Quality on the board** (5 benchmarks × 200 questions, same prompts, greedy, `results/eval/20261117-025745_Orin_jetson_subset`): HF vs our BF16 stack MMStar 52.5 / 52.5, POPE 86.0 / 86.5, OCRBench 79.0 / 79.0, ChartQA 79.5 / 79.5, TextVQA 78.1 / 78.1. All McNemar p = 1.0; 94–99.5 % identical answers; 1.3–1.5× faster per question. The first try of INT8 everywhere and INT4 in the same process ran out of the 15 GB shared memory (NvMap error 12); they now run one process per variant (`eval_quant` step).
 
 Quantized versions on the same 1000 questions (one process each, `results/eval/20261117-0347*/0358*_Orin_jetson_subset_q`). INT8 everywhere: MMStar 52.0, POPE 86.0, OCRBench 78.5, ChartQA 78.5, TextVQA 78.9. GPTQ INT4: 51.5 / 86.5 / 79.0 / 79.5 / 79.05. Every difference vs HF is within ±1 point, McNemar p ≥ 0.5 (only 200 questions per benchmark, so small differences cannot be resolved here; the L40S full sets are the precise test).

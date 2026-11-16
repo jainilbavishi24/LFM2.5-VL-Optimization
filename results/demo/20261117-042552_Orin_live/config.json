@@ -1,0 +1,34 @@
+{
+  "video": "demo/video_jetson.json",
+  "only": "handwriting,cats",
+  "variants": "baseline,fused_gemv_pf_vfused+gpuprep,fused_w8all_pf_vfused+gpuprep",
+  "warmup": 2,
+  "repeats": 3,
+  "energy_s": 0.0,
+  "quick": true,
+  "image": "",
+  "prompt": "Describe this image in detail.",
+  "max_new": 128,
+  "cases": [
+    {
+      "key": "handwriting",
+      "title": "Handwritten word",
+      "src": {
+        "parquet": "ocrbench.parquet",
+        "row": 152
+      },
+      "prompt": "What is written in the image?",
+      "max_new": 128
+    },
+    {
+      "key": "cats",
+      "title": "Everyday photo",
+      "src": {
+        "file": "assets/images/coco_000000039769.jpg"
+      },
+      "prompt": "How many cats are in this picture, and what are they doing?",
+      "max_new": 128
+    }
+  ],
+  "reference": "results/demo/20261117-040831_Orin_jetson_demo"
+}
