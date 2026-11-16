@@ -1,0 +1,7 @@
+# INT4 GEMV on the Jetson Orin NX (byte_perm conversion), rows per warp 1 / 2 / 4, us per call (/tmp/w4rows.py, 17 Nov)
+qkv            3072x2048  rows 1/2/4:    77.1us /    64.7us /    65.3us
+o / conv out   2048x2048  rows 1/2/4:    53.8us /    46.7us /    46.6us
+conv in        6144x2048  rows 1/2/4:   146.1us /   118.7us /   119.8us
+w1|w3          16384x2048  rows 1/2/4:   373.1us /   299.1us /   297.1us
+w2             2048x8192  rows 1/2/4:   158.0us /   129.4us /   131.1us
+lm_head        65536x2048  rows 1/2/4:  1459.0us /  1164.8us /  1145.4us

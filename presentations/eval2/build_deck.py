@@ -49,7 +49,7 @@ def f(r, k):
         return None
 
 
-J_BASE, J_OURS, J_BP = summary("jetson_base"), summary("jetson_ours"), summary("jetson_ours_bp")
+J_BASE, J_OURS, J_BP = summary("jetson_base"), summary("jetson_ours"), summary("jetson_final") or summary("jetson_ours_bp")
 
 
 def jet(variant, field, wl="text", gen=128, after=False):
@@ -65,10 +65,11 @@ def jet(variant, field, wl="text", gen=128, after=False):
 
 def eval_subset():
     """Jetson 5-benchmark subset: {variant: {bench: score}} from the latest *_jetson_subset run."""
-    runs = sorted(glob.glob(str(ROOT / "results" / "eval" / "*_jetson_subset")))
+    runs = sorted(glob.glob(str(ROOT / "results" / "eval" / "*_jetson_subset")))[-1:]
+    runs += sorted(glob.glob(str(ROOT / "results" / "eval" / "*_jetson_subset_q")))
     out = {}
-    if runs:
-        for line in open(Path(runs[-1]) / "summary.jsonl"):
+    for run in runs:
+        for line in open(Path(run) / "summary.jsonl"):
             s = json.loads(line)
             out.setdefault(s["variant"].split("+")[0], {})[s["bench"]] = 100 * s["score"]
     return out
@@ -86,7 +87,12 @@ def gemv_table():
         tag, body = parts[i], parts[i + 1]
         for m in re.finditer(r"^(\S[\w /|]+?)\s+(\d+)x(\d+)\s+\|.*?\|.*?\|\s*([\d.]+)us.*?int4\s+([\d.]+)us", body, re.M):
             res.setdefault(m.group(1).strip(), {})[tag] = (float(m.group(4)), float(m.group(5)))
-    return [(k, v["old"], v["new"]) for k, v in res.items() if "old" in v and "new" in v]
+    rows2 = {}
+    rl = RAW / "jetson_gemv_w4_rows.txt"
+    if rl.exists():
+        for m in re.finditer(r"^(\S[\w /|]+?)\s+\d+x\d+\s+rows 1/2/4:\s+[\d.]+us /\s+([\d.]+)us", rl.read_text(), re.M):
+            rows2[m.group(1).strip()] = float(m.group(2))
+    return [(k, v["old"][1], v["new"][1], rows2.get(k)) for k, v in res.items() if "old" in v and "new" in v]
 
 
 # ----------------------------------------------------------------------------------------------- drawing helpers
@@ -412,18 +418,19 @@ text(sl, 0.6, 2.0, 6.0, 2.3, [
 ], size=13, bullets=True)
 text(sl, 0.6, 4.3, 6.0, 0.4, "The fix (lfm2_decode.cu)", size=16, bold=True)
 text(sl, 0.6, 4.75, 6.0, 1.9, [
-    "put the 4- or 8-bit value into the mantissa of 2^23 with one byte permute, subtract 2^23 + offset in one FADD",
-    "full-rate instructions only; exact, so the output is bit-identical (all tests and token ids unchanged)",
+    "int → float without I2F: one byte permute puts the 4- or 8-bit value into the mantissa of 2^23, one FADD removes it",
+    "on ≤ 16 SMs: two rows per warp, so each x load and conversion serves two weight rows",
+    "both exact: output bit-identical, all 109 kernel tests unchanged",
 ], size=13, bullets=True)
 if GEMV:
-    rows = [["Weight matrix", "INT8 µs\nbefore → after", "INT4 µs\nbefore → after"]]
-    for name, old, new in GEMV:
-        rows.append([name, f"{old[0]:.0f} → {new[0]:.0f}", f"{old[1]:.0f} → {new[1]:.0f}"])
-    table(sl, 7.0, 1.6, 5.7, rows, [2.1, 1.8, 1.8], size=12, height=0.5)
+    rows = [["INT4 GEMV, µs", "before", "+ byte_perm", "+ 2 rows / warp"]]
+    for name, old, new, r2 in GEMV:
+        rows.append([name, f"{old:.0f}", f"{new:.0f}", f"{r2:.0f}" if r2 else "–"])
+    table(sl, 7.0, 1.6, 5.7, rows, [1.7, 1.2, 1.3, 1.5], size=12, height=0.45, highlight_col=3)
 else:
     box(sl, 7.0, 1.6, 5.7, 3.0)
     text(sl, 7.2, 2.6, 5.3, 1.0, "GEMV before / after: measurement pending", size=14, color=GRAY, align=PP_ALIGN.CENTER)
-y0 = 1.6 + 0.5 * (len(GEMV) + 1) + 0.35 if GEMV else 4.9
+y0 = 1.6 + 0.45 * (len(GEMV) + 1) + 0.35 if GEMV else 4.9
 for i, (big, lab) in enumerate([
     (f"{fmt_ms(w4_before)} → {fmt_ms(w4_tpot)} ms", "INT4 per word on the Jetson"),
     (f"{fmt_ms(w8_before)} → {fmt_ms(w8_tpot)} ms", "INT8 per word on the Jetson")]):
@@ -485,12 +492,14 @@ text(sl, 0.6, 5.1, 8.2, 1.0, "Every difference vs HF: not significant (exact McN
                              "CIDEr −4.5): GPTQ is what makes 4-bit usable.", size=12, color=INK)
 if EV.get("baseline"):
     b = EV["baseline"]
-    rows = [["On the Jetson (200 / benchmark)", "HF", "ours"]]
+    vs = [v for v in ("fused_gemv_pf_vfused", "fused_w8all_pf_vfused", "fused_w4gptq_pf_vfused") if v in EV]
+    heads = {"fused_gemv_pf_vfused": "BF16", "fused_w8all_pf_vfused": "INT8", "fused_w4gptq_pf_vfused": "INT4"}
+    rows = [["Jetson, 200 each", "HF"] + [heads[v] for v in vs]]
     for k, lab in (("mmstar", "MMStar"), ("pope", "POPE"), ("ocrbench", "OCRBench"), ("chartqa", "ChartQA"), ("textvqa", "TextVQA")):
-        o = EV.get("fused_gemv_pf_vfused", {}).get(k)
-        rows.append([lab, f"{b.get(k, 0):.1f}", f"{o:.1f}" if o is not None else "–"])
-    table(sl, 9.1, 1.55, 3.6, rows, [1.6, 1.0, 1.0], size=12, height=0.43)
-text(sl, 9.1, 4.3 if EV.get("baseline") else 1.6, 3.6, 1.5,
+        rows.append([lab, f"{b.get(k, 0):.1f}"] + [f"{EV[v][k]:.1f}" if k in EV[v] else "–" for v in vs])
+    cw = 2.5 / (1 + len(vs))
+    table(sl, 9.0, 1.55, 3.7, rows, [1.2] + [cw] * (1 + len(vs)), size=11, height=0.43)
+text(sl, 9.0, 4.3 if EV.get("baseline") else 1.6, 3.7, 1.5,
      "Long answers: our BF16 stays as close to FP32 as HF's own BF16. Quantized versions reword more, but score the same "
      "against human captions.", size=12, color=GRAY, italic=True)
 notes(sl, "Answers are checked at four levels: kernel tests, logits vs HF, 5 benchmarks, reference-scored long answers.")

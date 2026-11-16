@@ -1,0 +1,53 @@
+[jetson] 03:24:13 gemv_old start
+matrix                N x K |      cuBLAS bf16 |   ours bf16 (auto) | int8 shared(auto) / direct rows=1 / 2 / 4 | int4 (auto)
+qkv              3072x2048  |  144.2us 0.09TB/s |   136.4us 0.09TB/s |  75.7us 0.08 /  71.2us 0.09 /  71.9us 0.09 /  71.4us 0.09 | int4  81.0us (0.04TB/s)
+o / conv out     2048x2048  |  101.1us 0.08TB/s |    91.7us 0.09TB/s |  53.5us 0.08 /  47.7us 0.09 /  49.8us 0.08 /  48.8us 0.09 | int4  55.7us (0.04TB/s)
+conv in          6144x2048  |  289.2us 0.09TB/s |   277.7us 0.09TB/s | 138.6us 0.09 / 132.5us 0.09 / 133.1us 0.09 / 135.7us 0.09 | int4 153.4us (0.04TB/s)
+w1|w3           16384x2048  |  819.2us 0.08TB/s |   745.9us 0.09TB/s | 378.5us 0.09 / 382.7us 0.09 / 379.9us 0.09 / 378.3us 0.09 | int4 396.9us (0.04TB/s)
+w2               2048x8192  |  419.5us 0.08TB/s |   376.1us 0.09TB/s | 203.4us 0.08 / 183.8us 0.09 / 184.9us 0.09 / 186.9us 0.09 | int4 177.3us (0.05TB/s)
+lm_head         65536x2048  | 3528.7us 0.08TB/s |  3031.3us 0.09TB/s | 1539.3us 0.09 / 1510.2us 0.09 / 1546.9us 0.09 / 1547.9us 0.09 | int4 1302.1us (0.05TB/s)
+[jetson] 03:24:56 gemv_old rc=0
+[jetson] 03:24:56 gemv_new start
+matrix                N x K |      cuBLAS bf16 |   ours bf16 (auto) | int8 shared(auto) / direct rows=1 / 2 / 4 | int4 (auto)
+qkv              3072x2048  |  146.1us 0.09TB/s |   136.6us 0.09TB/s |  75.9us 0.08 /  70.8us 0.09 /  72.1us 0.09 /  70.7us 0.09 | int4  75.5us (0.04TB/s)
+o / conv out     2048x2048  |  102.0us 0.08TB/s |    92.1us 0.09TB/s |  54.3us 0.08 /  48.0us 0.09 /  50.6us 0.08 /  48.4us 0.09 | int4  52.6us (0.04TB/s)
+conv in          6144x2048  |  301.1us 0.08TB/s |   279.0us 0.09TB/s | 138.5us 0.09 / 133.4us 0.09 / 135.0us 0.09 / 134.6us 0.09 | int4 142.3us (0.05TB/s)
+w1|w3           16384x2048  |  824.0us 0.08TB/s |   748.1us 0.09TB/s | 376.3us 0.09 / 370.7us 0.09 / 371.1us 0.09 / 366.5us 0.09 | int4 363.2us (0.05TB/s)
+w2               2048x8192  |  420.9us 0.08TB/s |   379.0us 0.09TB/s | 207.1us 0.08 / 184.2us 0.09 / 188.2us 0.09 / 183.4us 0.09 | int4 157.0us (0.06TB/s)
+lm_head         65536x2048  | 3554.9us 0.08TB/s |  2968.4us 0.09TB/s | 1521.7us 0.09 / 1537.1us 0.09 / 1519.6us 0.09 / 1539.8us 0.09 | int4 1154.0us (0.06TB/s)
+[jetson] 03:25:14 gemv_new rc=0
+[jetson] 03:25:14 bench_quant start
+[bench] run 20261117-032523_Orin_jetson_ours_bp on Orin (sm_87), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/gautam/PAA_Project/results/raw/20261117-032523_Orin_jetson_ours_bp
+[bench] idle power 5.4 W
+[bench] variant=fused_w8_pf_vfused dtype=bf16 attn=sdpa loaded in 7.7s
+[bench] fused_w8_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     29.5 ms  E/run=   0.47 J  mem=5.36 GB
+[bench] fused_w8_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1734.2 ms  E/run=  45.71 J  mem=5.36 GB
+[bench] fused_w8_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    169.8 ms  E/run=   4.93 J  mem=5.40 GB
+[bench] fused_w8_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1887.8 ms  E/run=  50.73 J  mem=5.40 GB
+[bench] fused_w8_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    496.2 ms  E/run=  15.93 J  mem=5.48 GB
+[bench] fused_w8_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   2236.5 ms  E/run=  62.07 J  mem=5.48 GB
+[bench] fused_w8_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1467.6 ms  E/run=  47.79 J  mem=5.71 GB
+[bench] fused_w8_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   3282.3 ms  E/run=  95.25 J  mem=5.71 GB
+[bench] variant=fused_w8all_pf_vfused dtype=bf16 attn=sdpa loaded in 5.5s
+[bench] fused_w8all_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     26.4 ms  E/run=   0.40 J  mem=1.79 GB
+[bench] fused_w8all_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1739.4 ms  E/run=  46.16 J  mem=1.79 GB
+[bench] fused_w8all_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    186.4 ms  E/run=   4.63 J  mem=1.82 GB
+[bench] fused_w8all_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1905.2 ms  E/run=  50.44 J  mem=1.82 GB
+[bench] fused_w8all_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    564.9 ms  E/run=  14.29 J  mem=1.90 GB
+[bench] fused_w8all_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   2304.7 ms  E/run=  60.50 J  mem=1.90 GB
+[bench] fused_w8all_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1640.4 ms  E/run=  41.88 J  mem=2.12 GB
+[bench] fused_w8all_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   3432.5 ms  E/run=  89.23 J  mem=2.12 GB
+[bench] variant=fused_w4gptq_pf_vfused dtype=bf16 attn=sdpa loaded in 5.0s
+[bench] fused_w4gptq_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     29.5 ms  E/run=   0.38 J  mem=4.85 GB
+[bench] fused_w4gptq_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1616.3 ms  E/run=  39.16 J  mem=4.85 GB
+[bench] fused_w4gptq_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    170.8 ms  E/run=   4.98 J  mem=4.89 GB
+[bench] fused_w4gptq_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1767.3 ms  E/run=  43.97 J  mem=4.89 GB
+[bench] fused_w4gptq_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    494.7 ms  E/run=  15.94 J  mem=4.97 GB
+[bench] fused_w4gptq_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   2114.6 ms  E/run=  55.25 J  mem=4.97 GB
+[bench] fused_w4gptq_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1468.7 ms  E/run=  47.87 J  mem=5.20 GB
+[bench] fused_w4gptq_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   3146.3 ms  E/run=  88.39 J  mem=5.20 GB
+[bench] done -> /home/gautam/PAA_Project/results/raw/20261117-032523_Orin_jetson_ours_bp
+[jetson] 03:29:49 bench_quant rc=0
+[jetson] 03:29:50 demo start
+[demo] -> /home/gautam/PAA_Project/results/demo/20261117-032957_Orin_jetson_demo
