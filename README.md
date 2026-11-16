@@ -29,7 +29,7 @@ We profile the inference of the LFM2.5-VL-1.6B vision-language model on NVIDIA G
 | Extension: INT8 everywhere (prefill + vision on our INT8 tensor-core GEMMs, no BF16 weight copies) | 7 | ✅ 27 Oct (L40S): peak memory 4.6 → **2.1 GB** (HF 3.3), 1080p first token 84.5 → 72.4 ms; 5 benchmarks within −0.36…+0.08 pp (p ≥ 0.18); long answers word differently (ROUGE-L −0.056) but score the same vs human references (CIDEr, CHAIR) |
 | Demo video: 8 real images (148×60 px to 35 MP), HF vs ours BF16 vs ours INT8 replayed from measured per-token timestamps | 7 | ✅ 27 Oct (L40S): time to the complete answer 2.2× (BF16) and 3.1× (INT8) faster than HF (geometric mean), up to 4.8× on a detailed description; energy per answer 66 % / 49 % of HF — see [experiment log](docs/experiment_log.md) |
 | Extension: INT4 revisited, GPTQ (no training) vs round-to-nearest vs NVFP4 (L40S) | 8 | ✅ 16 Nov: decode-only GPTQ INT4 g128 1.06 ms/token (1.65× INT8, 8× HF, 0.32 J/token), no significant change on 5 benchmarks (19,000 questions), COCO CIDEr or CHAIR; RTN INT4 does lose (TextVQA p = 0.002, CIDEr −4.5); long answers reworded more than INT8; NVFP4 no better than INT4 g32 — see [experiment log](docs/experiment_log.md) |
-| **Jetson Orin NX 16GB** (edge target; JetPack 7.2, sm_87, 8 SMs, 102 GB/s, 40 W mode; `scripts/jetson/`) | 9 | ✅ 17 Nov: all kernel tests pass on sm_87; decode HF 51.4 → ours BF16 26.2 ms/token (1.96×, 1.15× the memory floor), INT8 13.8 ms (3.7×); J/token (whole module, INA3221) 0.87 → 0.59 → 0.35; INT8 everywhere 2.1 GB peak; first token 1080p 1.92 → 1.49 s (compute-bound on 8 SMs) — see [experiment log](docs/experiment_log.md) |
+| **Jetson Orin NX 16GB** (edge target; JetPack 7.2, sm_87, 8 SMs, 102 GB/s, 40 W mode; `scripts/jetson/`) | 9 | ✅ 17 Nov: all kernel tests pass on sm_87; decode HF 51.4 → ours BF16 26.2 ms/token (1.96×, 1.15× the memory floor), INT8 13.5 ms (3.8×), GPTQ INT4 10.4 ms (4.9×, after two edge-specific GEMV changes: I2F-free conversion, two rows per warp); J/token (whole module, INA3221) 0.87 → 0.59 → 0.36 → 0.27; INT8 everywhere 2.1 GB peak; 5 benchmarks (200 each) identical scores; first token 1080p 1.92 → 1.49 s (compute-bound on 8 SMs) — see [experiment log](docs/experiment_log.md) |
 | Edge-class GPU: NVIDIA DGX Spark (GB10, 273 GB/s, same memory system as Jetson AGX Thor; `scripts/spark/`) | 8 | ✅ 12 Nov first run: 109/109 kernel tests, decode HF 15.2 → ours BF16 9.9 ms (1.5×, 1.15× its bandwidth floor) → INT8 4.9 ms (3.1×); J/token 0.33 → 0.21 → 0.12; INT8 peak memory 1.8–2.1 GB — see [experiment log](docs/experiment_log.md) |
 | Bottleneck analysis | 4 | ✅ T4 and Blackwell: decode is launch/host-overhead bound (TPOT 3.8 ms vs ~1.7 ms weight-read floor; batch 16 costs +5 %); plan in [docs/notes/optimization_plan.md](docs/notes/optimization_plan.md) |
 | **Evaluation 1:** baseline & problem understanding | 5 | 📅 **Thu 22 Oct** — server baseline needed; timeline in [docs/notes/gpu_sessions.md](docs/notes/gpu_sessions.md) §0 |
@@ -309,6 +309,17 @@ Further prefill-side work (all BF16, CUDA events, 1080p):
 - LFM2.5-VL-3B on the L40S: TPOT 15.1 → 7.5 ms (2.0×), quality within ±0.2 pp.
 - Our GEMV kernels reach 81–97 % of the L40S's DRAM bandwidth (ncu).
 - Details in the [experiment log](docs/experiment_log.md).
+
+**Edge target: NVIDIA Jetson Orin NX 16GB** (JetPack 7.2, 8 SMs, 102 GB/s, 40 W mode; energy = whole module from the INA3221 `VDD_IN` rail; `scripts/jetson/`, figure `report/figures/jetson.png`):
+
+| Jetson, batch 1 | HF | ours BF16 | INT8 (decode) | INT8 everywhere | INT4 GPTQ (decode) |
+|---|---|---|---|---|---|
+| time per token | 51.4–51.9 ms | **26.2–26.7** (1.96×) | 13.5–14.1 (3.8×) | 13.7–14.3 | **10.4–11.1** (4.9×) |
+| J/token (module) | 0.87–0.89 | 0.59–0.61 | 0.36–0.38 | 0.36–0.37 | 0.27–0.28 |
+| first token text / 1080p incl. preprocessing | 71 ms / 1.92 s | 31 ms / 1.49 s | 30 ms / 1.51 s | 28 ms / 1.66 s | 30 ms / 1.49 s |
+| peak memory | 3.0–3.3 GB | 4.3–4.6 | 5.4–5.7 | **1.8–2.1** | 4.9–5.2 |
+
+On 8 SMs the INT4 GEMV was conversion-bound, not memory-bound. Replacing `I2F` with an exact byte-permute conversion and running two rows per warp (bit-identical) took INT4 from 13.5 to 10.4 ms per token.
 
 How close to the limit is this? At 1080p, 64.5 of the 87 ms first token are cuBLAS GEMMs running at 192 TFLOPS. That is 88 % of the best BF16 rate we measured on this GPU (219 TFLOPS; [profiling/gemm_efficiency.py](profiling/gemm_efficiency.py)). The decode step is at 1.09× its weight-read floor. Larger BF16 gains would need fewer bytes or FLOPs, i.e. quantization, which is our separately evaluated extension.
 
