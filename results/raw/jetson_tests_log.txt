@@ -1,0 +1,234 @@
+[jetson] 02:29:31 test_kernels start
+PASS  add_rmsnorm (residual)       max|err| 0  (ref max 4.88)
+PASS  add_rmsnorm (normed)         max|err| 0  (ref max 4.5)
+PASS  rmsnorm (no add)             max|err| 0  (ref max 4.22)
+PASS  shortconv_step (out)         max|err| 0  (ref max 8.38)
+PASS  shortconv_step (state)       max|err| 0  (ref max 7.19)
+PASS  qk_norm_rope (q)             max|err| 0  (ref max 4.91)
+PASS  qk_norm_rope (k -> cache)    max|err| 0  (ref max 4.62)
+PASS  qk_norm_rope (v -> cache)    max|err| 0  (ref max 3.12)
+PASS  qk_norm_rope (cache untouched) max|err| 0  (ref max 0)
+PASS  decode_attention (len 2301)  max|err| 0.0004883  (ref max 0.132)
+PASS  attention_split S=16 (len 2301) max|err| 0.0004883  (ref max 0.132)
+PASS  attention_split S=4 (len 2301) max|err| 0.0004883  (ref max 0.132)
+PASS  attention_split (len 1)      max|err| 0  (ref max 4.53)
+PASS  decode_attention (len 1)     max|err| 0  (ref max 4.53)
+PASS  silu_mul                     max|err| 0  (ref max 7.06)
+PASS  gemv bf16 [3072x2048]        max|err| 0.01562  (ref max 3.34)
+PASS  gemv int8 [3072x2048]        max|err| 0  (ref max 3.33)
+PASS  gemv int8 B=2 [3072x2048]    max|err| 0.001953  (ref max 3.67)
+PASS  gemv bf16 B=2 [3072x2048]    max|err| 0.0004883  (ref max 3.67)
+PASS  gemv int8 B=3 [3072x2048]    max|err| 3.052e-05  (ref max 3.56)
+PASS  gemv bf16 B=3 [3072x2048]    max|err| 0.0001221  (ref max 3.56)
+PASS  gemv int8 B=4 [3072x2048]    max|err| 6.104e-05  (ref max 3.33)
+PASS  gemv bf16 B=4 [3072x2048]    max|err| 0.003906  (ref max 3.33)
+PASS  gemv int8 B=7 [3072x2048]    max|err| 0.003906  (ref max 3.72)
+PASS  gemv bf16 B=7 [3072x2048]    max|err| 0.001953  (ref max 3.7)
+PASS  gemv int8 B=8 [3072x2048]    max|err| 0.003906  (ref max 3.97)
+PASS  gemv bf16 B=8 [3072x2048]    max|err| 0.003906  (ref max 3.95)
+PASS  gemv int8 B=13 [3072x2048]   max|err| 0.003906  (ref max 4)
+PASS  gemv bf16 B=13 [3072x2048]   max|err| 0.003906  (ref max 4)
+PASS  gemv int4 [3072x2048]        max|err| 1.192e-07  (ref max 3.3)
+PASS  gemv bf16 [6144x2048]        max|err| 3.815e-06  (ref max 3.45)
+PASS  gemv int8 [6144x2048]        max|err| 7.629e-06  (ref max 3.47)
+PASS  gemv int8 B=2 [6144x2048]    max|err| 0.007812  (ref max 3.84)
+PASS  gemv bf16 B=2 [6144x2048]    max|err| 0.01562  (ref max 3.83)
+PASS  gemv int8 B=3 [6144x2048]    max|err| 0.0004883  (ref max 4)
+PASS  gemv bf16 B=3 [6144x2048]    max|err| 0.01562  (ref max 3.98)
+PASS  gemv int8 B=4 [6144x2048]    max|err| 6.104e-05  (ref max 4.34)
+PASS  gemv bf16 B=4 [6144x2048]    max|err| 0.01562  (ref max 4.34)
+PASS  gemv int8 B=7 [6144x2048]    max|err| 0.007812  (ref max 3.83)
+PASS  gemv bf16 B=7 [6144x2048]    max|err| 0.01562  (ref max 3.81)
+PASS  gemv int8 B=8 [6144x2048]    max|err| 0.003906  (ref max 3.88)
+PASS  gemv bf16 B=8 [6144x2048]    max|err| 0.01562  (ref max 3.88)
+PASS  gemv int8 B=13 [6144x2048]   max|err| 0.001953  (ref max 3.61)
+PASS  gemv bf16 B=13 [6144x2048]   max|err| 0.01562  (ref max 3.61)
+PASS  gemv int4 [6144x2048]        max|err| 0  (ref max 3.59)
+PASS  gemv bf16 [2048x2048]        max|err| 0.01562  (ref max 2.89)
+PASS  gemv int8 [2048x2048]        max|err| 0  (ref max 2.89)
+PASS  gemv int8 B=2 [2048x2048]    max|err| 3.815e-06  (ref max 3.14)
+PASS  gemv bf16 B=2 [2048x2048]    max|err| 0.001953  (ref max 3.16)
+PASS  gemv int8 B=3 [2048x2048]    max|err| 6.104e-05  (ref max 3.98)
+PASS  gemv bf16 B=3 [2048x2048]    max|err| 0.007812  (ref max 3.98)
+PASS  gemv int8 B=4 [2048x2048]    max|err| 3.815e-06  (ref max 3.5)
+PASS  gemv bf16 B=4 [2048x2048]    max|err| 0.003906  (ref max 3.48)
+PASS  gemv int8 B=7 [2048x2048]    max|err| 0.0004883  (ref max 3.73)
+PASS  gemv bf16 B=7 [2048x2048]    max|err| 0.007812  (ref max 3.73)
+PASS  gemv int8 B=8 [2048x2048]    max|err| 0.001953  (ref max 4.19)
+PASS  gemv bf16 B=8 [2048x2048]    max|err| 0.007812  (ref max 4.19)
+PASS  gemv int8 B=13 [2048x2048]   max|err| 0.003906  (ref max 4)
+PASS  gemv bf16 B=13 [2048x2048]   max|err| 0.001953  (ref max 4)
+PASS  gemv int4 [2048x2048]        max|err| 0  (ref max 2.88)
+PASS  gemv bf16 [16384x2048]       max|err| 0.001953  (ref max 3.92)
+PASS  gemv int8 [16384x2048]       max|err| 0.001953  (ref max 3.91)
+PASS  gemv int8 B=2 [16384x2048]   max|err| 0.001953  (ref max 3.72)
+PASS  gemv bf16 B=2 [16384x2048]   max|err| 0.003906  (ref max 3.7)
+PASS  gemv int8 B=3 [16384x2048]   max|err| 0.007812  (ref max 4.03)
+PASS  gemv bf16 B=3 [16384x2048]   max|err| 0.007812  (ref max 4.03)
+PASS  gemv int8 B=4 [16384x2048]   max|err| 0.01562  (ref max 4)
+PASS  gemv bf16 B=4 [16384x2048]   max|err| 0.007812  (ref max 4)
+PASS  gemv int8 B=7 [16384x2048]   max|err| 0.003906  (ref max 3.81)
+PASS  gemv bf16 B=7 [16384x2048]   max|err| 0.01562  (ref max 3.81)
+PASS  gemv int8 B=8 [16384x2048]   max|err| 0.007812  (ref max 3.73)
+PASS  gemv bf16 B=8 [16384x2048]   max|err| 0.01562  (ref max 3.75)
+PASS  gemv int8 B=13 [16384x2048]  max|err| 0.007812  (ref max 4.56)
+PASS  gemv bf16 B=13 [16384x2048]  max|err| 0.01562  (ref max 4.56)
+PASS  gemv int4 [16384x2048]       max|err| 3.052e-05  (ref max 4.12)
+PASS  gemv bf16 [2048x8192]        max|err| 0.03125  (ref max 6.12)
+PASS  gemv int8 [2048x8192]        max|err| 0.003906  (ref max 6.12)
+PASS  gemv int8 B=2 [2048x8192]    max|err| 0  (ref max 6.44)
+PASS  gemv bf16 B=2 [2048x8192]    max|err| 0.03125  (ref max 6.44)
+PASS  gemv int8 B=3 [2048x8192]    max|err| 0  (ref max 7.69)
+PASS  gemv bf16 B=3 [2048x8192]    max|err| 0.03125  (ref max 7.69)
+PASS  gemv int8 B=4 [2048x8192]    max|err| 0.0001221  (ref max 7.59)
+PASS  gemv bf16 B=4 [2048x8192]    max|err| 0.03125  (ref max 7.59)
+PASS  gemv int8 B=7 [2048x8192]    max|err| 0.0004883  (ref max 7.53)
+PASS  gemv bf16 B=7 [2048x8192]    max|err| 0.03125  (ref max 7.53)
+PASS  gemv int8 B=8 [2048x8192]    max|err| 0.0004883  (ref max 8.12)
+PASS  gemv bf16 B=8 [2048x8192]    max|err| 0.0625  (ref max 8.06)
+PASS  gemv int8 B=13 [2048x8192]   max|err| 0.007812  (ref max 7.38)
+PASS  gemv bf16 B=13 [2048x8192]   max|err| 0.03125  (ref max 7.34)
+PASS  gemv int4 [2048x8192]        max|err| 1.907e-06  (ref max 6.06)
+PASS  gemv bf16 [65536x2048]       max|err| 0.007812  (ref max 3.88)
+PASS  gemv int8 [65536x2048]       max|err| 0.01562  (ref max 3.88)
+PASS  gemv int8 B=2 [65536x2048]   max|err| 0.003906  (ref max 4.41)
+PASS  gemv bf16 B=2 [65536x2048]   max|err| 0.01562  (ref max 4.41)
+PASS  gemv int8 B=3 [65536x2048]   max|err| 0.003906  (ref max 4.03)
+PASS  gemv bf16 B=3 [65536x2048]   max|err| 0.007812  (ref max 4)
+PASS  gemv int8 B=4 [65536x2048]   max|err| 0.003906  (ref max 4.75)
+PASS  gemv bf16 B=4 [65536x2048]   max|err| 0.007812  (ref max 4.75)
+PASS  gemv int8 B=7 [65536x2048]   max|err| 0.007812  (ref max 4.25)
+PASS  gemv bf16 B=7 [65536x2048]   max|err| 0.01562  (ref max 4.25)
+PASS  gemv int8 B=8 [65536x2048]   max|err| 0.007812  (ref max 5.06)
+PASS  gemv bf16 B=8 [65536x2048]   max|err| 0.01562  (ref max 5.03)
+PASS  gemv int8 B=13 [65536x2048]  max|err| 0.01562  (ref max 4.28)
+PASS  gemv bf16 B=13 [65536x2048]  max|err| 0.007812  (ref max 4.28)
+PASS  gemv int4 [65536x2048]       max|err| 0.007812  (ref max 3.8)
+PASS  gemv_epi swiglu bf16 [16384x2048]  bit-identical=True  max|err| 0
+PASS  gemv_epi shortconv bf16 [6144x2048] (+state)  bit-identical=True  max|err| 0
+PASS  gemv_epi swiglu int8 [16384x2048]  bit-identical=True  max|err| 0
+PASS  gemv_epi shortconv int8 [6144x2048] (+state)  bit-identical=True  max|err| 0
+109/109 passed
+[jetson] 02:30:20 test_kernels rc=0
+[jetson] 02:30:20 test_preprocess start
+FAIL  640x480  photo tiles=(1, 1024, 768) ids=True meta=True exact=82.6319% maxdiff=0.00784
+FAIL  640x480  noise tiles=(1, 1024, 768) ids=True meta=True exact=82.5347% maxdiff=0.00784
+FAIL 1280x720  photo tiles=(3, 1024, 768) ids=True meta=True exact=84.1152% maxdiff=0.00784
+FAIL 1280x720  noise tiles=(3, 1024, 768) ids=True meta=True exact=84.3259% maxdiff=0.00784
+FAIL 1920x1080 photo tiles=(9, 1024, 768) ids=True meta=True exact=82.7277% maxdiff=0.00784
+FAIL 1920x1080 noise tiles=(9, 1024, 768) ids=True meta=True exact=81.5411% maxdiff=0.00784
+FAIL  200x150  photo tiles=(1, 1024, 768) ids=True meta=True exact=95.1547% maxdiff=0.00784
+FAIL  200x150  noise tiles=(1, 1024, 768) ids=True meta=True exact=94.5847% maxdiff=0.00784
+FAIL   64x64   photo tiles=(1, 1024, 768) ids=True meta=True exact=94.8292% maxdiff=0.00784
+FAIL   64x64   noise tiles=(1, 1024, 768) ids=True meta=True exact=94.6699% maxdiff=0.00784
+OK    512x512  photo tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+OK    512x512  noise tiles=(1, 1024, 768) ids=True meta=True exact=100.0000% maxdiff=0.00000
+FAIL  720x1280 photo tiles=(3, 1024, 768) ids=True meta=True exact=83.7885% maxdiff=0.00784
+FAIL  720x1280 noise tiles=(3, 1024, 768) ids=True meta=True exact=83.6878% maxdiff=0.00784
+FAIL 1000x777  photo tiles=(7, 1024, 768) ids=True meta=True exact=82.6812% maxdiff=0.00784
+FAIL 1000x777  noise tiles=(7, 1024, 768) ids=True meta=True exact=81.0734% maxdiff=0.00784
+FAIL  333x1500 photo tiles=(1, 1024, 768) ids=True meta=True exact=85.2179% maxdiff=0.00784
+FAIL  333x1500 noise tiles=(1, 1024, 768) ids=True meta=True exact=85.1821% maxdiff=0.00784
+FAIL 3000x2000 photo tiles=(7, 1024, 768) ids=True meta=True exact=86.2956% maxdiff=0.00784
+FAIL 3000x2000 noise tiles=(7, 1024, 768) ids=True meta=True exact=86.9776% maxdiff=0.00784
+FAIL 4032x3024 photo tiles=(7, 1024, 768) ids=True meta=True exact=88.2176% maxdiff=0.00784
+FAIL 4032x3024 noise tiles=(7, 1024, 768) ids=True meta=True exact=89.5563% maxdiff=0.00784
+FAIL  800x600  photo tiles=(1, 1024, 768) ids=True meta=True exact=84.7992% maxdiff=0.00784
+FAIL  800x600  noise tiles=(1, 1024, 768) ids=True meta=True exact=85.1426% maxdiff=0.00784
+FAIL 1024x1024 photo tiles=(5, 1024, 768) ids=True meta=True exact=96.7116% maxdiff=0.00784
+FAIL 1024x1024 noise tiles=(5, 1024, 768) ids=True meta=True exact=96.7337% maxdiff=0.00784
+FAIL 2048x512  photo tiles=(5, 1024, 768) ids=True meta=True exact=96.7135% maxdiff=0.00784
+FAIL 2048x512  noise tiles=(5, 1024, 768) ids=True meta=True exact=96.7331% maxdiff=0.00784
+26 failures
+[jetson] 02:31:06 test_preprocess rc=0
+[jetson] 02:31:06 test_int8_gemm start
+PASS  quant_rows 1x2048                            q mismatches 0, scale max|d| 0
+PASS  quant_rows 37x1152                           q mismatches 0, scale max|d| 0
+PASS  quant_rows 2327x2048                         q mismatches 0, scale max|d| 0
+PASS  quant_rows 9216x1152                         q mismatches 0, scale max|d| 0
+PASS  gemm_i8 9216x1152x3456 bias                  max 0 bf16 ulp vs exact reference
+PASS  gemm_i8 9216x1152x4304 bias gelu             max 1 bf16 ulp vs exact reference
+PASS  gemm_i8 2327x2048x16384                      max 0 bf16 ulp vs exact reference
+PASS  gemm_i8 272x2048x3072                        max 0 bf16 ulp vs exact reference
+PASS  gemm_i8 17x2048x2048                         max 0 bf16 ulp vs exact reference
+PASS  gemm_i8 1x1152x1152 bias                     max 0 bf16 ulp vs exact reference
+PASS  gemm_i8 300x1152x1152 bias gelu              max 0 bf16 ulp vs exact reference
+PASS  quant_rows grouped 1x2048                    q mismatches 0, scale max|d| 0
+PASS  quant_rows grouped 37x1152                   q mismatches 0, scale max|d| 0
+PASS  quant_rows grouped 2327x8192                 q mismatches 0, scale max|d| 0
+PASS  quant_rows grouped 9216x4352                 q mismatches 0, scale max|d| 0
+PASS  gemm_i8 grouped 9216x1152x3456 bias          rel err 1.658e-03 (bf16 rounding of the exact result 1.658e-03)
+PASS  gemm_i8 grouped 9216x4352x1152 bias          rel err 1.657e-03 (bf16 rounding of the exact result 1.657e-03)
+PASS  gemm_i8 grouped 2327x8192x2048               rel err 1.659e-03 (bf16 rounding of the exact result 1.659e-03)
+PASS  gemm_i8 grouped 1024x1152x4352 bias gelu     rel err 1.659e-03 (bf16 rounding of the exact result 1.659e-03)
+PASS  gemm_i8 grouped 17x2048x2048                 rel err 1.670e-03 (bf16 rounding of the exact result 1.670e-03)
+PASS  gemm_i8 grouped 1x1152x1152 bias             rel err 1.656e-03 (bf16 rounding of the exact result 1.656e-03)
+PASS  gemm_w8 9216x4304x1152 bias                  rel err 1.655e-03 (cuBLAS on dequantized W 2.100e-03)
+PASS  gemm_w8 2327x8192x2048                       rel err 1.659e-03 (cuBLAS on dequantized W 2.854e-03)
+PASS  gemm_w8 272x8192x2048                        rel err 1.655e-03 (cuBLAS on dequantized W 3.313e-03)
+PASS  gemm_w8 9x2048x6144                          rel err 1.661e-03 (cuBLAS on dequantized W 2.849e-03)
+PASS  gemm_w8 1x2048x2048                          rel err 1.639e-03 (cuBLAS on dequantized W 2.517e-03)
+PASS  gemm_w8 1024x1152x4304 bias gelu             rel err 1.663e-03 (cuBLAS on dequantized W 2.271e-03)
+PASS  gemm_i8_q 9216x1152x4352 bias gelu           q mismatches 0
+PASS  gemm_i8_q 1024x1152x4352 bias gelu           q mismatches 0
+PASS  gemm_i8_q 37x2048x2048                       q mismatches 0
+PASS  add_layernorm_q per row                      q mismatches 0, h equal True
+PASS  add_rmsnorm_q per row                        q mismatches 0, h equal True
+PASS  silu_mul_q per row                           q mismatches 0
+PASS  add_layernorm_q grouped                      q mismatches 0, h equal True
+PASS  add_rmsnorm_q grouped                        q mismatches 0, h equal True
+PASS  silu_mul_q grouped                           q mismatches 0
+
+36/36 passed
+
+== speed, 1080p: ms per GEMM ==
+GEMM                     M x K x N  cuBLAS  int_mm ours i8  +quant ours w8 i8 gain ours g64  +quant  g gain   x
+vision qkv          9216x1152x3456   5.200  17.078   4.957   0.518   8.299   1.05x    7.557   0.432   0.69x  27
+vision out          9216x1152x1152   1.788   5.741   1.384   0.517   2.807   1.29x    2.425   0.430   0.74x  27
+Traceback (most recent call last):
+  File "/home/gautam/PAA_Project/tests/test_int8_gemm.py", line 279, in <module>
+    main()
+  File "/home/gautam/PAA_Project/tests/test_int8_gemm.py", line 274, in main
+    speed()
+  File "/home/gautam/PAA_Project/tests/test_int8_gemm.py", line 236, in speed
+    int_mm=cuda_ms(lambda: torch._int_mm(xq, wq.t())) if M > 16 else float("nan"),
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/gautam/PAA_Project/tests/test_int8_gemm.py", line 200, in cuda_ms
+    fn()
+  File "/home/gautam/PAA_Project/tests/test_int8_gemm.py", line 236, in <lambda>
+    int_mm=cuda_ms(lambda: torch._int_mm(xq, wq.t())) if M > 16 else float("nan"),
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: CUDA error: CUBLAS_STATUS_NOT_SUPPORTED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 4304 n 9216 k 1152 mat1_ld 1152 mat2_ld 1152 result_ld 4304 abType 3 cType 10 computeType 72 scaleType 10
+[jetson] 02:32:37 test_int8_gemm rc=0
+[jetson] 02:32:37 test_gptq start
+ok   identity H == RTN (g32, clip=False) 
+ok   identity H == RTN (g32, clip=True) 
+ok   identity H == RTN (g64, clip=False) 
+ok   identity H == RTN (g64, clip=True) 
+ok   identity H == RTN (g128, clip=False) 
+ok   identity H == RTN (g128, clip=True) 
+ok   GPTQ output error < RTN (g64) 0.064 % vs 0.898 %
+ok   GPTQ output error < RTN (g128) 0.073 % vs 1.014 %
+ok   pack_int4 round trip 
+ok   NVFP4 values on the E2M1 grid, FP8 block scales 
+ok   NVFP4 GPTQ output error < RTN 
+ok   gemv_w4 on GPTQ weights (g64) max rel err 2.59e-03
+ok   gemv_w4 on GPTQ weights (g128) max rel err 2.71e-03
+0 failures
+[jetson] 02:32:46 test_gptq rc=0
+[jetson] 02:32:46 numerics_bf16 start
+text      T=   18  argmax agree 125/127  max|dlogit| 0.312  median 0.125  first token ok (max|dlogit| 0.125)  flips at near-ties: [0.0, 0.0]
+img_small T=  252  argmax agree 127/127  max|dlogit| 0.250  median 0.125  first token ok (max|dlogit| 0.266)  flips at near-ties: []
+img_fhd   T= 2327  argmax agree 125/127  max|dlogit| 0.375  median 0.125  first token ok (max|dlogit| 0.188)  flips at near-ties: [0.062, 0.125]
+[jetson] 02:33:39 numerics_bf16 rc=0
+[jetson] 02:33:39 numerics_w8 start
+text      T=   18  argmax agree 126/127  max|dlogit| 0.562  median 0.312  first token ok (max|dlogit| 0.125)  flips at near-ties: [0.0]
+img_small T=  252  argmax agree 125/127  max|dlogit| 0.391  median 0.250  first token ok (max|dlogit| 0.266)  flips at near-ties: [0.125, 0.0]
+img_fhd   T= 2327  argmax agree 125/127  max|dlogit| 0.750  median 0.250  first token ok (max|dlogit| 0.188)  flips at near-ties: [0.062, 0.062]
+[jetson] 02:34:26 numerics_w8 rc=0
+[jetson] 02:34:26 numerics_w4gptq start
+text      T=   18  argmax agree 117/127  max|dlogit| 5.688  median 2.656  first token ok (max|dlogit| 0.125)  flips at near-ties: [0.5, 0.25, 2.188, 0.375, 0.312, 0.375, 0.125, 0.125, 0.5, 0.5]
+img_small T=  252  argmax agree 116/127  max|dlogit| 5.625  median 1.500  first token ok (max|dlogit| 0.266)  flips at near-ties: [0.312, 0.375, 0.125, 0.375, 0.375, 0.0, 0.562, 0.375, 0.625, 0.375, 0.625]
+img_fhd   T= 2327  argmax agree 114/127  max|dlogit| 5.500  median 1.812  first token ok (max|dlogit| 0.188)  flips at near-ties: [0.062, 0.312, 0.188, 0.25, 0.312, 0.312, 0.312, 0.062, 0.062, 0.062, 0.25, 0.625, 0.625]
+[jetson] 02:46:16 numerics_w4gptq rc=0
+[jetson] done 02:46:16

@@ -212,11 +212,13 @@ def fig_gpus():
         ("RTX PRO 5000\nBlackwell", GPU, "final_base_r*", "baseline", "final_stack_r*"),
         ("L40S\n(Ada)", "L40S", "l40_base_r*", "baseline", "l40_stack_r*"),
         ("T4\n(Turing; HF in FP16)", "T4", "t4_base_fp16", "baseline", "t4_stack_bf16"),
+        ("DGX Spark\n(GB10)", "GB10", "spark_base", "baseline", "spark_ours"),
+        ("Jetson Orin NX\n16GB", "Orin", "jetson_base", "baseline", "jetson_ours"),
     ]
     panels = [("Time per output token (ms)", "tpot_ms", 128, "text"),
-              ("GPU energy per output token (J)", "decode_j_per_tok", 128, "text"),
+              ("Energy per output token (J)\n(GPU; Jetson: whole module)", "decode_j_per_tok", 128, "text"),
               ("First token, 1080p image (ms)\nincl. image preprocessing", "ttft_ms", 1, "img_fhd")]
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4.2))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.4))
     for ax, (title, field, gen, wl) in zip(axes, panels):
         for i, (label, gpu, btag, bvar, otag) in enumerate(gpus):
             if field == "ttft_ms" and gpu == "T4":
@@ -241,13 +243,51 @@ def fig_gpus():
             ax.spines[sp].set_visible(False)
         ax.tick_params(colors=muted, labelsize=8)
     axes[0].legend(fontsize=8, frameon=False, loc="upper left")
-    fig.suptitle("LFM2.5-VL-1.6B, batch 1: the same CUDA optimizations on three GPU architectures", fontsize=10, color=ink)
+    fig.suptitle("LFM2.5-VL-1.6B, batch 1: the same CUDA optimizations on five GPUs", fontsize=10, color=ink)
     fig.tight_layout()
     fig.savefig(OUT / "gpus.png", dpi=160)
 
 
+def fig_jetson():
+    """Jetson Orin NX 16GB: HF vs our BF16 stack and the quantized extensions (time per token, energy per token,
+    1080p first token incl. preprocessing, peak memory)."""
+    ink, muted = "#1f1f1e", "#6b6a64"
+    vs = [("HF\ntransformers", "jetson_base", "baseline", "#2a78d6"),
+          ("ours\nBF16", "jetson_ours", "fused_gemv_pf_vfused", "#eb6834"),
+          ("ours INT8\n(decode)", "jetson_ours", "fused_w8_pf_vfused", "#1baf7a"),
+          ("ours INT8\neverywhere", "jetson_ours", "fused_w8all_pf_vfused", "#8a63d2"),
+          ("ours INT4\nGPTQ (decode)", "jetson_ours", "fused_w4gptq_pf_vfused", "#d6a32a")]
+    panels = [("Time per output token (ms)", "tpot_ms", 128, "text"),
+              ("Energy per output token (J, whole module)", "decode_j_per_tok", 128, "text"),
+              ("First token, 1080p image (ms)\nincl. image preprocessing", "ttft_ms", 1, "img_fhd"),
+              ("Peak GPU memory (GB), 1080p", "peak_mem_gb", 128, "img_fhd")]
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4.4))
+    for ax, (title, field, gen, wl) in zip(axes, panels):
+        base = None
+        for i, (label, tag, var, c) in enumerate(vs):
+            v = _mean_over_runs("Orin", tag, var, wl, gen, field)
+            base = v if i == 0 else base
+            ax.bar(i, v, 0.7, color=c, edgecolor="white", linewidth=1.5)
+            txt = f"{v:.2f}" if v < 10 else (f"{v:.1f}" if v < 100 else f"{v:.0f}")
+            if i and field != "peak_mem_gb":
+                txt += f"\n({base / v:.1f}×)"
+            ax.text(i, v, txt, ha="center", va="bottom", fontsize=7, color=ink)
+        ax.set_xticks(range(len(vs)))
+        ax.set_xticklabels([v[0] for v in vs], fontsize=7, color=ink)
+        ax.set_title(title, fontsize=9, color=ink)
+        ax.margins(y=0.22)
+        ax.grid(axis="y", color="#e6e5e0", linewidth=0.8)
+        ax.set_axisbelow(True)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+        ax.tick_params(colors=muted, labelsize=8)
+    fig.suptitle("LFM2.5-VL-1.6B on a Jetson Orin NX 16GB (40 W mode), batch 1", fontsize=10, color=ink)
+    fig.tight_layout()
+    fig.savefig(OUT / "jetson.png", dpi=160)
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    for f in (fig_tpot, fig_energy, fig_ttft, fig_batch, fig_quality, fig_gpus):
+    for f in (fig_tpot, fig_energy, fig_ttft, fig_batch, fig_quality, fig_gpus, fig_jetson):
         f()
     print("figures ->", OUT)
