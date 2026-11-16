@@ -1,0 +1,103 @@
+[jetson] 03:31:16 bench_quant start
+[bench] run 20261117-033124_Orin_jetson_final on Orin (sm_87), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/gautam/PAA_Project/results/raw/20261117-033124_Orin_jetson_final
+[bench] idle power 5.4 W
+[bench] variant=fused_w8_pf_vfused dtype=bf16 attn=sdpa loaded in 15.6s
+[bench] fused_w8_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     29.4 ms  E/run=   0.49 J  mem=5.36 GB
+[bench] fused_w8_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1745.8 ms  E/run=  45.88 J  mem=5.36 GB
+[bench] fused_w8_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    170.4 ms  E/run=   4.95 J  mem=5.40 GB
+[bench] fused_w8_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1891.6 ms  E/run=  50.78 J  mem=5.40 GB
+[bench] fused_w8_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    504.8 ms  E/run=  15.97 J  mem=5.48 GB
+[bench] fused_w8_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   2247.9 ms  E/run=  62.20 J  mem=5.48 GB
+[bench] fused_w8_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1493.9 ms  E/run=  47.68 J  mem=5.71 GB
+[bench] fused_w8_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   3289.4 ms  E/run=  95.48 J  mem=5.71 GB
+[bench] variant=fused_w8all_pf_vfused dtype=bf16 attn=sdpa loaded in 5.3s
+[bench] fused_w8all_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     26.6 ms  E/run=   0.39 J  mem=1.79 GB
+[bench] fused_w8all_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1770.6 ms  E/run=  46.54 J  mem=1.79 GB
+[bench] fused_w8all_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    187.0 ms  E/run=   4.61 J  mem=1.82 GB
+[bench] fused_w8all_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1937.5 ms  E/run=  50.70 J  mem=1.82 GB
+[bench] fused_w8all_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    565.8 ms  E/run=  14.29 J  mem=1.90 GB
+[bench] fused_w8all_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   2331.9 ms  E/run=  60.73 J  mem=1.90 GB
+[bench] fused_w8all_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1641.0 ms  E/run=  41.91 J  mem=2.12 GB
+[bench] fused_w8all_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   3460.4 ms  E/run=  89.31 J  mem=2.12 GB
+[bench] variant=fused_w4gptq_pf_vfused dtype=bf16 attn=sdpa loaded in 4.1s
+[bench] fused_w4gptq_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     29.4 ms  E/run=   0.39 J  mem=4.85 GB
+[bench] fused_w4gptq_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1354.7 ms  E/run=  34.37 J  mem=4.85 GB
+[bench] fused_w4gptq_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=    170.2 ms  E/run=   5.01 J  mem=4.89 GB
+[bench] fused_w4gptq_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1505.6 ms  E/run=  39.27 J  mem=4.89 GB
+[bench] fused_w4gptq_pf_vfused    img_hd bs=1   gen=1    tiles=3  img_tok=764   wall=    498.7 ms  E/run=  16.13 J  mem=4.97 GB
+[bench] fused_w4gptq_pf_vfused    img_hd bs=1   gen=128  tiles=3  img_tok=764   wall=   1850.2 ms  E/run=  51.00 J  mem=4.97 GB
+[bench] fused_w4gptq_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=   1468.6 ms  E/run=  47.83 J  mem=5.20 GB
+[bench] fused_w4gptq_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   2880.1 ms  E/run=  83.57 J  mem=5.20 GB
+[bench] done -> /home/gautam/PAA_Project/results/raw/20261117-033124_Orin_jetson_final
+[jetson] 03:35:52 bench_quant rc=0
+[jetson] 03:35:52 demo start
+[demo] -> /home/gautam/PAA_Project/results/demo/20261117-033559_Orin_jetson_demo
+[demo]                         baseline        handwriting  148x60   T=96    new=2   pre=   7.96 vis= 158.57 ttft= 230.52 end= 289.19 wall= 289.25 (untraced  310.76) mem=3.02 GB E=6.65 J same=True | 'bread'
+[demo]                         baseline         math_latex  657x89   T=94    new=36  pre=   7.69 vis= 157.13 ttft= 232.72 end=1969.23 wall=1969.37 (untraced 2037.87) mem=3.02 GB E=37.02 J same=True | '\\angle A B D = 9 0 ^ { \\circ } - 6 0 ^ { \\circ } = 3 0 ^ { \\'
+[demo]                         baseline               cats  640x480  T=259   new=17  pre=  11.39 vis= 162.13 ttft= 257.51 end=1069.95 wall=1070.04 (untraced 1100.33) mem=3.02 GB E=21.40 J same=True | 'There are two cats in the picture, and they are sleeping on '
+[demo]                         baseline          chart_bar  800x557  T=273   new=4   pre=  12.95 vis= 163.85 ttft= 260.43 end= 437.44 wall= 437.50 (untraced  440.32) mem=3.02 GB E=9.80 J same=True | '14.84'
+[demo]                         baseline             letter 1778x2276 T=1812  new=8   pre=  75.84 vis= 996.18 ttft=1507.86 end=1913.49 wall=1913.61 (untraced 1931.87) mem=3.20 GB E=50.37 J same=True | 'January 9, 1961'
+[demo]                         baseline              graph 2560x2039 T=1808  new=48  pre=  84.75 vis=1007.43 ttft=1518.76 end=3898.84 wall=3899.06 (untraced 3962.20) mem=3.20 GB E=86.40 J same=True | 'The function plotted in the graph is \\( y = \\log_2(x) \\). At'
+[demo]                         baseline       receipt_35mp 4961x7016 T=1813  new=25  pre= 201.17 vis=1149.85 ttft=1659.40 end=2904.11 wall=2904.28 (untraced 2949.00) mem=3.20 GB E=67.83 J same=True | 'The name of the company that issued this receipt is UNIHAKKA'
+[demo]                         baseline      describe_city 1024x768  T=1795  new=136 pre=  47.75 vis= 962.24 ttft=1471.04 end=8206.70 wall=8207.08 (untraced 8392.31) mem=3.20 GB E=165.48 J same=True | 'The image captures a bustling cityscape with a prominent bui'
+[demo]     fused_gemv_pf_vfused+gpuprep        handwriting  148x60   T=96    new=2   pre=   5.29 vis=  97.13 ttft= 134.63 end= 160.06 wall= 160.21 (untraced  160.53) mem=4.30 GB E=4.43 J same=True | 'bread'
+[demo]     fused_gemv_pf_vfused+gpuprep         math_latex  657x89   T=94    new=36  pre=   5.65 vis=  97.53 ttft= 135.18 end=1281.77 wall=1281.95 (untraced 1282.81) mem=4.30 GB E=31.55 J same=True | '\\angle A B D = 9 0 ^ { \\circ } - 6 0 ^ { \\circ } = 3 0 ^ { \\'
+[demo]     fused_gemv_pf_vfused+gpuprep               cats  640x480  T=259   new=17  pre=   7.53 vis= 113.41 ttft= 189.35 end= 947.47 wall= 947.62 (untraced  948.82) mem=4.31 GB E=24.03 J same=True | 'There are two cats in the picture, and they are sleeping on '
+[demo]     fused_gemv_pf_vfused+gpuprep          chart_bar  800x557  T=273   new=4   pre=   8.31 vis= 115.04 ttft= 192.02 end= 266.46 wall= 266.61 (untraced  267.58) mem=4.31 GB E=7.57 J same=True | '14.84'
+[demo]     fused_gemv_pf_vfused+gpuprep             letter 1778x2276 T=1812  new=8   pre=  31.38 vis= 750.34 ttft=1155.65 end=1332.40 wall=1332.59 (untraced 1334.94) mem=4.53 GB E=41.69 J same=True | 'January 9, 1961'
+[demo]     fused_gemv_pf_vfused+gpuprep              graph 2560x2039 T=1808  new=48  pre=  33.05 vis= 753.61 ttft=1162.14 end=2333.32 wall=2333.55 (untraced 2333.73) mem=4.53 GB E=65.54 J same=True | 'The function plotted in the graph is \\( y = \\log_2(x) \\). At'
+[demo]     fused_gemv_pf_vfused+gpuprep       receipt_35mp 4961x7016 T=1813  new=25  pre= 112.60 vis= 833.91 ttft=1243.17 end=2016.05 wall=2016.26 (untraced 2020.59) mem=4.53 GB E=56.89 J same=True | 'The name of the company that issued this receipt is UNIHAKKA'
+[demo]     fused_gemv_pf_vfused+gpuprep      describe_city 1024x768  T=1795  new=139 pre=  21.01 vis= 742.17 ttft=1147.17 end=4713.63 wall=4713.95 (untraced 4716.42) mem=4.53 GB E=123.51 J same=True | 'The image captures a bustling cityscape with a prominent bui'
+[demo]    fused_w8all_pf_vfused+gpuprep        handwriting  148x60   T=96    new=2   pre=   5.26 vis= 118.47 ttft= 149.98 end= 164.27 wall= 164.37 (untraced  166.93) mem=1.81 GB E=3.84 J same=True | 'bread'
+[demo]    fused_w8all_pf_vfused+gpuprep         math_latex  657x89   T=94    new=36  pre=   5.81 vis= 119.44 ttft= 150.85 end= 780.11 wall= 780.27 (untraced  783.16) mem=1.81 GB E=20.18 J same=True | '\\angle A B D = 9 0 ^ { \\circ } - 6 0 ^ { \\circ } = 3 0 ^ { \\'
+[demo]    fused_w8all_pf_vfused+gpuprep               cats  640x480  T=259   new=17  pre=   7.84 vis= 135.91 ttft= 216.63 end= 633.39 wall= 633.54 (untraced  633.89) mem=1.82 GB E=16.30 J same=True | 'There are two cats in the picture, and they are sleeping on '
+[demo]    fused_w8all_pf_vfused+gpuprep          chart_bar  800x557  T=273   new=4   pre=   8.13 vis= 136.93 ttft= 217.93 end= 259.30 wall= 259.44 (untraced  260.48) mem=1.82 GB E=6.38 J same=True | '14.84'
+[demo]    fused_w8all_pf_vfused+gpuprep             letter 1778x2276 T=1812  new=8   pre=  29.37 vis= 891.67 ttft=1309.93 end=1408.70 wall=1408.88 (untraced 1409.66) mem=2.02 GB E=35.49 J same=True | 'January 9, 1961'
+[demo]    fused_w8all_pf_vfused+gpuprep              graph 2560x2039 T=1808  new=48  pre=  32.61 vis= 893.88 ttft=1312.18 end=1965.36 wall=1965.58 (untraced 1967.02) mem=2.02 GB E=50.13 J same=True | 'The function plotted in the graph is \\( y = \\log_2(x) \\). At'
+[demo]    fused_w8all_pf_vfused+gpuprep       receipt_35mp 4961x7016 T=1813  new=25  pre= 114.18 vis= 975.03 ttft=1392.81 end=1824.10 wall=1824.32 (untraced 1827.37) mem=2.02 GB E=45.22 J same=True | 'The name of the company that issued this receipt is UNIHAKKA'
+[demo]    fused_w8all_pf_vfused+gpuprep      describe_city 1024x768  T=1795  new=83  pre=  21.17 vis= 884.12 ttft=1302.19 end=2625.94 wall=2626.18 (untraced 2626.74) mem=2.02 GB E=67.62 J same=True | 'The image captures a bustling urban scene with a prominent b'
+[jetson] 03:47:33 demo rc=0
+[jetson] 03:47:33 eval fused_w8all_pf_vfused+gpuprep start
+[eval] -> /home/gautam/PAA_Project/results/eval/20261117-034741_Orin_jetson_subset_q
+[eval] mmstar=200  pope=200  ocrbench=200  chartqa=200  textvqa=200
+[eval] fused_w8all_pf_vfused+gpuprep   mmstar n=200   score= 52.00  pre= 15.94 ms gen= 268.42 ms  E/q=6.866 J
+[eval] fused_w8all_pf_vfused+gpuprep     pope n=200   score= 86.00 f1= 84.27  pre=  9.32 ms gen= 217.63 ms  E/q=5.573 J
+[eval] fused_w8all_pf_vfused+gpuprep ocrbench n=200   score= 78.50  pre= 28.54 ms gen= 734.64 ms  E/q=19.137 J
+[eval] fused_w8all_pf_vfused+gpuprep  chartqa n=200   score= 78.50  pre= 13.51 ms gen= 462.87 ms  E/q=12.029 J
+[eval] fused_w8all_pf_vfused+gpuprep  textvqa n=200   score= 78.90  pre= 24.74 ms gen=1242.94 ms  E/q=32.127 J
+[jetson] 03:58:21 eval fused_w8all_pf_vfused+gpuprep rc=0
+[jetson] 03:58:21 eval fused_w4gptq_pf_vfused+gpuprep start
+[eval] -> /home/gautam/PAA_Project/results/eval/20261117-035829_Orin_jetson_subset_q
+[eval] mmstar=200  pope=200  ocrbench=200  chartqa=200  textvqa=200
+[eval] fused_w4gptq_pf_vfused+gpuprep   mmstar n=200   score= 51.50  pre= 16.02 ms gen= 242.73 ms  E/q=7.515 J
+[eval] fused_w4gptq_pf_vfused+gpuprep     pope n=200   score= 86.50 f1= 84.92  pre=  9.41 ms gen= 191.32 ms  E/q=6.054 J
+[eval] fused_w4gptq_pf_vfused+gpuprep ocrbench n=200   score= 79.00  pre= 29.11 ms gen= 637.77 ms  E/q=19.934 J
+[eval] fused_w4gptq_pf_vfused+gpuprep  chartqa n=200   score= 79.50  pre= 13.91 ms gen= 411.83 ms  E/q=13.386 J
+[eval] fused_w4gptq_pf_vfused+gpuprep  textvqa n=200   score= 79.05  pre= 25.43 ms gen=1116.80 ms  E/q=36.961 J
+[jetson] 04:08:03 eval fused_w4gptq_pf_vfused+gpuprep rc=0
+[jetson] 04:08:03 eval_compare start
+| variant | bench | n | score % | Δ vs ref (pp) | same answer % | ref✓ var✗ | ref✗ var✓ | McNemar p | e2e ms/q | J/q |
+|---|---|---|---|---|---|---|---|---|---|---|
+| baseline | mmstar | 200 | 52.50 | +0.00 | 100.00 | 0 | 0 | 1.000 | 427.7 | 10.114 |
+| baseline | pope | 200 | 86.00 | +0.00 | 100.00 | 0 | 0 | 1.000 | 326.5 | 7.708 |
+| baseline | ocrbench | 200 | 79.00 | +0.00 | 100.00 | 0 | 0 | 1.000 | 1235.1 | 27.972 |
+| baseline | chartqa | 200 | 79.50 | +0.00 | 100.00 | 0 | 0 | 1.000 | 665.1 | 16.518 |
+| baseline | textvqa | 200 | 78.10 | +0.00 | 100.00 | 0 | 0 | 1.000 | 1560.9 | 42.584 |
+| fused_gemv_pf_vfused+gpuprep | mmstar | 200 | 52.50 | +0.00 | 98.00 | 1 | 1 | 1.000 | 294.6 | 8.255 |
+| fused_gemv_pf_vfused+gpuprep | pope | 200 | 86.50 | +0.50 | 99.50 | 0 | 1 | 1.000 | 215.1 | 6.336 |
+| fused_gemv_pf_vfused+gpuprep | ocrbench | 200 | 79.00 | +0.00 | 94.00 | 0 | 0 | 1.000 | 861.1 | 24.224 |
+| fused_gemv_pf_vfused+gpuprep | chartqa | 200 | 79.50 | +0.00 | 96.00 | 1 | 1 | 1.000 | 469.7 | 14.196 |
+| fused_gemv_pf_vfused+gpuprep | textvqa | 200 | 78.10 | +0.00 | 98.50 | 0 | 0 | 1.000 | 1191.5 | 37.811 |
+| fused_w4gptq_pf_vfused+gpuprep | mmstar | 200 | 51.50 | -1.00 | 92.50 | 4 | 2 | 0.688 | 258.7 | 7.515 |
+| fused_w4gptq_pf_vfused+gpuprep | pope | 200 | 86.50 | +0.50 | 99.50 | 0 | 1 | 1.000 | 200.7 | 6.054 |
+| fused_w4gptq_pf_vfused+gpuprep | ocrbench | 200 | 79.00 | +0.00 | 79.00 | 2 | 2 | 1.000 | 666.9 | 19.934 |
+| fused_w4gptq_pf_vfused+gpuprep | chartqa | 200 | 79.50 | +0.00 | 85.00 | 3 | 3 | 1.000 | 425.7 | 13.386 |
+| fused_w4gptq_pf_vfused+gpuprep | textvqa | 200 | 79.05 | +0.95 | 93.00 | 0 | 2 | 0.500 | 1142.2 | 36.961 |
+| fused_w8all_pf_vfused+gpuprep | mmstar | 200 | 52.00 | -0.50 | 96.00 | 2 | 1 | 1.000 | 284.4 | 6.866 |
+| fused_w8all_pf_vfused+gpuprep | pope | 200 | 86.00 | +0.00 | 100.00 | 0 | 0 | 1.000 | 227.0 | 5.573 |
+| fused_w8all_pf_vfused+gpuprep | ocrbench | 200 | 78.50 | -0.50 | 88.50 | 1 | 0 | 1.000 | 763.2 | 19.137 |
+| fused_w8all_pf_vfused+gpuprep | chartqa | 200 | 78.50 | -1.00 | 91.50 | 2 | 0 | 0.500 | 476.4 | 12.029 |
+| fused_w8all_pf_vfused+gpuprep | textvqa | 200 | 78.90 | +0.80 | 98.00 | 0 | 2 | 0.500 | 1267.7 | 32.127 |
+[jetson] 04:08:03 eval_compare rc=0
+[jetson] done 04:08:03
