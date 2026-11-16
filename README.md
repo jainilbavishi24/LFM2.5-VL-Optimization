@@ -316,7 +316,7 @@ Further prefill-side work (all BF16, CUDA events, 1080p):
 |---|---|---|---|---|---|
 | time per token | 51.4–51.9 ms | **26.2–26.7** (1.96×) | 13.5–14.1 (3.8×) | 13.7–14.3 | **10.4–11.1** (4.9×) |
 | J/token (module) | 0.87–0.89 | 0.59–0.61 | 0.36–0.38 | 0.36–0.37 | 0.27–0.28 |
-| first token text / 1080p incl. preprocessing | 71 ms / 1.92 s | 31 ms / 1.49 s | 30 ms / 1.51 s | 28 ms / 1.66 s | 30 ms / 1.49 s |
+| first token text / 1080p incl. preprocessing | 71 ms / 1.92 s | 31 ms / 1.49 s | 31 ms / 1.51 s | 29 ms / 1.66 s | 31 ms / 1.49 s |
 | peak memory | 3.0–3.3 GB | 4.3–4.6 | 5.4–5.7 | **1.8–2.1** | 4.9–5.2 |
 
 On 8 SMs the INT4 GEMV was conversion-bound, not memory-bound. Replacing `I2F` with an exact byte-permute conversion and running two rows per warp (bit-identical) took INT4 from 13.5 to 10.4 ms per token.
