@@ -1016,6 +1016,18 @@ bash scripts/slurm/submit.sh l40_suite 10 "bash scripts/slurm/l40_suite.sh"   # 
 - our GEMVs at 81–97 % of the L40S's DRAM bandwidth;
 - the 3B: TPOT 15.1 → 7.5 ms with unchanged quality, using the same kernels unchanged.
 
+**Jetson Orin NX 16GB, the edge target** (`ssh jetson`; [scripts/jetson/setup.sh](../scripts/jetson/setup.sh), [scripts/jetson/run_all.sh](../scripts/jetson/run_all.sh)):
+
+```bash
+bash scripts/jetson/setup.sh                                    # uv + torch aarch64 cu130 + requirements, inside the project
+STEPS="tests bench demo eval" bash scripts/jetson/run_all.sh    # tests, speed/energy, demo recording, quality subset
+```
+
+- **Energy.** There is no NVML energy counter on the board, so [energy.py](../src/lfm2opt/energy.py) samples the INA3221 `VDD_IN` rail (the whole module) every 5 ms and integrates it.
+- **Results.** All kernel tests pass on sm_87. Time per token: HF 51.4 ms, ours BF16 26.2 ms (1.15× the memory floor), INT8 13.5 ms, GPTQ INT4 10.4 ms.
+- **Profiling found a new limit.** On 8 SMs the INT4 GEMV was conversion-bound. Two exact, bit-identical changes fixed it: a byte-permute int→float conversion and two rows per warp.
+- **First token at 1080p** is compute-bound on this GPU: 1.92 → 1.49 s.
+
 ---
 
 ## 12. The demo video and its live proof

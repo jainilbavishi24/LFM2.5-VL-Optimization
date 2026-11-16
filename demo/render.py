@@ -376,8 +376,9 @@ def howto_frames(n_runs, warmup):
                             "GPU. Answers are shown exactly as each model produced them. Ours · BF16 keeps LiquidAI's "
                             "weights; its fused kernels round slightly differently, so a long answer can be worded "
                             "differently (benchmark accuracy unchanged)."),
-        ("Memory and energy", "Peak GPU memory during the request. Energy: whole GPU board (NVML counter), averaged "
-                              "over at least 3 s of repeated runs of the same request."),
+        ("Memory and energy", "Peak GPU memory during the request. Energy: " + (
+            "whole Jetson module (INA3221 VDD_IN rail, CPU + GPU + memory), " if "Jetson" in GPU else
+            "whole GPU board (NVML counter), ") + "averaged over at least 3 s of repeated runs of the same request."),
     ]
     for i in range(int(16 * FPS)):
         a = min(1.0, i / 12)
