@@ -400,7 +400,7 @@ notes(sl, "Preprocessing differs by one pixel level because PyTorch's CPU resize
 sl = slide("Edge results · Jetson Orin NX 16GB", "Jetson: 2× Faster per Word, Same Weights")
 labels = ["HF\ntransformers", "ours BF16", "ours INT8\n(decode)", "ours INT8\neverywhere", "ours INT4\nGPTQ"]
 vals = [hf_tpot, bf_tpot, w8_tpot, w8a_tpot, w4_tpot]
-bars(sl, 0.5, 1.45, 7.4, 5.0, labels, [("ms per word", [v or 0 for v in vals])], [BLUE],
+bars(sl, 0.5, 1.45, 7.4, 4.85, labels, [("ms per word", [v or 0 for v in vals])], [BLUE],
      title="Time per output word (ms, batch 1)", point_colors=[BLUE, ORANGE, GREEN, PURPLE, GOLD], size=12)
 y = 1.6
 for big, lab, sub, c in [
@@ -416,9 +416,12 @@ for big, lab, sub, c in [
     text(sl, 8.3, y, 1.9, 0.6, big, size=26, bold=True, font=HEAD, color=c)
     text(sl, 10.25, y + 0.02, 2.5, 0.9, [[(lab, {"bold": True})], [(sub, {"size": 11, "color": GRAY})]], size=13)
     y += 1.18
-text(sl, 0.6, 6.55, 12.1, 0.4, "Text prompt, 128 new words, median of 5 runs after 2 warm-ups. INT8 / INT4 change the "
-                                "weights and are reported separately; quality on the next slides.", size=11, color=GRAY,
-     italic=True)
+text(sl, 0.6, 6.45, 12.1, 0.55, [
+    [("Nsight Systems on the board: ", {"bold": True, "color": TEAL, "italic": False}),
+     ("HF issues 22,644 kernel launches for a 32-word answer at 27 µs each (≈ 19 ms of CPU per word, GPU idle half "
+      "the time); ours replays one CUDA graph per word (31 launches).", {"italic": False, "color": INK})],
+    "Text prompt, 128 new words, median of 5 runs after 2 warm-ups. INT8 / INT4 change the weights and are reported "
+    "separately; quality on the next slides."], size=11, color=GRAY, italic=True)
 notes(sl, "Hugging Face spends about half of every word on Python and kernel-launch overhead on the Jetson's Arm CPU. "
           "Our BF16 runtime is at 1.15x the memory floor: 2.34 GB of weights per word at 102 GB/s = 22.9 ms.")
 

@@ -1,0 +1,4 @@
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Style,Range
+98.3,59225920,1,59225920.0,59225920.0,59225920,59225920,0.0,PushPop,:vision_tower
+1.6,954176,1,954176.0,954176.0,954176,954176,0.0,PushPop,:projector
+0.1,76864,1,76864.0,76864.0,76864,76864,0.0,PushPop,CCCL:cub::DeviceScan::ExclusiveScan
