@@ -50,6 +50,10 @@ Entry template:
 - **INT4 was barely faster than INT8** (13.5 vs 13.8 ms; floor ~6 ms). On 8 SMs the GEMV is no longer bandwidth-bound but conversion-bound: every weight went through `I2F`, a quarter-rate instruction on Ampere. 1.17 G conversions per token at 8 SMs × 16/clk ≈ 10 ms.
 - The first token at 1080p is compute-bound on 8 SMs (vision + 2.3 k-token prefill): 1854 → 1474 ms. INT8 everywhere is slower here (1641 ms): the INT8 GEMMs gain little over BF16 on this GPU (vision qkv 5.20 → 4.96 ms), and the extra quantization kernels cost more.
 
+**Nsight Systems on the board** (`nsys` from JetPack works without root; the PyTorch profiler records no CUDA kernels on this Tegra setup; `profiling/reports/20261117-0433*_Orin_nsys_img_small_g32_*`, VGA, 32 tokens).
+- HF baseline: **22,644 `cudaLaunchKernel` calls at 26.9 µs each** (Blackwell host: 2.4 µs) = 0.61 s of CPU only for launches, ≈ 19 ms per generated token. The GPU ran 1.09 s of kernels in 2.08 s of decode, i.e. idle about half the time.
+- Ours BF16: 31 `cudaGraphLaunch` (one per token) replaying 4,201 kernels. On the Jetson's Arm CPU the CUDA graph matters even more than on a datacenter host.
+
 **Profiling-driven GEMV changes for the edge** ([kernels/lfm2_decode.cu](../kernels/lfm2_decode.cu); [profiling/bench_gemv.py](../profiling/bench_gemv.py) before/after in `results/raw/jetson_after_log.txt`, rows sweep in `results/raw/jetson_gemv_w4_rows.txt`). The GEMV microbenchmark on the board showed INT4 at ~41 GB/s, slower than INT8 per matrix (qkv 81 vs 71 µs) although it reads half the bytes.
 
 1. **int → float without I2F.** One `__byte_perm` puts the INT8 byte (xor 0x80) or the INT4 nibble into the mantissa of 2²³ (`0x4B0000xx`), and one exact FADD removes 2²³ + offset. Full-rate PRMT + FADD instead of the quarter-rate I2F.
