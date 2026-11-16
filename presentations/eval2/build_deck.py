@@ -400,7 +400,7 @@ notes(sl, "Preprocessing differs by one pixel level because PyTorch's CPU resize
 sl = slide("Edge results · Jetson Orin NX 16GB", "Jetson: 2× Faster per Word, Same Weights")
 labels = ["HF\ntransformers", "ours BF16", "ours INT8\n(decode)", "ours INT8\neverywhere", "ours INT4\nGPTQ"]
 vals = [hf_tpot, bf_tpot, w8_tpot, w8a_tpot, w4_tpot]
-bars(sl, 0.5, 1.45, 7.4, 4.85, labels, [("ms per word", [v or 0 for v in vals])], [BLUE],
+bars(sl, 0.5, 1.45, 7.4, 4.6, labels, [("ms per word", [v or 0 for v in vals])], [BLUE],
      title="Time per output word (ms, batch 1)", point_colors=[BLUE, ORANGE, GREEN, PURPLE, GOLD], size=12)
 y = 1.6
 for big, lab, sub, c in [
@@ -416,7 +416,7 @@ for big, lab, sub, c in [
     text(sl, 8.3, y, 1.9, 0.6, big, size=26, bold=True, font=HEAD, color=c)
     text(sl, 10.25, y + 0.02, 2.5, 0.9, [[(lab, {"bold": True})], [(sub, {"size": 11, "color": GRAY})]], size=13)
     y += 1.18
-text(sl, 0.6, 6.45, 12.1, 0.55, [
+text(sl, 0.6, 6.15, 12.1, 0.75, [
     [("Nsight Systems on the board: ", {"bold": True, "color": TEAL, "italic": False}),
      ("HF issues 22,644 kernel launches for a 32-word answer at 27 µs each (≈ 19 ms of CPU per word, GPU idle half "
       "the time); ours replays one CUDA graph per word (31 launches).", {"italic": False, "color": INK})],
@@ -555,15 +555,15 @@ else:
     box(sl, 0.6, 1.55, 7.6, 4.3)
     text(sl, 0.8, 3.4, 7.2, 0.6, "demo video frame", size=16, color=GRAY, align=PP_ALIGN.CENTER)
 text(sl, 8.6, 1.55, 4.1, 0.4, "The video", size=16, bold=True)
-text(sl, 8.6, 2.0, 4.1, 2.2, [
-    "8 real images (148×60 px to 35 MP) and prompts, answered by HF, ours BF16 and ours INT8 side by side",
-    "every word appears at its GPU timestamp measured on the Jetson; shown at real speed, then slowed down",
-    "here: function plot, 2.2 s after the request; INT8 has finished, same answer as HF",
+text(sl, 8.6, 2.0, 4.1, 2.9, [
+    "8 real images (148×60 px to 35 MP), answered by HF, ours BF16 and ours INT8 side by side",
+    "every word at its GPU timestamp measured on the Jetson",
+    "here: function plot at 2.2 s; INT8 done, same answer as HF",
     "over the 8 cases: BF16 {:.2f}× faster at {:.0f} % of HF's energy, INT8 {:.2f}× at {:.0f} %".format(
         *DEMO["fused_gemv_pf_vfused+gpuprep"], *DEMO["fused_w8all_pf_vfused+gpuprep"]),
 ], size=13, bullets=True)
-text(sl, 8.6, 4.3, 4.1, 0.4, "The live proof", size=16, bold=True)
-text(sl, 8.6, 4.75, 4.1, 1.6, [
+text(sl, 8.6, 5.0, 4.1, 0.4, "The live proof", size=16, bold=True)
+text(sl, 8.6, 5.45, 4.1, 1.4, [
     [("bash demo/live_jetson.sh", {"font": "Courier New", "size": 12, "bold": True})],
     "re-runs the video's cases on the board with the same measuring code and prints live vs video",
 ], size=13, bullets=True)
