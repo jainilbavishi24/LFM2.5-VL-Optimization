@@ -1,0 +1,12 @@
+{
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "variants": "baseline,fused_gemv_pf_vfused+gpuprep,fused_w8all_pf_vfused+gpuprep,fused_w4gptq_pf_vfused+gpuprep",
+  "benches": "mmstar,pope,ocrbench,chartqa,textvqa",
+  "limit": "200",
+  "warmup": 3,
+  "tag": "jetson_subset",
+  "out": "/home/gautam/PAA_Project/results/eval",
+  "eos_ids": [
+    7
+  ]
+}
