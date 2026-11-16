@@ -41,8 +41,8 @@ for s in $STEPS; do
             git worktree remove --force /tmp/paa_old; rm -rf /tmp/paa_old_ext ;;
         bench2)  # quantized variants again with the new GEMV conversion
             step bench_quant $BENCH --variants fused_w8_pf_vfused,fused_w8all_pf_vfused,fused_w4gptq_pf_vfused \
-                --preprocess gpu --tag jetson_ours_bp
-            for d in results/raw/*_jetson_ours_bp/; do $PY benchmarks/summarize.py "$d" > /dev/null; done ;;
+                --preprocess gpu --tag "${BENCH2_TAG:-jetson_ours_bp}"
+            for d in results/raw/*_"${BENCH2_TAG:-jetson_ours_bp}"/; do $PY benchmarks/summarize.py "$d" > /dev/null; done ;;
         demo)
             step demo $PY demo/record.py --only handwriting,chart_bar,cats,math_latex,letter,graph,receipt_35mp,describe_city \
                 --tag jetson_demo ;;

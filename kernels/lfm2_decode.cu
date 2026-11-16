@@ -923,10 +923,22 @@ __global__ void gemv_w4_kernel(const uint8_t *__restrict__ Wp, const float *__re
     }
 }
 
+static bool small_gpu()
+{ // edge GPUs (Jetson Orin NX: 8 SMs): the INT4 GEMV is ALU-bound there, two rows per warp share each x load
+    static int sms = -1;
+    if (sms < 0)
+    {
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, dev);
+    }
+    return sms <= 16;
+}
+
 void launch_gemv_w4(const void *Wp, const float *S, const void *x, void *y, int N, int K, int group, int rows, cudaStream_t st)
 {
     if (rows <= 0)
-        rows = N >= 32768 ? 2 : 1;
+        rows = (N >= 32768 || small_gpu()) ? 2 : 1;
     const size_t sm = 0; // x is read directly (no shared-memory stage)
     const dim3 grid((N + GEMV_WARPS * rows - 1) / (GEMV_WARPS * rows));
     if (rows == 4)
