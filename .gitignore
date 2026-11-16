@@ -17,6 +17,8 @@ profiling/**/trace.json
 
 # Python
 .venv/
+.venv-ref/
+.tools/
 __pycache__/
 *.py[cod]
 *.egg-info/

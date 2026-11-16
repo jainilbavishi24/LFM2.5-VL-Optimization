@@ -62,7 +62,19 @@ def nvml_info() -> dict:
             pass
         return info
     except Exception as e:  # pynvml missing, no NVML (Jetson), permission issue
-        return {"nvml_error": repr(e)}
+        return {"nvml_error": repr(e), **jetson_info()}
+
+
+def jetson_info() -> dict:
+    """Board, L4T release and power mode on a Jetson (empty elsewhere)."""
+    info = {}
+    try:
+        info["jetson_model"] = Path("/proc/device-tree/model").read_text().strip("\x00 \n")
+        info["l4t_release"] = Path("/etc/nv_tegra_release").read_text().splitlines()[0]
+        info["nvpmodel"] = _run(["nvpmodel", "-q"])
+    except Exception:
+        pass
+    return info
 
 
 def collect_env() -> dict:
