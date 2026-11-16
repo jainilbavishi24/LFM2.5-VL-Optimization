@@ -425,7 +425,7 @@ text(sl, 0.6, 4.75, 6.0, 1.9, [
 if GEMV:
     rows = [["INT4 GEMV, µs", "before", "+ byte_perm", "+ 2 rows / warp"]]
     for name, old, new, r2 in GEMV:
-        rows.append([name, f"{old:.0f}", f"{new:.0f}", f"{r2:.0f}" if r2 else "–"])
+        rows.append([name, f"{old:.0f}", f"{new:.0f}", "already 2" if name == "lm_head" else (f"{r2:.0f}" if r2 else "–")])
     table(sl, 7.0, 1.6, 5.7, rows, [1.7, 1.2, 1.3, 1.5], size=12, height=0.45, highlight_col=3)
 else:
     box(sl, 7.0, 1.6, 5.7, 3.0)
@@ -513,14 +513,14 @@ cols = [("INT8 decode", GREEN, [f"Jetson: {fmt_ms(w8_tpot)} ms per word ({hf_tpo
                                      f"peak memory {mem['fused_w8all_pf_vfused']:.1f} GB (HF {mem['baseline']:.1f})" if mem["baseline"] else "",
                                      "long answers reworded, but CIDEr / CHAIR unchanged"]),
         ("INT4 with GPTQ", GOLD, ["no training: rounding error pushed onto the remaining weights",
-                                  "L40S: 1.06 ms per word, 8× HF, 1.65× INT8",
+                                  f"Jetson: {fmt_ms(w4_tpot)} ms per word ({hf_tpot / w4_tpot:.1f}× HF); L40S: 1.06 ms (8×)" if w4_tpot else "",
                                   "plain rounding fails; GPTQ: all checks n.s."])]
 for i, (h, c, lines) in enumerate(cols):
     x = 0.6 + 4.1 * i
-    box(sl, x, 1.6, 3.85, 4.2)
+    box(sl, x, 1.6, 3.85, 3.3)
     text(sl, x + 0.3, 1.8, 3.3, 0.5, h, size=20, bold=True, font=HEAD, color=c)
     text(sl, x + 0.3, 2.5, 3.3, 3.2, [ln for ln in lines if ln], size=13, bullets=True)
-text(sl, 0.6, 6.1, 12.1, 0.7, "Quantization changes the model, so it is never counted as one of our optimizations; the "
+text(sl, 0.6, 5.25, 12.1, 0.7, "Quantization changes the model, so it is never counted as one of our optimizations; the "
                               "headline results are lossless BF16. NVIDIA's NVFP4 4-bit format was simulated: no more "
                               "accurate than INT4 with small groups, so no kernel was written for it.", size=12, color=GRAY,
      italic=True)
@@ -528,9 +528,9 @@ notes(sl, "GPTQ: Frantar et al. 2023; calibration on COCO test2017 images, which
 
 # ----------------------------------------------------------------------------------------------- 11 demo
 sl = slide("Demonstration", "Demo: Measured on the Jetson, Re-runnable Live")
-still = sorted(glob.glob(str(ROOT / "presentations" / "demo" / "jetson_still*.png")))
-if still:
-    sl.shapes.add_picture(still[-1], Inches(0.6), Inches(1.55), width=Inches(7.6))
+still = Path(__file__).resolve().parent / "demo_frame.png"   # demo/render.py --still graph:2200 of the Jetson run
+if still.exists():
+    sl.shapes.add_picture(str(still), Inches(0.6), Inches(1.55), width=Inches(7.6))
 else:
     box(sl, 0.6, 1.55, 7.6, 4.3)
     text(sl, 0.8, 3.4, 7.2, 0.6, "demo video frame", size=16, color=GRAY, align=PP_ALIGN.CENTER)
@@ -538,6 +538,7 @@ text(sl, 8.6, 1.55, 4.1, 0.4, "The video", size=16, bold=True)
 text(sl, 8.6, 2.0, 4.1, 2.2, [
     "8 real images (148×60 px to 35 MP) and prompts, answered by HF, ours BF16 and ours INT8 side by side",
     "every word appears at its GPU timestamp measured on the Jetson; shown at real speed, then slowed down",
+    "here: function plot, 2.2 s after the request; INT8 has finished, same answer as HF",
 ], size=13, bullets=True)
 text(sl, 8.6, 4.3, 4.1, 0.4, "The live proof", size=16, bold=True)
 text(sl, 8.6, 4.75, 4.1, 1.6, [
@@ -548,14 +549,14 @@ notes(sl, "If the board is available during the evaluation, run demo/live_jetson
 
 # ----------------------------------------------------------------------------------------------- 12 feasibility
 sl = slide("Feasibility & plan to the final", "Does It Work? Yes. What Is Left")
-box(sl, 0.6, 1.45, 5.95, 4.9)
-box(sl, 6.85, 1.45, 5.85, 4.9)
+box(sl, 0.6, 1.45, 5.95, 3.9)
+box(sl, 6.85, 1.45, 5.85, 3.9)
 text(sl, 0.85, 1.65, 5.5, 0.4, "Works today", size=16, bold=True, color=GREEN)
 text(sl, 0.85, 2.15, 5.5, 4.0, [
     "full prototype on 5 GPUs incl. the Jetson: 1.5–2.7× faster per word, lossless",
     "decode at 1.1–1.2× each GPU's memory floor",
     "answers unchanged on 19,000 benchmark questions and reference-scored captions",
-    "INT8 / INT4 extensions with their own quality evidence; 2.1 GB peak memory",
+    "INT8 / INT4 extensions with their own quality evidence; 2.1 GB peak memory; INT4 10.4 ms per word on the Jetson",
     "demo video + live re-run script",
 ], size=13, bullets=True)
 text(sl, 7.1, 1.65, 5.4, 0.4, "Left for the final evaluation", size=16, bold=True, color=ORANGE)
@@ -583,7 +584,8 @@ text(sl, 0.6, 4.4, 12.1, 1.6, [
      ("CUDA graph + fused kernels + our weight-streaming GEMV for each word; padding-free fused vision and GPU "
       "preprocessing for the first word.", {"color": "E6EEF0"})],
     [("On the edge: ", {"bold": True, "color": ORANGE}),
-     ("the Jetson needed one more kernel change (exact byte-permute conversion), found by profiling on the board.",
+     ("profiling on the board found the INT4 GEMV conversion-bound on 8 SMs; two exact kernel changes (byte-permute "
+      "conversion, two rows per warp) took it from 13.5 to 10.4 ms per word.",
       {"color": "E6EEF0"})],
 ], size=15)
 notes(sl, "Answer to the key question: yes, the approach works, and the evidence is measured, not estimated.")
