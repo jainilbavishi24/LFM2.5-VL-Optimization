@@ -50,6 +50,29 @@ Entry template:
 - **INT4 was barely faster than INT8** (13.5 vs 13.8 ms; floor ~6 ms). On 8 SMs the GEMV is no longer bandwidth-bound but conversion-bound: every weight went through `I2F`, a quarter-rate instruction on Ampere. 1.17 G conversions per token at 8 SMs × 16/clk ≈ 10 ms.
 - The first token at 1080p is compute-bound on 8 SMs (vision + 2.3 k-token prefill): 1854 → 1474 ms. INT8 everywhere is slower here (1641 ms): the INT8 GEMMs gain little over BF16 on this GPU (vision qkv 5.20 → 4.96 ms), and the extra quantization kernels cost more.
 
+**Profiling-driven GEMV changes for the edge** ([kernels/lfm2_decode.cu](../kernels/lfm2_decode.cu); [profiling/bench_gemv.py](../profiling/bench_gemv.py) before/after in `results/raw/jetson_after_log.txt`, rows sweep in `results/raw/jetson_gemv_w4_rows.txt`). The GEMV microbenchmark on the board showed INT4 at ~41 GB/s, slower than INT8 per matrix (qkv 81 vs 71 µs) although it reads half the bytes.
+
+1. **int → float without I2F.** One `__byte_perm` puts the INT8 byte (xor 0x80) or the INT4 nibble into the mantissa of 2²³ (`0x4B0000xx`), and one exact FADD removes 2²³ + offset. Full-rate PRMT + FADD instead of the quarter-rate I2F.
+   - The values are identical, so the outputs are bit-identical. Checked: 109/109 kernel tests, and the generated tokens of INT8, INT8 everywhere and INT4 are identical before/after in all 24 bench configurations (`compare_outputs.py` on `…025041_Orin_jetson_ours` vs `…033124_Orin_jetson_final`).
+   - INT4 GEMV 5–12 % faster: `w1|w3` 397 → 363 µs, `lm_head` 1302 → 1154 µs, `w2` 177 → 157 µs.
+   - INT8 unchanged: already at the bandwidth limit, ~88 GB/s.
+2. **Two rows per warp for INT4 on small GPUs (≤ 16 SMs).** Each x load and its BF16 → FP32 conversion serve two weight rows. Sweep of rows 1 / 2 / 4: 16–20 % faster per matrix with 2 (`w1|w3` 373 → 299 µs, `conv in` 146 → 119, `w2` 158 → 129); 4 gives nothing more.
+   - Bit-identical (each row's sum keeps its order).
+   - The datacenter GPUs keep 1 row (their GEMV is bandwidth-bound; not re-measured there).
+
+**Result** (`results/raw/20261117-033124_Orin_jetson_final`, same protocol):
+
+| | before | after |
+|---|---|---|
+| INT4 GPTQ TPOT text / VGA / 720p / 1080p | 13.5 / 13.6 / 13.8 / 14.1 ms | **10.4 / 10.5 / 10.6 / 11.1 ms** (4.9× HF; 1.3× faster than INT8) |
+| INT4 GPTQ J/token | 0.32–0.33 | **0.27–0.28** |
+| INT8 TPOT | 13.8–14.5 ms | 13.5–14.1 ms |
+| INT8 everywhere TPOT | 14.0–14.6 ms | 13.7–14.3 ms |
+
+INT4 is still above its byte floor (~6 ms): x loads and FMAs per weight are the limit on 8 SMs. Next would be packed half2 math or keeping x in registers across more rows.
+
+**Quality on the board** (5 benchmarks × 200 questions, same prompts, greedy, `results/eval/20261117-025745_Orin_jetson_subset`): HF vs our BF16 stack MMStar 52.5 / 52.5, POPE 86.0 / 86.5, OCRBench 79.0 / 79.0, ChartQA 79.5 / 79.5, TextVQA 78.1 / 78.1. All McNemar p = 1.0; 94–99.5 % identical answers; 1.3–1.5× faster per question. The first try of INT8 everywhere and INT4 in the same process ran out of the 15 GB shared memory (NvMap error 12); they now run one process per variant (`eval_quant` step).
+
 ---
 
 ## 2026-11-15/16: INT4 revisited with GPTQ (no training) and NVFP4, on the L40S  (Claude)

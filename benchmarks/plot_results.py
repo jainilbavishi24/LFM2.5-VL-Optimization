@@ -254,9 +254,9 @@ def fig_jetson():
     ink, muted = "#1f1f1e", "#6b6a64"
     vs = [("HF", "jetson_base", "baseline", "#2a78d6"),
           ("ours\nBF16", "jetson_ours", "fused_gemv_pf_vfused", "#eb6834"),
-          ("INT8\n(decode)", "jetson_ours", "fused_w8_pf_vfused", "#1baf7a"),
-          ("INT8\neverywhere", "jetson_ours", "fused_w8all_pf_vfused", "#8a63d2"),
-          ("INT4 GPTQ\n(decode)", "jetson_ours", "fused_w4gptq_pf_vfused", "#d6a32a")]
+          ("INT8\n(decode)", "jetson_final", "fused_w8_pf_vfused", "#1baf7a"),
+          ("INT8\neverywhere", "jetson_final", "fused_w8all_pf_vfused", "#8a63d2"),
+          ("INT4 GPTQ\n(decode)", "jetson_final", "fused_w4gptq_pf_vfused", "#d6a32a")]
     panels = [("Time per output token (ms)", "tpot_ms", 128, "text"),
               ("Energy per output token (J, whole module)", "decode_j_per_tok", 128, "text"),
               ("First token, 1080p image (ms)\nincl. image preprocessing", "ttft_ms", 1, "img_fhd"),
@@ -281,7 +281,8 @@ def fig_jetson():
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
         ax.tick_params(colors=muted, labelsize=8)
-    fig.suptitle("LFM2.5-VL-1.6B on a Jetson Orin NX 16GB (40 W mode), batch 1", fontsize=10, color=ink)
+    fig.suptitle("LFM2.5-VL-1.6B on a Jetson Orin NX 16GB (40 W mode), batch 1; quantized variants with the "
+                 "byte_perm / two-rows GEMV", fontsize=10, color=ink)
     fig.tight_layout()
     fig.savefig(OUT / "jetson.png", dpi=160)
 
