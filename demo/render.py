@@ -527,10 +527,10 @@ def main():
         print(p)
         return
 
-    specs = [("title", out / "parts" / "00_title.mp4"), ("howto", out / "parts" / "01_howto.mp4")]
+    specs = [("title", out / f"{args.name}_parts" / "00_title.mp4"), ("howto", out / f"{args.name}_parts" / "01_howto.mp4")]
     for i, c in enumerate(cases):
-        specs.append(("case", c, f"case {i + 1} of {len(cases)}", out / "clips" / f"{i + 1:02d}_{c['key']}.mp4"))
-    specs.append(("summary", out / "parts" / "99_summary.mp4"))
+        specs.append(("case", c, f"case {i + 1} of {len(cases)}", out / f"{args.name}_clips" / f"{i + 1:02d}_{c['key']}.mp4"))
+    specs.append(("summary", out / f"{args.name}_parts" / "99_summary.mp4"))
     for c in cases:
         ls = lanes[c["key"]]
         print(f"[render] {c['key']:>20}: " + "  ".join(f"{L.name} {fmt_ms(L.total)}" for L in ls)
@@ -538,7 +538,7 @@ def main():
     with Pool(args.jobs) as pool:
         for name, sec in pool.imap(job, specs):
             print(f"[render] {name}: {sec:.1f} s")
-    lst = out / "parts" / "concat.txt"
+    lst = out / f"{args.name}_parts" / "concat.txt"
     lst.write_text("".join(f"file '{Path(s[-1]).resolve()}'\n" for s in specs))
     final = out / f"{args.name}.mp4"
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy",
