@@ -62,7 +62,7 @@ def nvml_info() -> dict:
             pass
         return info
     except Exception as e:  # pynvml missing, no NVML (Jetson), permission issue
-        return {"nvml_error": repr(e), **jetson_info()}
+        return {"nvml_error": repr(e)}
 
 
 def jetson_info() -> dict:
@@ -106,4 +106,5 @@ def collect_env() -> dict:
             bf16_supported=torch.cuda.is_bf16_supported(including_emulation=False),
         )
         env.update(nvml_info())
+        env.update(jetson_info())
     return env

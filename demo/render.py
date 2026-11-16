@@ -499,7 +499,7 @@ def main():
 
     by, env, cfg, imgs = load_run(args.run)
     global GPU, N_RUNS
-    GPU, N_RUNS = env["gpu_name"], cfg["repeats"]
+    GPU, N_RUNS = env.get("jetson_model", env["gpu_name"]).replace(" Engineering Reference Developer Kit", ""), cfg["repeats"]
     cases_cfg = {c["key"]: c for c in cfg["cases"]}
     keys = args.cases.split(",") if args.cases else [c["key"] for c in cfg["cases"]]
     cases = [cases_cfg[k] for k in keys]
