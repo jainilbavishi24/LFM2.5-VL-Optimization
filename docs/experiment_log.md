@@ -15,6 +15,43 @@ Entry template:
 
 ---
 
+## 2026-11-17: Jetson Orin NX 16GB, the edge target  (Claude)
+
+**Board:**
+- Jetson Orin NX 16GB (Super dev kit); JetPack 7.2 (L4T R39.2), CUDA 13.2.
+- GPU: Ampere sm_87 with **8 SMs**; 15 GB memory shared by CPU and GPU, **~102 GB/s**.
+- Power mode 40 W (`nvpmodel`; MAXN_SUPER needs sudo; clocks not locked).
+- Teammate's account, `ssh jetson`, key login.
+
+**Setup** ([scripts/jetson/setup.sh](../scripts/jetson/setup.sh)):
+- The system Python 3.12 has headers but no pip, and pypi.org is unreachable from the board.
+- `uv` binary copied in. torch 2.11.0+cu130 aarch64 from download.pytorch.org: its sm_80 code runs on sm_87, and BF16 and flash SDPA work. Everything else via the Jetson AI Lab mirror (`pypi.jetson-ai-lab.io/sbsa/cu130`).
+- The JIT extensions need the venv (ninja) and `/usr/local/cuda/bin` on PATH.
+
+**Energy** ([src/lfm2opt/energy.py](../src/lfm2opt/energy.py)): no NVML energy on the Jetson. The INA3221 rail `VDD_IN` (whole module input: CPU + GPU + memory, volts × amps in sysfs) is sampled every 5 ms by a thread and integrated into the same cumulative counter, so every script measures energy unchanged. Idle ≈ 5 W. Jetson numbers are module energy, not GPU-only like the other GPUs.
+
+**Correctness on sm_87** (`results/raw/jetson_tests_log.txt`):
+- Kernel tests 109/109; INT8 GEMM tests 36/36 (the speed table after them stops at cuBLAS's own `_int_mm`, unsupported for one shape here).
+- GPTQ tests pass.
+- Teacher-forced vs HF: BF16 stack 377/381, INT8 376/381, GPTQ INT4 347/381 (L40S: 346/381). Flips at near-ties except INT4, as on the other GPUs.
+- GPU preprocessing: within one pixel level of HF's CPU path (26/28 cases differ by 1/255 at most): the Arm CPU resize issue already seen on the DGX Spark.
+
+**Speed and energy** (batch 1, 5 repeats, 128 tokens; `results/raw/20261117-024638_Orin_jetson_base`, `…025041_Orin_jetson_ours`; ours with GPU preprocessing):
+
+| | HF | ours BF16 | INT8 (decode) | INT8 everywhere | INT4 GPTQ (decode) |
+|---|---|---|---|---|---|
+| TPOT text / VGA / 1080p | 51.4 / 51.6 / 51.9 ms | **26.2 / 26.2 / 26.7** (1.96×) | 13.8 / 13.9 / 14.5 (3.7×) | 14.0 / 14.1 / 14.6 | 13.5 / 13.6 / 14.1 |
+| first token text / VGA / 1080p (generate) | 69 / 251 / 1854 ms | 29 / 170 / 1474 | 30 / 170 / 1461 | 26 / 186 / 1641 | 29 / 171 / 1465 |
+| J/token (module) | 0.87–0.89 | 0.59–0.61 (−32 %) | 0.35–0.36 (−60 %) | 0.35–0.36 | 0.32–0.33 |
+| peak memory | 3.0–3.3 GB | 4.3–4.6 | 5.4–5.7 | **1.8–2.1** | 4.9–5.2 |
+
+- **BF16 decode is at 1.15× its weight-read floor** (2.34 GB / 102 GB/s = 22.9 ms). HF loses ~25 ms per token to Python and launch overhead on the board's Arm CPU.
+- INT8 is 1.2× its floor (11.4 ms).
+- **INT4 was barely faster than INT8** (13.5 vs 13.8 ms; floor ~6 ms). On 8 SMs the GEMV is no longer bandwidth-bound but conversion-bound: every weight went through `I2F`, a quarter-rate instruction on Ampere. 1.17 G conversions per token at 8 SMs × 16/clk ≈ 10 ms.
+- The first token at 1080p is compute-bound on 8 SMs (vision + 2.3 k-token prefill): 1854 → 1474 ms. INT8 everywhere is slower here (1641 ms): the INT8 GEMMs gain little over BF16 on this GPU (vision qkv 5.20 → 4.96 ms), and the extra quantization kernels cost more.
+
+---
+
 ## 2026-11-15/16: INT4 revisited with GPTQ (no training) and NVFP4, on the L40S  (Claude)
 
 **Question:** INT4 was dropped as too lossy (O6b: round-to-nearest, 86–93 % argmax agreement). Before considering quantization-aware training: does a calibration-only method, GPTQ, make 4-bit decode weights keep the answers? And does NVIDIA's NVFP4 format help?
