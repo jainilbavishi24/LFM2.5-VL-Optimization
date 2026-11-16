@@ -7,6 +7,8 @@
 # bench    speed + energy (INA3221 VDD_IN) for HF, our BF16 stack, INT8, INT8 everywhere, GPTQ INT4
 # demo     demo/record.py on the 8 video cases (HF / ours BF16 / ours INT8 everywhere)
 # eval     5 benchmarks, 200 questions each
+# gemv     GEMV microbenchmark, old vs new int8/int4 conversion
+# bench2   quantized variants again after the conversion change (tag jetson_ours_bp)
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 PY=.venv-ref/bin/python
@@ -31,6 +33,15 @@ for s in $STEPS; do
             step bench_ours $BENCH --variants fused_gemv_pf_vfused,fused_w8_pf_vfused,fused_w8all_pf_vfused,fused_w4gptq_pf_vfused \
                 --preprocess gpu --tag jetson_ours
             for d in results/raw/*_jetson_*/; do $PY benchmarks/summarize.py "$d" > /dev/null; done ;;
+        gemv)  # GEMV microbenchmark before / after the byte_perm conversion (e5eb2b4), old kernel from a worktree
+            rm -rf /tmp/paa_old && git worktree add -f /tmp/paa_old e5eb2b4~1 > /dev/null 2>&1
+            step gemv_old env TORCH_EXTENSIONS_DIR=/tmp/paa_old_ext $PY /tmp/paa_old/profiling/bench_gemv.py
+            step gemv_new $PY profiling/bench_gemv.py
+            git worktree remove --force /tmp/paa_old; rm -rf /tmp/paa_old_ext ;;
+        bench2)  # quantized variants again with the new GEMV conversion
+            step bench_quant $BENCH --variants fused_w8_pf_vfused,fused_w8all_pf_vfused,fused_w4gptq_pf_vfused \
+                --preprocess gpu --tag jetson_ours_bp
+            for d in results/raw/*_jetson_ours_bp/; do $PY benchmarks/summarize.py "$d" > /dev/null; done ;;
         demo)
             step demo $PY demo/record.py --only handwriting,chart_bar,cats,math_latex,letter,graph,receipt_35mp,describe_city \
                 --tag jetson_demo ;;

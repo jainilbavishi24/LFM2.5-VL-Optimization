@@ -252,11 +252,11 @@ def fig_jetson():
     """Jetson Orin NX 16GB: HF vs our BF16 stack and the quantized extensions (time per token, energy per token,
     1080p first token incl. preprocessing, peak memory)."""
     ink, muted = "#1f1f1e", "#6b6a64"
-    vs = [("HF\ntransformers", "jetson_base", "baseline", "#2a78d6"),
+    vs = [("HF", "jetson_base", "baseline", "#2a78d6"),
           ("ours\nBF16", "jetson_ours", "fused_gemv_pf_vfused", "#eb6834"),
-          ("ours INT8\n(decode)", "jetson_ours", "fused_w8_pf_vfused", "#1baf7a"),
-          ("ours INT8\neverywhere", "jetson_ours", "fused_w8all_pf_vfused", "#8a63d2"),
-          ("ours INT4\nGPTQ (decode)", "jetson_ours", "fused_w4gptq_pf_vfused", "#d6a32a")]
+          ("INT8\n(decode)", "jetson_ours", "fused_w8_pf_vfused", "#1baf7a"),
+          ("INT8\neverywhere", "jetson_ours", "fused_w8all_pf_vfused", "#8a63d2"),
+          ("INT4 GPTQ\n(decode)", "jetson_ours", "fused_w4gptq_pf_vfused", "#d6a32a")]
     panels = [("Time per output token (ms)", "tpot_ms", 128, "text"),
               ("Energy per output token (J, whole module)", "decode_j_per_tok", 128, "text"),
               ("First token, 1080p image (ms)\nincl. image preprocessing", "ttft_ms", 1, "img_fhd"),
