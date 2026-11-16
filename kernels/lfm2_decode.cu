@@ -19,7 +19,7 @@
 using bf16 = __nv_bfloat16;
 #define B2F(x) __bfloat162float(x)
 #define F2B(x) __float2bfloat16(x)
-__device__ __forceinline__ float rbf(float x) { return B2F(F2B(x)); }  // round to BF16 and back
+__device__ __forceinline__ float rbf(float x) { return B2F(F2B(x)); } // round to BF16 and back
 
 // Programmatic Dependent Launch (sm_90+): kernels are launched with programmatic stream serialization, so the next
 // kernel can start while this one drains. Contract: before pdl_wait() a kernel may only read immutable data
@@ -28,15 +28,17 @@ __device__ __forceinline__ float rbf(float x) { return B2F(F2B(x)); }  // round 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 900
 __device__ __forceinline__ void pdl_wait() { asm volatile("griddepcontrol.wait;" ::: "memory"); }
 __device__ __forceinline__ void pdl_trigger() { asm volatile("griddepcontrol.launch_dependents;"); }
-#else  // pre-Hopper (e.g. T4, A100): no PDL, kernels simply run in stream order
+#else // pre-Hopper (e.g. T4, A100): no PDL, kernels simply run in stream order
 __device__ __forceinline__ void pdl_wait() {}
 __device__ __forceinline__ void pdl_trigger() {}
 #endif
 static bool g_pdl = true;
 void set_pdl(bool on) { g_pdl = on; }
-static bool pdl_supported() {  // the launch attribute needs compute capability 9.0+
+static bool pdl_supported()
+{ // the launch attribute needs compute capability 9.0+
     static int major = -1;
-    if (major < 0) {
+    if (major < 0)
+    {
         int dev = 0;
         cudaGetDevice(&dev);
         cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
@@ -44,7 +46,8 @@ static bool pdl_supported() {  // the launch attribute needs compute capability 
     return major >= 9;
 }
 template <typename... KArgs, typename... Args>
-static void launch_k(void (*kernel)(KArgs...), dim3 grid, dim3 block, size_t smem, cudaStream_t st, Args... args) {
+static void launch_k(void (*kernel)(KArgs...), dim3 grid, dim3 block, size_t smem, cudaStream_t st, Args... args)
+{
     cudaLaunchConfig_t cfg = {};
     cfg.gridDim = grid;
     cfg.blockDim = block;
@@ -58,21 +61,27 @@ static void launch_k(void (*kernel)(KArgs...), dim3 grid, dim3 block, size_t sme
     cudaLaunchKernelEx(&cfg, kernel, static_cast<KArgs>(args)...);
 }
 
-__device__ __forceinline__ float warp_sum(float v) {
+__device__ __forceinline__ float warp_sum(float v)
+{
 #pragma unroll
-    for (int o = 16; o > 0; o >>= 1) v += __shfl_xor_sync(0xffffffff, v, o);
+    for (int o = 16; o > 0; o >>= 1)
+        v += __shfl_xor_sync(0xffffffff, v, o);
     return v;
 }
-__device__ __forceinline__ float warp_max(float v) {
+__device__ __forceinline__ float warp_max(float v)
+{
 #pragma unroll
-    for (int o = 16; o > 0; o >>= 1) v = fmaxf(v, __shfl_xor_sync(0xffffffff, v, o));
+    for (int o = 16; o > 0; o >>= 1)
+        v = fmaxf(v, __shfl_xor_sync(0xffffffff, v, o));
     return v;
 }
 template <int NWARPS>
-__device__ float block_sum(float v, float* red) {
+__device__ float block_sum(float v, float *red)
+{
     v = warp_sum(v);
     const int w = threadIdx.x >> 5, l = threadIdx.x & 31;
-    if (l == 0) red[w] = v;
+    if (l == 0)
+        red[w] = v;
     __syncthreads();
     float t = (l < NWARPS) ? red[l] : 0.f;
     t = warp_sum(t);
@@ -80,23 +89,25 @@ __device__ float block_sum(float v, float* red) {
     return t;
 }
 
-
 // ------------------------------------------------------------------------------------------------ add_rmsnorm
 // One block per row. HF: h = bf16(h + y); var = mean(h_f32^2); n = bf16(h * rsqrt(var + eps)); x = bf16(w * n)
 constexpr int NORM_THREADS = 256;
 template <bool ADD>
-__global__ void add_rmsnorm_kernel(bf16* __restrict__ h, const bf16* __restrict__ y, const bf16* __restrict__ w,
-                                   bf16* __restrict__ x, int H, float eps) {
+__global__ void add_rmsnorm_kernel(bf16 *__restrict__ h, const bf16 *__restrict__ y, const bf16 *__restrict__ w,
+                                   bf16 *__restrict__ x, int H, float eps)
+{
     pdl_trigger();
     pdl_wait();
-    extern __shared__ float smem[];  // H floats + reduction scratch
-    float* hv = smem;
-    float* red = smem + H;
+    extern __shared__ float smem[]; // H floats + reduction scratch
+    float *hv = smem;
+    float *red = smem + H;
     const size_t off = (size_t)blockIdx.x * H;
     float ss = 0.f;
-    for (int i = threadIdx.x; i < H; i += NORM_THREADS) {
+    for (int i = threadIdx.x; i < H; i += NORM_THREADS)
+    {
         float v = B2F(h[off + i]);
-        if (ADD) {
+        if (ADD)
+        {
             v = rbf(v + B2F(y[off + i]));
             h[off + i] = F2B(v);
         }
@@ -105,38 +116,48 @@ __global__ void add_rmsnorm_kernel(bf16* __restrict__ h, const bf16* __restrict_
     }
     ss = block_sum<NORM_THREADS / 32>(ss, red);
     const float rs = rsqrtf(ss / H + eps);
-    for (int i = threadIdx.x; i < H; i += NORM_THREADS) x[off + i] = F2B(B2F(w[i]) * rbf(hv[i] * rs));
+    for (int i = threadIdx.x; i < H; i += NORM_THREADS)
+        x[off + i] = F2B(B2F(w[i]) * rbf(hv[i] * rs));
 }
 
-void launch_add_rmsnorm(void* h, const void* y, const void* w, void* x, int rows, int H, float eps, cudaStream_t st) {
+void launch_add_rmsnorm(void *h, const void *y, const void *w, void *x, int rows, int H, float eps, cudaStream_t st)
+{
     const size_t sm = (H + 32) * sizeof(float);
-    if (y) launch_k(add_rmsnorm_kernel<true>, rows, NORM_THREADS, sm, st, (bf16*)h, (const bf16*)y, (const bf16*)w, (bf16*)x, H, eps);
-    else launch_k(add_rmsnorm_kernel<false>, rows, NORM_THREADS, sm, st, (bf16*)h, nullptr, (const bf16*)w, (bf16*)x, H, eps);
+    if (y)
+        launch_k(add_rmsnorm_kernel<true>, rows, NORM_THREADS, sm, st, (bf16 *)h, (const bf16 *)y, (const bf16 *)w, (bf16 *)x, H, eps);
+    else
+        launch_k(add_rmsnorm_kernel<false>, rows, NORM_THREADS, sm, st, (bf16 *)h, nullptr, (const bf16 *)w, (bf16 *)x, H, eps);
 }
 
 // ------------------------------------------------------------------------------------------------ shortconv_step
 // bcx = in_proj(x) laid out [B, 3H] = (B | C | x). HF decode: bx = bf16(B*x); window = (s1, s2, bx) -> state;
 // conv = bf16(sum_k w[k] * window[k] (+bias)); y = bf16(C * conv)
-__global__ void shortconv_step_kernel(const bf16* __restrict__ bcx, bf16* __restrict__ state, const bf16* __restrict__ w,
-                                      const bf16* __restrict__ bias, bf16* __restrict__ y, int H) {
+__global__ void shortconv_step_kernel(const bf16 *__restrict__ bcx, bf16 *__restrict__ state, const bf16 *__restrict__ w,
+                                      const bf16 *__restrict__ bias, bf16 *__restrict__ y, int H)
+{
     pdl_trigger();
     pdl_wait();
     constexpr int L = 3;
     const int b = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= H) return;
-    const bf16* row = bcx + (size_t)b * 3 * H;
+    if (i >= H)
+        return;
+    const bf16 *row = bcx + (size_t)b * 3 * H;
     const float bx = rbf(B2F(row[i]) * B2F(row[2 * H + i]));
-    bf16* st = state + ((size_t)b * H + i) * L;
+    bf16 *st = state + ((size_t)b * H + i) * L;
     const float s1 = B2F(st[1]), s2 = B2F(st[2]);
-    st[0] = st[1]; st[1] = st[2]; st[2] = F2B(bx);
+    st[0] = st[1];
+    st[1] = st[2];
+    st[2] = F2B(bx);
     float acc = B2F(w[i * L + 0]) * s1 + B2F(w[i * L + 1]) * s2 + B2F(w[i * L + 2]) * bx;
-    if (bias) acc += B2F(bias[i]);
+    if (bias)
+        acc += B2F(bias[i]);
     y[(size_t)b * H + i] = F2B(B2F(row[H + i]) * rbf(acc));
 }
 
-void launch_shortconv_step(const void* bcx, void* state, const void* w, const void* bias, void* y, int B, int H, cudaStream_t st) {
+void launch_shortconv_step(const void *bcx, void *state, const void *w, const void *bias, void *y, int B, int H, cudaStream_t st)
+{
     dim3 grid((H + 255) / 256, B);
-    launch_k(shortconv_step_kernel, grid, 256, 0, st, (const bf16*)bcx, (bf16*)state, (const bf16*)w, (const bf16*)bias, (bf16*)y, H);
+    launch_k(shortconv_step_kernel, grid, 256, 0, st, (const bf16 *)bcx, (bf16 *)state, (const bf16 *)w, (const bf16 *)bias, (bf16 *)y, H);
 }
 
 // ------------------------------------------------------------------------------------------------ qk_norm_rope_kv
@@ -145,10 +166,11 @@ void launch_shortconv_step(const void* bcx, void* state, const void* w, const vo
 //   cos/sin = bf16(cos/sin(pos * inv_freq[d % (D/2)]) * scaling); out = bf16(bf16(x*cos) + bf16(rot(x)*sin))
 // q -> q_out[b, head]; k, v -> cache[b, kv_head, pos]
 template <int D>
-__global__ void qk_norm_rope_kv_kernel(const bf16* __restrict__ qkv, const bf16* __restrict__ qw, const bf16* __restrict__ kw,
-                                       const float* __restrict__ inv_freq, float scaling, const int64_t* __restrict__ pos_p,
-                                       bf16* __restrict__ q_out, bf16* __restrict__ kc, bf16* __restrict__ vc,
-                                       int NQ, int NKV, int max_len, float eps) {
+__global__ void qk_norm_rope_kv_kernel(const bf16 *__restrict__ qkv, const bf16 *__restrict__ qw, const bf16 *__restrict__ kw,
+                                       const float *__restrict__ inv_freq, float scaling, const int64_t *__restrict__ pos_p,
+                                       bf16 *__restrict__ q_out, bf16 *__restrict__ kc, bf16 *__restrict__ vc,
+                                       int NQ, int NKV, int max_len, float eps)
+{
     pdl_trigger();
     pdl_wait();
     __shared__ float xs[D];
@@ -157,7 +179,8 @@ __global__ void qk_norm_rope_kv_kernel(const bf16* __restrict__ qkv, const bf16*
     const int64_t pos = *pos_p;
     const int NH = NQ + 2 * NKV;
     float x = B2F(qkv[((size_t)b * NH + head) * D + d]);
-    if (head >= NQ + NKV) {  // value head: straight into the cache
+    if (head >= NQ + NKV)
+    { // value head: straight into the cache
         const int vh = head - NQ - NKV;
         vc[(((size_t)b * NKV + vh) * max_len + pos) * D + d] = F2B(x);
         return;
@@ -172,25 +195,29 @@ __global__ void qk_norm_rope_kv_kernel(const bf16* __restrict__ qkv, const bf16*
     const float f = (float)pos * inv_freq[d % half];
     const float c = rbf(cosf(f) * scaling), s = rbf(sinf(f) * scaling);
     const bf16 out = F2B(rbf(x * c) + rbf(rot * s));
-    if (is_q) q_out[((size_t)b * NQ + head) * D + d] = out;
-    else kc[(((size_t)b * NKV + (head - NQ)) * max_len + pos) * D + d] = out;
+    if (is_q)
+        q_out[((size_t)b * NQ + head) * D + d] = out;
+    else
+        kc[(((size_t)b * NKV + (head - NQ)) * max_len + pos) * D + d] = out;
 }
 
-void launch_qk_norm_rope_kv(const void* qkv, const void* qw, const void* kw, const float* inv_freq, float scaling,
-                            const int64_t* pos, void* q_out, void* kc, void* vc, int B, int NQ, int NKV, int max_len,
-                            float eps, cudaStream_t st) {
+void launch_qk_norm_rope_kv(const void *qkv, const void *qw, const void *kw, const float *inv_freq, float scaling,
+                            const int64_t *pos, void *q_out, void *kc, void *vc, int B, int NQ, int NKV, int max_len,
+                            float eps, cudaStream_t st)
+{
     dim3 grid(B, NQ + 2 * NKV);
-    launch_k(qk_norm_rope_kv_kernel<64>, grid, 64, 0, st, (const bf16*)qkv, (const bf16*)qw, (const bf16*)kw, inv_freq, scaling,
-        pos, (bf16*)q_out, (bf16*)kc, (bf16*)vc, NQ, NKV, max_len, eps);
+    launch_k(qk_norm_rope_kv_kernel<64>, grid, 64, 0, st, (const bf16 *)qkv, (const bf16 *)qw, (const bf16 *)kw, inv_freq, scaling,
+             pos, (bf16 *)q_out, (bf16 *)kc, (bf16 *)vc, NQ, NKV, max_len, eps);
 }
 
 // ------------------------------------------------------------------------------------------------ decode_attention
 // One block per (b, query head); 8 warps split the positions 0..pos (t = warp, warp+8, ...), each keeps an
 // online softmax (running max m, sum l, accumulator over its 2 dims per lane); warps are merged at the end.
 constexpr int ATT_WARPS = 8;
-__global__ void decode_attention_kernel(const bf16* __restrict__ q, const bf16* __restrict__ kc, const bf16* __restrict__ vc,
-                                        const int64_t* __restrict__ pos_p, bf16* __restrict__ out,
-                                        int NQ, int NKV, int max_len, float scale) {
+__global__ void decode_attention_kernel(const bf16 *__restrict__ q, const bf16 *__restrict__ kc, const bf16 *__restrict__ vc,
+                                        const int64_t *__restrict__ pos_p, bf16 *__restrict__ out,
+                                        int NQ, int NKV, int max_len, float scale)
+{
     pdl_trigger();
     pdl_wait();
     constexpr int D = 64;
@@ -198,14 +225,15 @@ __global__ void decode_attention_kernel(const bf16* __restrict__ q, const bf16* 
     const int b = blockIdx.x, h = blockIdx.y, kvh = h / (NQ / NKV);
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int len = (int)(*pos_p) + 1;
-    const __nv_bfloat162* qp = reinterpret_cast<const __nv_bfloat162*>(q + ((size_t)b * NQ + h) * D);
+    const __nv_bfloat162 *qp = reinterpret_cast<const __nv_bfloat162 *>(q + ((size_t)b * NQ + h) * D);
     const float2 qf = __bfloat1622float2(qp[lane]);
     const float q0 = qf.x * scale, q1 = qf.y * scale;
     const size_t base = ((size_t)b * NKV + kvh) * max_len * D;
-    const __nv_bfloat162* K = reinterpret_cast<const __nv_bfloat162*>(kc + base);
-    const __nv_bfloat162* V = reinterpret_cast<const __nv_bfloat162*>(vc + base);
+    const __nv_bfloat162 *K = reinterpret_cast<const __nv_bfloat162 *>(kc + base);
+    const __nv_bfloat162 *V = reinterpret_cast<const __nv_bfloat162 *>(vc + base);
     float m = -INFINITY, l = 0.f, a0 = 0.f, a1 = 0.f;
-    for (int t = warp; t < len; t += ATT_WARPS) {
+    for (int t = warp; t < len; t += ATT_WARPS)
+    {
         const float2 k = __bfloat1622float2(K[(size_t)t * (D / 2) + lane]);
         const float s = warp_sum(q0 * k.x + q1 * k.y);
         const float mn = fmaxf(m, s);
@@ -216,31 +244,40 @@ __global__ void decode_attention_kernel(const bf16* __restrict__ q, const bf16* 
         a1 = a1 * corr + p * v.y;
         m = mn;
     }
-    if (lane == 0) { sm_m[warp] = m; sm_l[warp] = l; }
+    if (lane == 0)
+    {
+        sm_m[warp] = m;
+        sm_l[warp] = l;
+    }
     sm_acc[warp][2 * lane] = a0;
     sm_acc[warp][2 * lane + 1] = a1;
     __syncthreads();
-    if (warp == 0) {
+    if (warp == 0)
+    {
         float M = -INFINITY;
-        for (int w = 0; w < ATT_WARPS; ++w) M = fmaxf(M, sm_m[w]);
+        for (int w = 0; w < ATT_WARPS; ++w)
+            M = fmaxf(M, sm_m[w]);
         float L = 0.f, o0 = 0.f, o1 = 0.f;
-        for (int w = 0; w < ATT_WARPS; ++w) {
-            if (sm_l[w] == 0.f) continue;  // warp saw no positions
+        for (int w = 0; w < ATT_WARPS; ++w)
+        {
+            if (sm_l[w] == 0.f)
+                continue; // warp saw no positions
             const float c = __expf(sm_m[w] - M);
             L += sm_l[w] * c;
             o0 += sm_acc[w][2 * lane] * c;
             o1 += sm_acc[w][2 * lane + 1] * c;
         }
-        __nv_bfloat162* op = reinterpret_cast<__nv_bfloat162*>(out + ((size_t)b * NQ + h) * D);
+        __nv_bfloat162 *op = reinterpret_cast<__nv_bfloat162 *>(out + ((size_t)b * NQ + h) * D);
         op[lane] = __floats2bfloat162_rn(o0 / L, o1 / L);
     }
 }
 
-void launch_decode_attention(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out,
-                             int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st) {
+void launch_decode_attention(const void *q, const void *kc, const void *vc, const int64_t *pos, void *out,
+                             int B, int NQ, int NKV, int max_len, float scale, cudaStream_t st)
+{
     dim3 grid(B, NQ);
-    launch_k(decode_attention_kernel, grid, ATT_WARPS * 32, 0, st, (const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, (bf16*)out,
-                                                             NQ, NKV, max_len, scale);
+    launch_k(decode_attention_kernel, grid, ATT_WARPS * 32, 0, st, (const bf16 *)q, (const bf16 *)kc, (const bf16 *)vc, pos, (bf16 *)out,
+             NQ, NKV, max_len, scale);
 }
 
 // ------------------------------------------------------------------------------------------------ decode_attention_split
@@ -249,10 +286,11 @@ void launch_decode_attention(const void* q, const void* kc, const void* vc, cons
 // read once from DRAM, then hit L1 for the other warps). Inside a warp, 4 lane groups of 8 take 4 positions per
 // iteration; each lane holds 8 of the 64 dims (one 16-byte load of K and V). Partial (max, sum, acc[64]) per
 // (b, q head, split) go to ws; attn_combine merges the S partials.
-constexpr int SPLIT_WARPS = 4;  // = query heads per KV head (32 / 8)
-__global__ void decode_attention_split_kernel(const bf16* __restrict__ q, const bf16* __restrict__ kc, const bf16* __restrict__ vc,
-                                              const int64_t* __restrict__ pos_p, float* __restrict__ ws,
-                                              int NQ, int NKV, int max_len, int S, float scale) {
+constexpr int SPLIT_WARPS = 4; // = query heads per KV head (32 / 8)
+__global__ void decode_attention_split_kernel(const bf16 *__restrict__ q, const bf16 *__restrict__ kc, const bf16 *__restrict__ vc,
+                                              const int64_t *__restrict__ pos_p, float *__restrict__ ws,
+                                              int NQ, int NKV, int max_len, int S, float scale)
+{
     pdl_trigger();
     pdl_wait();
     constexpr int D = 64;
@@ -260,81 +298,118 @@ __global__ void decode_attention_split_kernel(const bf16* __restrict__ q, const 
     const int b = bk / NKV, kvh = bk % NKV;
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int h = kvh * (NQ / NKV) + warp;
-    const int grp = lane >> 3, sub = lane & 7;            // position slot in this iteration, 8-dim slice
+    const int grp = lane >> 3, sub = lane & 7; // position slot in this iteration, 8-dim slice
     const int len = (int)(*pos_p) + 1;
     const int chunk = (max_len + S - 1) / S;
     const int t0 = s * chunk, t1 = min(len, t0 + chunk);
-    float* out = ws + (((size_t)b * NQ + h) * S + s) * (D + 2);
-    if (t0 >= t1) {                                        // empty split
-        if (lane == 0) { out[0] = -INFINITY; out[1] = 0.f; }
+    float *out = ws + (((size_t)b * NQ + h) * S + s) * (D + 2);
+    if (t0 >= t1)
+    { // empty split
+        if (lane == 0)
+        {
+            out[0] = -INFINITY;
+            out[1] = 0.f;
+        }
         return;
     }
     float qv[8];
     {
-        const uint4 raw = reinterpret_cast<const uint4*>(q + ((size_t)b * NQ + h) * D)[sub];
-        const __nv_bfloat162* p2 = reinterpret_cast<const __nv_bfloat162*>(&raw);
+        const uint4 raw = reinterpret_cast<const uint4 *>(q + ((size_t)b * NQ + h) * D)[sub];
+        const __nv_bfloat162 *p2 = reinterpret_cast<const __nv_bfloat162 *>(&raw);
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(p2[j]); qv[2 * j] = f.x * scale; qv[2 * j + 1] = f.y * scale; }
+        for (int j = 0; j < 4; ++j)
+        {
+            const float2 f = __bfloat1622float2(p2[j]);
+            qv[2 * j] = f.x * scale;
+            qv[2 * j + 1] = f.y * scale;
+        }
     }
     const size_t base = ((size_t)b * NKV + kvh) * max_len * D;
-    const uint4* K = reinterpret_cast<const uint4*>(kc + base);
-    const uint4* V = reinterpret_cast<const uint4*>(vc + base);
+    const uint4 *K = reinterpret_cast<const uint4 *>(kc + base);
+    const uint4 *V = reinterpret_cast<const uint4 *>(vc + base);
     float m = -INFINITY, l = 0.f, acc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-    for (int it = t0; it < t1; it += 4) {                  // same trip count for all lanes (shuffles need the full warp)
+    for (int it = t0; it < t1; it += 4)
+    { // same trip count for all lanes (shuffles need the full warp)
         const int t = it + grp;
         const bool valid = t < t1;
         float dot = 0.f;
         uint4 vraw = make_uint4(0, 0, 0, 0);
-        if (valid) {
+        if (valid)
+        {
             const uint4 kraw = K[(size_t)t * (D / 8) + sub];
             vraw = V[(size_t)t * (D / 8) + sub];
-            const __nv_bfloat162* k2 = reinterpret_cast<const __nv_bfloat162*>(&kraw);
+            const __nv_bfloat162 *k2 = reinterpret_cast<const __nv_bfloat162 *>(&kraw);
 #pragma unroll
-            for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(k2[j]); dot += qv[2 * j] * f.x + qv[2 * j + 1] * f.y; }
+            for (int j = 0; j < 4; ++j)
+            {
+                const float2 f = __bfloat1622float2(k2[j]);
+                dot += qv[2 * j] * f.x + qv[2 * j + 1] * f.y;
+            }
         }
         dot += __shfl_xor_sync(0xffffffff, dot, 4);
         dot += __shfl_xor_sync(0xffffffff, dot, 2);
         dot += __shfl_xor_sync(0xffffffff, dot, 1);
-        if (valid) {
+        if (valid)
+        {
             const float mn = fmaxf(m, dot), corr = __expf(m - mn), p = __expf(dot - mn);
             l = l * corr + p;
-            const __nv_bfloat162* v2 = reinterpret_cast<const __nv_bfloat162*>(&vraw);
+            const __nv_bfloat162 *v2 = reinterpret_cast<const __nv_bfloat162 *>(&vraw);
 #pragma unroll
-            for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(v2[j]); acc[2 * j] = acc[2 * j] * corr + p * f.x; acc[2 * j + 1] = acc[2 * j + 1] * corr + p * f.y; }
+            for (int j = 0; j < 4; ++j)
+            {
+                const float2 f = __bfloat1622float2(v2[j]);
+                acc[2 * j] = acc[2 * j] * corr + p * f.x;
+                acc[2 * j + 1] = acc[2 * j + 1] * corr + p * f.y;
+            }
             m = mn;
         }
     }
     // merge the 4 lane groups (same sub = same dims): xor 8 and 16
 #pragma unroll
-    for (int o = 8; o <= 16; o <<= 1) {
+    for (int o = 8; o <= 16; o <<= 1)
+    {
         const float m2 = __shfl_xor_sync(0xffffffff, m, o), l2 = __shfl_xor_sync(0xffffffff, l, o);
         const float mn = fmaxf(m, m2);
         const float c1 = (m == -INFINITY) ? 0.f : __expf(m - mn), c2 = (m2 == -INFINITY) ? 0.f : __expf(m2 - mn);
         l = l * c1 + l2 * c2;
 #pragma unroll
-        for (int j = 0; j < 8; ++j) { const float a2 = __shfl_xor_sync(0xffffffff, acc[j], o); acc[j] = acc[j] * c1 + a2 * c2; }
+        for (int j = 0; j < 8; ++j)
+        {
+            const float a2 = __shfl_xor_sync(0xffffffff, acc[j], o);
+            acc[j] = acc[j] * c1 + a2 * c2;
+        }
         m = mn;
     }
-    if (grp == 0) {
+    if (grp == 0)
+    {
 #pragma unroll
-        for (int j = 0; j < 8; ++j) out[2 + sub * 8 + j] = acc[j];
-        if (sub == 0) { out[0] = m; out[1] = l; }
+        for (int j = 0; j < 8; ++j)
+            out[2 + sub * 8 + j] = acc[j];
+        if (sub == 0)
+        {
+            out[0] = m;
+            out[1] = l;
+        }
     }
 }
 
 // One block of 64 threads per (b, q head): out = sum_s acc_s e^(m_s - M) / sum_s l_s e^(m_s - M)
-__global__ void attn_combine_kernel(const float* __restrict__ ws, bf16* __restrict__ out, int S) {
+__global__ void attn_combine_kernel(const float *__restrict__ ws, bf16 *__restrict__ out, int S)
+{
     pdl_trigger();
     pdl_wait();
     constexpr int D = 64;
     const int bh = blockIdx.x, d = threadIdx.x;
-    const float* w = ws + (size_t)bh * S * (D + 2);
+    const float *w = ws + (size_t)bh * S * (D + 2);
     float M = -INFINITY;
-    for (int s = 0; s < S; ++s) M = fmaxf(M, w[s * (D + 2)]);
+    for (int s = 0; s < S; ++s)
+        M = fmaxf(M, w[s * (D + 2)]);
     float L = 0.f, o = 0.f;
-    for (int s = 0; s < S; ++s) {
+    for (int s = 0; s < S; ++s)
+    {
         const float ls = w[s * (D + 2) + 1];
-        if (ls == 0.f) continue;
+        if (ls == 0.f)
+            continue;
         const float c = __expf(w[s * (D + 2)] - M);
         L += ls * c;
         o += w[s * (D + 2) + 2 + d] * c;
@@ -342,12 +417,13 @@ __global__ void attn_combine_kernel(const float* __restrict__ ws, bf16* __restri
     out[(size_t)bh * D + d] = F2B(o / L);
 }
 
-void launch_decode_attention_split(const void* q, const void* kc, const void* vc, const int64_t* pos, void* out, float* ws,
-                                   int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st) {
+void launch_decode_attention_split(const void *q, const void *kc, const void *vc, const int64_t *pos, void *out, float *ws,
+                                   int B, int NQ, int NKV, int max_len, int S, float scale, cudaStream_t st)
+{
     dim3 grid(B * NKV, S);
-    launch_k(decode_attention_split_kernel, grid, SPLIT_WARPS * 32, 0, st, (const bf16*)q, (const bf16*)kc, (const bf16*)vc, pos, ws,
-                                                                     NQ, NKV, max_len, S, scale);
-    launch_k(attn_combine_kernel, B * NQ, 64, 0, st, ws, (bf16*)out, S);
+    launch_k(decode_attention_split_kernel, grid, SPLIT_WARPS * 32, 0, st, (const bf16 *)q, (const bf16 *)kc, (const bf16 *)vc, pos, ws,
+             NQ, NKV, max_len, S, scale);
+    launch_k(attn_combine_kernel, B * NQ, 64, 0, st, ws, (bf16 *)out, S);
 }
 
 // ------------------------------------------------------------------------------------------------ gemv (O6)
@@ -356,87 +432,123 @@ void launch_decode_attention_split(const void* q, const void* kc, const void* vc
 // memory as FP32; each lane streams 16-byte chunks of its row (8 BF16 or 16 INT8 weights) with no-L1-allocate
 // loads, UNROLL chunks in flight per lane to keep enough bytes outstanding to saturate DRAM.
 constexpr int GEMV_WARPS = 8;
-__device__ __forceinline__ uint4 ld_stream(const uint4* p) {
+__device__ __forceinline__ uint4 ld_stream(const uint4 *p)
+{
     uint4 r;
     asm volatile("ld.global.nc.L1::no_allocate.v4.u32 {%0,%1,%2,%3}, [%4];"
                  : "=r"(r.x), "=r"(r.y), "=r"(r.z), "=r"(r.w) : "l"(p));
     return r;
 }
-template <typename WT> struct WTraits;
-template <> struct WTraits<bf16> {
-    static constexpr int PER = 8;  // weights per 16-byte chunk
-    __device__ static float dot(const uint4& c, const float* xs, int stride) {
-        const __nv_bfloat162* w = reinterpret_cast<const __nv_bfloat162*>(&c);
+template <typename WT>
+struct WTraits;
+template <>
+struct WTraits<bf16>
+{
+    static constexpr int PER = 8; // weights per 16-byte chunk
+    __device__ static float dot(const uint4 &c, const float *xs, int stride)
+    {
+        const __nv_bfloat162 *w = reinterpret_cast<const __nv_bfloat162 *>(&c);
         float a = 0.f;
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(w[j]); a += f.x * xs[(2 * j) * stride] + f.y * xs[(2 * j + 1) * stride]; }
+        for (int j = 0; j < 4; ++j)
+        {
+            const float2 f = __bfloat1622float2(w[j]);
+            a += f.x * xs[(2 * j) * stride] + f.y * xs[(2 * j + 1) * stride];
+        }
         return a;
     }
 };
-template <> struct WTraits<int8_t> {
+template <>
+struct WTraits<int8_t>
+{
     static constexpr int PER = 16;
-    __device__ static float dot(const uint4& c, const float* xs, int stride) {
-        const int8_t* w = reinterpret_cast<const int8_t*>(&c);
+    __device__ static float dot(const uint4 &c, const float *xs, int stride)
+    {
+        // int8 -> float without I2F (quarter rate on Ampere; the bottleneck on Orin's 8 SMs): byte b + 128 goes into
+        // the mantissa of 2^23 with a byte permute, then one exact FADD. Same values as (float)w, so bit-identical.
+        const uint32_t *w = reinterpret_cast<const uint32_t *>(&c);
         float a = 0.f;
 #pragma unroll
-        for (int j = 0; j < 16; ++j) a += (float)w[j] * xs[j * stride];
+        for (int j = 0; j < 4; ++j)
+        {
+            const uint32_t v = w[j] ^ 0x80808080u;
+#pragma unroll
+            for (int b = 0; b < 4; ++b)
+                a += (__uint_as_float(__byte_perm(v, 0x4B000000u, 0x7650 | b)) - 8388736.f) * xs[(4 * j + b) * stride];
+        }
         return a;
     }
 };
 template <typename WT, int ROWS, int UNROLL>
-__global__ void gemv_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
-                            bf16* __restrict__ y, int N, int K) {
+__global__ void gemv_kernel(const WT *__restrict__ W, const float *__restrict__ scale, const bf16 *__restrict__ x,
+                            bf16 *__restrict__ y, int N, int K)
+{
     extern __shared__ float xs[];
     pdl_trigger();
     constexpr int PER = WTraits<WT>::PER;
-    const int chunks = K / PER;                             // K is a multiple of 32 * PER (checked on the host)
+    const int chunks = K / PER; // K is a multiple of 32 * PER (checked on the host)
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
-    const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS;  // this warp's ROWS consecutive output rows
+    const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS; // this warp's ROWS consecutive output rows
     const bool active = n0 < N;
-    const uint4* rows[ROWS];
+    const uint4 *rows[ROWS];
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) rows[r] = reinterpret_cast<const uint4*>(W + (size_t)min(n0 + r, N - 1) * K);
+    for (int r = 0; r < ROWS; ++r)
+        rows[r] = reinterpret_cast<const uint4 *>(W + (size_t)min(n0 + r, N - 1) * K);
     float acc[ROWS];
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) acc[r] = 0.f;
+    for (int r = 0; r < ROWS; ++r)
+        acc[r] = 0.f;
     int c = lane;
     uint4 buf[ROWS][UNROLL];
     bool more = active && c + 32 * (UNROLL - 1) < chunks;
-    if (more) {  // weights do not depend on the previous kernel: start streaming them before the dependency wait
+    if (more)
+    { // weights do not depend on the previous kernel: start streaming them before the dependency wait
 #pragma unroll
         for (int u = 0; u < UNROLL; ++u)
 #pragma unroll
-            for (int r = 0; r < ROWS; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+            for (int r = 0; r < ROWS; ++r)
+                buf[r][u] = ld_stream(rows[r] + c + 32 * u);
     }
     pdl_wait();
     // natural layout (a transposed, bank-conflict-free layout measured ~5 % slower here: profiling/bench_gemv.py)
-    for (int k = threadIdx.x; k < K; k += blockDim.x) xs[k] = B2F(x[k]);
+    for (int k = threadIdx.x; k < K; k += blockDim.x)
+        xs[k] = B2F(x[k]);
     __syncthreads();
-    if (!active) return;
-    while (more) {
+    if (!active)
+        return;
+    while (more)
+    {
 #pragma unroll
-        for (int u = 0; u < UNROLL; ++u) {
-            const float* xp = xs + (c + 32 * u) * PER;      // x slice loaded once, reused by all ROWS rows
+        for (int u = 0; u < UNROLL; ++u)
+        {
+            const float *xp = xs + (c + 32 * u) * PER; // x slice loaded once, reused by all ROWS rows
 #pragma unroll
-            for (int r = 0; r < ROWS; ++r) acc[r] += WTraits<WT>::dot(buf[r][u], xp, 1);
+            for (int r = 0; r < ROWS; ++r)
+                acc[r] += WTraits<WT>::dot(buf[r][u], xp, 1);
         }
         c += 32 * UNROLL;
         more = c + 32 * (UNROLL - 1) < chunks;
-        if (more) {
+        if (more)
+        {
 #pragma unroll
             for (int u = 0; u < UNROLL; ++u)
 #pragma unroll
-                for (int r = 0; r < ROWS; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+                for (int r = 0; r < ROWS; ++r)
+                    buf[r][u] = ld_stream(rows[r] + c + 32 * u);
         }
     }
-    for (; c < chunks; c += 32) {
+    for (; c < chunks; c += 32)
+    {
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) acc[r] += WTraits<WT>::dot(ld_stream(rows[r] + c), xs + c * PER, 1);
+        for (int r = 0; r < ROWS; ++r)
+            acc[r] += WTraits<WT>::dot(ld_stream(rows[r] + c), xs + c * PER, 1);
     }
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) {
+    for (int r = 0; r < ROWS; ++r)
+    {
         const float a = warp_sum(acc[r]);
-        if (lane == 0 && n0 + r < N) y[n0 + r] = F2B(scale ? a * scale[n0 + r] : a);
+        if (lane == 0 && n0 + r < N)
+            y[n0 + r] = F2B(scale ? a * scale[n0 + r] : a);
     }
 }
 
@@ -444,125 +556,165 @@ __global__ void gemv_kernel(const WT* __restrict__ W, const float* __restrict__ 
 // cached loads right when it needs it; x is tiny and shared by all warps, so it is served by L1/L2. Removes the
 // block-wide x -> shared prologue + __syncthreads that dominates the small matrices.
 template <int PER>
-__device__ __forceinline__ void load_x(const bf16* __restrict__ x, int chunk, float* xv) {
-    const uint4* p = reinterpret_cast<const uint4*>(x + (size_t)chunk * PER);
+__device__ __forceinline__ void load_x(const bf16 *__restrict__ x, int chunk, float *xv)
+{
+    const uint4 *p = reinterpret_cast<const uint4 *>(x + (size_t)chunk * PER);
 #pragma unroll
-    for (int q = 0; q < PER / 8; ++q) {
+    for (int q = 0; q < PER / 8; ++q)
+    {
         const uint4 raw = __ldg(p + q);
-        const __nv_bfloat162* h = reinterpret_cast<const __nv_bfloat162*>(&raw);
+        const __nv_bfloat162 *h = reinterpret_cast<const __nv_bfloat162 *>(&raw);
 #pragma unroll
-        for (int j = 0; j < 4; ++j) { const float2 f = __bfloat1622float2(h[j]); xv[8 * q + 2 * j] = f.x; xv[8 * q + 2 * j + 1] = f.y; }
+        for (int j = 0; j < 4; ++j)
+        {
+            const float2 f = __bfloat1622float2(h[j]);
+            xv[8 * q + 2 * j] = f.x;
+            xv[8 * q + 2 * j + 1] = f.y;
+        }
     }
 }
 template <typename WT, int ROWS, int UNROLL, int BATCH>
-__global__ void gemv_direct_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
-                                   bf16* __restrict__ y, int N, int K) {
+__global__ void gemv_direct_kernel(const WT *__restrict__ W, const float *__restrict__ scale, const bf16 *__restrict__ x,
+                                   bf16 *__restrict__ y, int N, int K)
+{
     // x [BATCH, K], y [BATCH, N]: each weight chunk is read once and used for all BATCH rows of x
     pdl_trigger();
     constexpr int PER = WTraits<WT>::PER;
     const int chunks = K / PER;
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS;
-    if (n0 >= N) return;                                    // no block-level sync in this kernel: early exit is fine
-    const uint4* rows[ROWS];
+    if (n0 >= N)
+        return; // no block-level sync in this kernel: early exit is fine
+    const uint4 *rows[ROWS];
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) rows[r] = reinterpret_cast<const uint4*>(W + (size_t)min(n0 + r, N - 1) * K);
+    for (int r = 0; r < ROWS; ++r)
+        rows[r] = reinterpret_cast<const uint4 *>(W + (size_t)min(n0 + r, N - 1) * K);
     float acc[ROWS][BATCH];
 #pragma unroll
     for (int r = 0; r < ROWS; ++r)
 #pragma unroll
-        for (int b = 0; b < BATCH; ++b) acc[r][b] = 0.f;
+        for (int b = 0; b < BATCH; ++b)
+            acc[r][b] = 0.f;
     int c = lane;
     uint4 buf[ROWS][UNROLL];
     bool more = c + 32 * (UNROLL - 1) < chunks;
-    if (more) {
+    if (more)
+    {
 #pragma unroll
         for (int u = 0; u < UNROLL; ++u)
 #pragma unroll
-            for (int r = 0; r < ROWS; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+            for (int r = 0; r < ROWS; ++r)
+                buf[r][u] = ld_stream(rows[r] + c + 32 * u);
     }
     pdl_wait();
-    while (more) {
+    while (more)
+    {
 #pragma unroll
-        for (int u = 0; u < UNROLL; ++u) {
+        for (int u = 0; u < UNROLL; ++u)
+        {
 #pragma unroll
-            for (int b = 0; b < BATCH; ++b) {
+            for (int b = 0; b < BATCH; ++b)
+            {
                 float xv[PER];
                 load_x<PER>(x + (size_t)b * K, c + 32 * u, xv);
 #pragma unroll
-                for (int r = 0; r < ROWS; ++r) acc[r][b] += WTraits<WT>::dot(buf[r][u], xv, 1);
+                for (int r = 0; r < ROWS; ++r)
+                    acc[r][b] += WTraits<WT>::dot(buf[r][u], xv, 1);
             }
         }
         c += 32 * UNROLL;
         more = c + 32 * (UNROLL - 1) < chunks;
-        if (more) {
+        if (more)
+        {
 #pragma unroll
             for (int u = 0; u < UNROLL; ++u)
 #pragma unroll
-                for (int r = 0; r < ROWS; ++r) buf[r][u] = ld_stream(rows[r] + c + 32 * u);
+                for (int r = 0; r < ROWS; ++r)
+                    buf[r][u] = ld_stream(rows[r] + c + 32 * u);
         }
     }
-    for (; c < chunks; c += 32) {
+    for (; c < chunks; c += 32)
+    {
         uint4 w[ROWS];
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) w[r] = ld_stream(rows[r] + c);
+        for (int r = 0; r < ROWS; ++r)
+            w[r] = ld_stream(rows[r] + c);
 #pragma unroll
-        for (int b = 0; b < BATCH; ++b) {
+        for (int b = 0; b < BATCH; ++b)
+        {
             float xv[PER];
             load_x<PER>(x + (size_t)b * K, c, xv);
 #pragma unroll
-            for (int r = 0; r < ROWS; ++r) acc[r][b] += WTraits<WT>::dot(w[r], xv, 1);
+            for (int r = 0; r < ROWS; ++r)
+                acc[r][b] += WTraits<WT>::dot(w[r], xv, 1);
         }
     }
 #pragma unroll
     for (int r = 0; r < ROWS; ++r)
 #pragma unroll
-        for (int b = 0; b < BATCH; ++b) {
+        for (int b = 0; b < BATCH; ++b)
+        {
             const float a = warp_sum(acc[r][b]);
-            if (lane == 0 && n0 + r < N) y[(size_t)b * N + n0 + r] = F2B(scale ? a * scale[n0 + r] : a);
+            if (lane == 0 && n0 + r < N)
+                y[(size_t)b * N + n0 + r] = F2B(scale ? a * scale[n0 + r] : a);
         }
 }
-static int g_gemv_impl = 1;  // 1: direct x loads (default: 1.1-1.23 TB/s on every decode shape), 0: x staged in shared memory
+static int g_gemv_impl = 1; // 1: direct x loads (default: 1.1-1.23 TB/s on every decode shape), 0: x staged in shared memory
 void set_gemv_impl(int impl) { g_gemv_impl = impl; }
-
 
 // rows per warp (0 = auto): more rows reuse each x slice and keep more loads in flight
 template <typename WT>
-static void gemv_dispatch(const WT* W, const float* scale, const bf16* x, bf16* y, int N, int K, int rows, int B, cudaStream_t st) {
+static void gemv_dispatch(const WT *W, const float *scale, const bf16 *x, bf16 *y, int N, int K, int rows, int B, cudaStream_t st)
+{
     // measured (profiling/bench_gemv.py): direct loads -> 1 row/warp with 4 chunks in flight is best on every shape;
     // staged-x kernel -> 2 rows/warp, 4 for lm_head
-    if (rows <= 0) rows = g_gemv_impl == 1 ? 1 : (N >= 32768 ? 4 : 2);
+    if (rows <= 0)
+        rows = g_gemv_impl == 1 ? 1 : (N >= 32768 ? 4 : 2);
     const int per_block = GEMV_WARPS * rows;
     const dim3 grid((N + per_block - 1) / per_block);
-    if (g_gemv_impl == 1 || B > 1) {
+    if (g_gemv_impl == 1 || B > 1)
+    {
         // batch: chunks of up to 8 sequences per launch (each chunk reads the weights once)
-        for (int b0 = 0; b0 < B;) {
+        for (int b0 = 0; b0 < B;)
+        {
             const int left = B - b0, bs = left >= 8 ? 8 : (left >= 4 ? 4 : (left >= 2 ? 2 : 1));
-            const bf16* xb = x + (size_t)b0 * K;
-            bf16* yb = y + (size_t)b0 * N;
-            if (bs == 8) launch_k(gemv_direct_kernel<WT, 1, 2, 8>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
-            else if (bs == 4) launch_k(gemv_direct_kernel<WT, 1, 2, 4>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
-            else if (bs == 2) launch_k(gemv_direct_kernel<WT, 1, 4, 2>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
-            else if (rows == 4) launch_k(gemv_direct_kernel<WT, 4, 2, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
-            else if (rows == 2) launch_k(gemv_direct_kernel<WT, 2, 2, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
-            else launch_k(gemv_direct_kernel<WT, 1, 4, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            const bf16 *xb = x + (size_t)b0 * K;
+            bf16 *yb = y + (size_t)b0 * N;
+            if (bs == 8)
+                launch_k(gemv_direct_kernel<WT, 1, 2, 8>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (bs == 4)
+                launch_k(gemv_direct_kernel<WT, 1, 2, 4>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (bs == 2)
+                launch_k(gemv_direct_kernel<WT, 1, 4, 2>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (rows == 4)
+                launch_k(gemv_direct_kernel<WT, 4, 2, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else if (rows == 2)
+                launch_k(gemv_direct_kernel<WT, 2, 2, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
+            else
+                launch_k(gemv_direct_kernel<WT, 1, 4, 1>, grid, GEMV_WARPS * 32, 0, st, W, scale, xb, yb, N, K);
             b0 += bs;
         }
         return;
     }
     const size_t sm = (size_t)K * sizeof(float);
-    if (rows == 4) launch_k(gemv_kernel<WT, 4, 2>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
-    else if (rows == 2) launch_k(gemv_kernel<WT, 2, 2>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
-    else launch_k(gemv_kernel<WT, 1, 4>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
+    if (rows == 4)
+        launch_k(gemv_kernel<WT, 4, 2>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
+    else if (rows == 2)
+        launch_k(gemv_kernel<WT, 2, 2>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
+    else
+        launch_k(gemv_kernel<WT, 1, 4>, grid, GEMV_WARPS * 32, sm, st, W, scale, x, y, N, K);
 }
 
-void launch_gemv(const void* W, bool int8, const float* scale, const void* x, void* y, int N, int K, int rows, int B, cudaStream_t st) {
-    if (int8) gemv_dispatch<int8_t>((const int8_t*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, B, st);
-    else gemv_dispatch<bf16>((const bf16*)W, scale, (const bf16*)x, (bf16*)y, N, K, rows, B, st);
+void launch_gemv(const void *W, bool int8, const float *scale, const void *x, void *y, int N, int K, int rows, int B, cudaStream_t st)
+{
+    if (int8)
+        gemv_dispatch<int8_t>((const int8_t *)W, scale, (const bf16 *)x, (bf16 *)y, N, K, rows, B, st);
+    else
+        gemv_dispatch<bf16>((const bf16 *)W, scale, (const bf16 *)x, (bf16 *)y, N, K, rows, B, st);
 }
 
 // ------------------------------------------------------------------------------------------------ gemv + epilogue (O2d)
-constexpr int EPI_RPB = 4;  // output rows per block
+constexpr int EPI_RPB = 4; // output rows per block
 // Batch-1 GEMV over NR stacked [S, K] blocks of W: the NR rows that belong together (row n of each block) are computed
 // by different warps of one block, meet in shared memory, and the next op is applied there, so the separate
 // elementwise kernel (and its launch) disappears. Same accumulation
@@ -570,9 +722,10 @@ constexpr int EPI_RPB = 4;  // output rows per block
 //   EPI 0 (NR 2): W = w1|w3 [2I, K]           -> y[n] = bf16(bf16(silu(g)) * u)
 //   EPI 1 (NR 3): W = in_proj (B|C|x) [3H, K] -> conv-state shift + depthwise conv3 + C gate -> y[n] (shortconv_step)
 template <typename WT, int NR, int EPI>
-__global__ void gemv_epi_kernel(const WT* __restrict__ W, const float* __restrict__ scale, const bf16* __restrict__ x,
-                                bf16* __restrict__ y, int S, int K, bf16* __restrict__ state, const bf16* __restrict__ cw,
-                                const bf16* __restrict__ cbias) {
+__global__ void gemv_epi_kernel(const WT *__restrict__ W, const float *__restrict__ scale, const bf16 *__restrict__ x,
+                                bf16 *__restrict__ y, int S, int K, bf16 *__restrict__ state, const bf16 *__restrict__ cw,
+                                const bf16 *__restrict__ cbias)
+{
     // block = NR * EPI_RPB warps; warp w computes row (n0 + w % EPI_RPB) of part w / EPI_RPB, exactly like
     // gemv_direct_kernel<WT, 1, 4, 1> (1 row per warp, 4 chunks in flight); the parts meet in shared memory.
     pdl_trigger();
@@ -582,72 +735,95 @@ __global__ void gemv_epi_kernel(const WT* __restrict__ W, const float* __restric
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int r = warp / EPI_RPB, j = warp % EPI_RPB, n = blockIdx.x * EPI_RPB + j;
     const bool active = n < S;
-    const uint4* row = reinterpret_cast<const uint4*>(W + (size_t)(min(n, S - 1) + r * S) * K);
+    const uint4 *row = reinterpret_cast<const uint4 *>(W + (size_t)(min(n, S - 1) + r * S) * K);
     float acc = 0.f;
     int c = lane;
     uint4 buf[UNROLL];
     bool more = active && c + 32 * (UNROLL - 1) < chunks;
-    if (more) {
+    if (more)
+    {
 #pragma unroll
-        for (int u = 0; u < UNROLL; ++u) buf[u] = ld_stream(row + c + 32 * u);
+        for (int u = 0; u < UNROLL; ++u)
+            buf[u] = ld_stream(row + c + 32 * u);
     }
     pdl_wait();
-    while (more) {
+    while (more)
+    {
 #pragma unroll
-        for (int u = 0; u < UNROLL; ++u) {
+        for (int u = 0; u < UNROLL; ++u)
+        {
             float xv[PER];
             load_x<PER>(x, c + 32 * u, xv);
             acc += WTraits<WT>::dot(buf[u], xv, 1);
         }
         c += 32 * UNROLL;
         more = c + 32 * (UNROLL - 1) < chunks;
-        if (more) {
+        if (more)
+        {
 #pragma unroll
-            for (int u = 0; u < UNROLL; ++u) buf[u] = ld_stream(row + c + 32 * u);
+            for (int u = 0; u < UNROLL; ++u)
+                buf[u] = ld_stream(row + c + 32 * u);
         }
     }
-    if (active) {
-        for (; c < chunks; c += 32) {
+    if (active)
+    {
+        for (; c < chunks; c += 32)
+        {
             float xv[PER];
             load_x<PER>(x, c, xv);
             acc += WTraits<WT>::dot(ld_stream(row + c), xv, 1);
         }
     }
     const float v = warp_sum(acc);
-    if (lane == 0) part[r][j] = rbf(scale && active ? v * scale[n + r * S] : v);  // = the BF16 the plain GEMV stores
+    if (lane == 0)
+        part[r][j] = rbf(scale && active ? v * scale[n + r * S] : v); // = the BF16 the plain GEMV stores
     __syncthreads();
-    if (threadIdx.x >= EPI_RPB) return;
+    if (threadIdx.x >= EPI_RPB)
+        return;
     const int t = threadIdx.x, m = blockIdx.x * EPI_RPB + t;
-    if (m >= S) return;
-    if constexpr (EPI == 0) {
+    if (m >= S)
+        return;
+    if constexpr (EPI == 0)
+    {
         const float g = part[0][t], u = part[1][t];
         y[m] = F2B(rbf(g / (1.f + __expf(-g))) * u);
-    } else {
+    }
+    else
+    {
         constexpr int L = 3;
         const float bx = rbf(part[0][t] * part[2][t]);
-        bf16* st = state + (size_t)m * L;
+        bf16 *st = state + (size_t)m * L;
         const float s1 = B2F(st[1]), s2 = B2F(st[2]);
-        st[0] = st[1]; st[1] = st[2]; st[2] = F2B(bx);
+        st[0] = st[1];
+        st[1] = st[2];
+        st[2] = F2B(bx);
         float acc2 = B2F(cw[m * L + 0]) * s1 + B2F(cw[m * L + 1]) * s2 + B2F(cw[m * L + 2]) * bx;
-        if (cbias) acc2 += B2F(cbias[m]);
+        if (cbias)
+            acc2 += B2F(cbias[m]);
         y[m] = F2B(part[1][t] * rbf(acc2));
     }
 }
 
 template <typename WT>
-static void gemv_epi_dispatch(int epi, const WT* W, const float* scale, const bf16* x, bf16* y, int S, int K, bf16* state,
-                              const bf16* cw, const bf16* cbias, cudaStream_t st) {
+static void gemv_epi_dispatch(int epi, const WT *W, const float *scale, const bf16 *x, bf16 *y, int S, int K, bf16 *state,
+                              const bf16 *cw, const bf16 *cbias, cudaStream_t st)
+{
     const dim3 grid((S + EPI_RPB - 1) / EPI_RPB);
-    if (epi == 0) launch_k(gemv_epi_kernel<WT, 2, 0>, grid, 2 * EPI_RPB * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
-    else launch_k(gemv_epi_kernel<WT, 3, 1>, grid, 3 * EPI_RPB * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
+    if (epi == 0)
+        launch_k(gemv_epi_kernel<WT, 2, 0>, grid, 2 * EPI_RPB * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
+    else
+        launch_k(gemv_epi_kernel<WT, 3, 1>, grid, 3 * EPI_RPB * 32, 0, st, W, scale, x, y, S, K, state, cw, cbias);
 }
 
-void launch_gemv_epi(int epi, const void* W, bool int8, const float* scale, const void* x, void* y, int S, int K, void* state,
-                     const void* cw, const void* cbias, cudaStream_t st) {
-    if (int8) gemv_epi_dispatch<int8_t>(epi, (const int8_t*)W, scale, (const bf16*)x, (bf16*)y, S, K, (bf16*)state,
-                                        (const bf16*)cw, (const bf16*)cbias, st);
-    else gemv_epi_dispatch<bf16>(epi, (const bf16*)W, scale, (const bf16*)x, (bf16*)y, S, K, (bf16*)state,
-                                 (const bf16*)cw, (const bf16*)cbias, st);
+void launch_gemv_epi(int epi, const void *W, bool int8, const float *scale, const void *x, void *y, int S, int K, void *state,
+                     const void *cw, const void *cbias, cudaStream_t st)
+{
+    if (int8)
+        gemv_epi_dispatch<int8_t>(epi, (const int8_t *)W, scale, (const bf16 *)x, (bf16 *)y, S, K, (bf16 *)state,
+                                  (const bf16 *)cw, (const bf16 *)cbias, st);
+    else
+        gemv_epi_dispatch<bf16>(epi, (const bf16 *)W, scale, (const bf16 *)x, (bf16 *)y, S, K, (bf16 *)state,
+                                (const bf16 *)cw, (const bf16 *)cbias, st);
 }
 
 // ------------------------------------------------------------------------------------------------ gemv_w4 (O6b)
@@ -655,96 +831,129 @@ void launch_gemv_epi(int epi, const void* W, bool int8, const float* scale, cons
 // nibble, 2j+1 in the high nibble, stored as q + 8 (q in [-8, 7]); S [N, K/128] fp32 scales. Each lane streams
 // 16-byte chunks (32 weights); a group of 128 = 4 chunks, so one scale per chunk.
 template <int ROWS>
-__global__ void gemv_w4_kernel(const uint8_t* __restrict__ Wp, const float* __restrict__ S, const bf16* __restrict__ x,
-                               bf16* __restrict__ y, int N, int K, int group) {
+__global__ void gemv_w4_kernel(const uint8_t *__restrict__ Wp, const float *__restrict__ S, const bf16 *__restrict__ x,
+                               bf16 *__restrict__ y, int N, int K, int group)
+{
     pdl_trigger();
     const int chunks = K / 32, groups = K / group, chunks_per_group = group / 32;
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
     const int n0 = (blockIdx.x * GEMV_WARPS + warp) * ROWS;
-    if (n0 >= N) return;                                    // no block-level sync: early exit is fine
-    const uint4* rows[ROWS];
-    const float* srow[ROWS];
+    if (n0 >= N)
+        return; // no block-level sync: early exit is fine
+    const uint4 *rows[ROWS];
+    const float *srow[ROWS];
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) {
+    for (int r = 0; r < ROWS; ++r)
+    {
         const int n = min(n0 + r, N - 1);
-        rows[r] = reinterpret_cast<const uint4*>(Wp + (size_t)n * (K / 2));
+        rows[r] = reinterpret_cast<const uint4 *>(Wp + (size_t)n * (K / 2));
         srow[r] = S + (size_t)n * groups;
     }
     float acc[ROWS];
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) acc[r] = 0.f;
+    for (int r = 0; r < ROWS; ++r)
+        acc[r] = 0.f;
     int c = lane;
     uint4 buf[ROWS];
     float sc[ROWS];
     bool more = c < chunks;
-    if (more) {  // prefetch the first weights + scales before the dependency wait (they are constants)
+    if (more)
+    { // prefetch the first weights + scales before the dependency wait (they are constants)
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) { buf[r] = ld_stream(rows[r] + c); sc[r] = __ldg(srow[r] + c / chunks_per_group); }
+        for (int r = 0; r < ROWS; ++r)
+        {
+            buf[r] = ld_stream(rows[r] + c);
+            sc[r] = __ldg(srow[r] + c / chunks_per_group);
+        }
     }
     pdl_wait();
-    while (more) {
+    while (more)
+    {
         float xv[32];
-        load_x<32>(x, c, xv);                                // this chunk's 32 inputs, direct from L1/L2
+        load_x<32>(x, c, xv); // this chunk's 32 inputs, direct from L1/L2
         uint4 nbuf[ROWS];
         float nsc[ROWS];
         const int cn = c + 32;
         const bool next = cn < chunks;
-        if (next) {                                          // keep the next chunk in flight while computing this one
+        if (next)
+        { // keep the next chunk in flight while computing this one
 #pragma unroll
-            for (int r = 0; r < ROWS; ++r) { nbuf[r] = ld_stream(rows[r] + cn); nsc[r] = __ldg(srow[r] + cn / chunks_per_group); }
+            for (int r = 0; r < ROWS; ++r)
+            {
+                nbuf[r] = ld_stream(rows[r] + cn);
+                nsc[r] = __ldg(srow[r] + cn / chunks_per_group);
+            }
         }
 #pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-            const uint32_t* w = reinterpret_cast<const uint32_t*>(&buf[r]);
+        for (int r = 0; r < ROWS; ++r)
+        {
+            const uint32_t *w = reinterpret_cast<const uint32_t *>(&buf[r]);
             float a = 0.f;
 #pragma unroll
-            for (int j = 0; j < 4; ++j) {
-                const uint32_t v = w[j];
+            for (int j = 0; j < 4; ++j)
+            {
+                // nibble -> float without I2F (see WTraits<int8_t>): low / high nibbles of 4 bytes at once, each put
+                // into the mantissa of 2^23 by a byte permute, minus 2^23 + 8. Bit-identical to (float)(q - 8).
+                const uint32_t lo = w[j] & 0x0F0F0F0Fu, hi = (w[j] >> 4) & 0x0F0F0F0Fu;
 #pragma unroll
-                for (int b = 0; b < 4; ++b) {
-                    const uint32_t byte = (v >> (8 * b)) & 0xFF;
-                    a += (float)((int)(byte & 0xF) - 8) * xv[8 * j + 2 * b] + (float)((int)(byte >> 4) - 8) * xv[8 * j + 2 * b + 1];
-                }
+                for (int b = 0; b < 4; ++b)
+                    a += (__uint_as_float(__byte_perm(lo, 0x4B000000u, 0x7650 | b)) - 8388616.f) * xv[8 * j + 2 * b] +
+                         (__uint_as_float(__byte_perm(hi, 0x4B000000u, 0x7650 | b)) - 8388616.f) * xv[8 * j + 2 * b + 1];
             }
             acc[r] += a * sc[r];
         }
-        if (next) {
+        if (next)
+        {
 #pragma unroll
-            for (int r = 0; r < ROWS; ++r) { buf[r] = nbuf[r]; sc[r] = nsc[r]; }
+            for (int r = 0; r < ROWS; ++r)
+            {
+                buf[r] = nbuf[r];
+                sc[r] = nsc[r];
+            }
         }
         c = cn;
         more = next;
     }
 #pragma unroll
-    for (int r = 0; r < ROWS; ++r) {
+    for (int r = 0; r < ROWS; ++r)
+    {
         const float a = warp_sum(acc[r]);
-        if (lane == 0 && n0 + r < N) y[n0 + r] = F2B(a);
+        if (lane == 0 && n0 + r < N)
+            y[n0 + r] = F2B(a);
     }
 }
 
-void launch_gemv_w4(const void* Wp, const float* S, const void* x, void* y, int N, int K, int group, int rows, cudaStream_t st) {
-    if (rows <= 0) rows = N >= 32768 ? 2 : 1;
-    const size_t sm = 0;  // x is read directly (no shared-memory stage)
+void launch_gemv_w4(const void *Wp, const float *S, const void *x, void *y, int N, int K, int group, int rows, cudaStream_t st)
+{
+    if (rows <= 0)
+        rows = N >= 32768 ? 2 : 1;
+    const size_t sm = 0; // x is read directly (no shared-memory stage)
     const dim3 grid((N + GEMV_WARPS * rows - 1) / (GEMV_WARPS * rows));
-    if (rows == 4) launch_k(gemv_w4_kernel<4>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
-    else if (rows == 2) launch_k(gemv_w4_kernel<2>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
-    else launch_k(gemv_w4_kernel<1>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t*)Wp, S, (const bf16*)x, (bf16*)y, N, K, group);
+    if (rows == 4)
+        launch_k(gemv_w4_kernel<4>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t *)Wp, S, (const bf16 *)x, (bf16 *)y, N, K, group);
+    else if (rows == 2)
+        launch_k(gemv_w4_kernel<2>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t *)Wp, S, (const bf16 *)x, (bf16 *)y, N, K, group);
+    else
+        launch_k(gemv_w4_kernel<1>, grid, GEMV_WARPS * 32, sm, st, (const uint8_t *)Wp, S, (const bf16 *)x, (bf16 *)y, N, K, group);
 }
 
 // ------------------------------------------------------------------------------------------------ silu_mul
 // g = merged w1|w3 projection [B, 2I]: y = bf16(bf16(silu(a)) * b)
-__global__ void silu_mul_kernel(const bf16* __restrict__ g, bf16* __restrict__ y, int I) {
+__global__ void silu_mul_kernel(const bf16 *__restrict__ g, bf16 *__restrict__ y, int I)
+{
     pdl_trigger();
     pdl_wait();
     const int b = blockIdx.y, i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= I) return;
+    if (i >= I)
+        return;
     const float a = B2F(g[(size_t)b * 2 * I + i]), u = B2F(g[(size_t)b * 2 * I + I + i]);
     y[(size_t)b * I + i] = F2B(rbf(a / (1.f + __expf(-a))) * u);
 }
 
-void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st) {
+void launch_silu_mul(const void *g, void *y, int B, int I, cudaStream_t st)
+{
     dim3 grid((I + 255) / 256, B);
-    launch_k(silu_mul_kernel, grid, 256, 0, st, (const bf16*)g, (bf16*)y, I);
+    launch_k(silu_mul_kernel, grid, 256, 0, st, (const bf16 *)g, (bf16 *)y, I);
 }
 
 // ================================================================================================ prefill (O3b)
@@ -754,27 +963,30 @@ void launch_silu_mul(const void* g, void* y, int B, int I, cudaStream_t st) {
 // One block per token, one warp per head (a first version with one 64-thread block per (token, head) ran at ~10 % of
 // DRAM peak in ncu), 2 elements per lane (d = 2*lane, 2*lane+1); the RoPE partner d +- 32 lives in lane +- 16 (shuffle, no smem).
 constexpr int QKP_WARPS = 8;
-__global__ void qk_norm_rope_kv_prefill_warp_kernel(const bf16* __restrict__ qkv, const bf16* __restrict__ qw,
-                                                    const bf16* __restrict__ kw, const float* __restrict__ inv_freq,
-                                                    float scaling, bf16* __restrict__ q_out, bf16* __restrict__ kc,
-                                                    bf16* __restrict__ vc, int T, int NQ, int NKV, int max_len, float eps) {
+__global__ void qk_norm_rope_kv_prefill_warp_kernel(const bf16 *__restrict__ qkv, const bf16 *__restrict__ qw,
+                                                    const bf16 *__restrict__ kw, const float *__restrict__ inv_freq,
+                                                    float scaling, bf16 *__restrict__ q_out, bf16 *__restrict__ kc,
+                                                    bf16 *__restrict__ vc, int T, int NQ, int NKV, int max_len, float eps)
+{
     pdl_trigger();
     pdl_wait();
     constexpr int D = 64, HALF = 32;
     const int bt = blockIdx.x, b = bt / T, t = bt - b * T;
     const int warp = threadIdx.x >> 5, lane = threadIdx.x & 31, d = 2 * lane;
     const int NH = NQ + 2 * NKV;
-    for (int head = warp; head < NH; head += QKP_WARPS) {
-        const float2 xf = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162*>(qkv + ((size_t)bt * NH + head) * D + d));
-        if (head >= NQ + NKV) {
-            *reinterpret_cast<__nv_bfloat162*>(vc + (((size_t)b * NKV + (head - NQ - NKV)) * max_len + t) * D + d) =
+    for (int head = warp; head < NH; head += QKP_WARPS)
+    {
+        const float2 xf = __bfloat1622float2(*reinterpret_cast<const __nv_bfloat162 *>(qkv + ((size_t)bt * NH + head) * D + d));
+        if (head >= NQ + NKV)
+        {
+            *reinterpret_cast<__nv_bfloat162 *>(vc + (((size_t)b * NKV + (head - NQ - NKV)) * max_len + t) * D + d) =
                 __floats2bfloat162_rn(xf.x, xf.y);
             continue;
         }
         const bool is_q = head < NQ;
         const float ss = warp_sum(xf.x * xf.x + xf.y * xf.y);
         const float r = rsqrtf(ss / D + eps);
-        const bf16* wv = is_q ? qw : kw;
+        const bf16 *wv = is_q ? qw : kw;
         const float x0 = rbf(B2F(wv[d]) * rbf(xf.x * r)), x1 = rbf(B2F(wv[d + 1]) * rbf(xf.y * r));
         const float p0 = __shfl_xor_sync(0xffffffffu, x0, 16), p1 = __shfl_xor_sync(0xffffffffu, x1, 16);
         const float rot0 = d < HALF ? -p0 : p0, rot1 = d < HALF ? -p1 : p1;
@@ -782,47 +994,57 @@ __global__ void qk_norm_rope_kv_prefill_warp_kernel(const bf16* __restrict__ qkv
         const float c0 = rbf(cosf(f0) * scaling), s0 = rbf(sinf(f0) * scaling);
         const float c1 = rbf(cosf(f1) * scaling), s1 = rbf(sinf(f1) * scaling);
         const __nv_bfloat162 out = __floats2bfloat162_rn(rbf(x0 * c0) + rbf(rot0 * s0), rbf(x1 * c1) + rbf(rot1 * s1));
-        bf16* dst = is_q ? q_out + (((size_t)b * NQ + head) * T + t) * D + d
+        bf16 *dst = is_q ? q_out + (((size_t)b * NQ + head) * T + t) * D + d
                          : kc + (((size_t)b * NKV + (head - NQ)) * max_len + t) * D + d;
-        *reinterpret_cast<__nv_bfloat162*>(dst) = out;
+        *reinterpret_cast<__nv_bfloat162 *>(dst) = out;
     }
 }
 
-void launch_qk_norm_rope_kv_prefill(const void* qkv, const void* qw, const void* kw, const float* inv_freq, float scaling,
-                                    void* q_out, void* kc, void* vc, int B, int T, int NQ, int NKV, int max_len, float eps,
-                                    cudaStream_t st) {
-    launch_k(qk_norm_rope_kv_prefill_warp_kernel, dim3(B * T), QKP_WARPS * 32, 0, st, (const bf16*)qkv, (const bf16*)qw,
-             (const bf16*)kw, inv_freq, scaling, (bf16*)q_out, (bf16*)kc, (bf16*)vc, T, NQ, NKV, max_len, eps);
+void launch_qk_norm_rope_kv_prefill(const void *qkv, const void *qw, const void *kw, const float *inv_freq, float scaling,
+                                    void *q_out, void *kc, void *vc, int B, int T, int NQ, int NKV, int max_len, float eps,
+                                    cudaStream_t st)
+{
+    launch_k(qk_norm_rope_kv_prefill_warp_kernel, dim3(B * T), QKP_WARPS * 32, 0, st, (const bf16 *)qkv, (const bf16 *)qw,
+             (const bf16 *)kw, inv_freq, scaling, (bf16 *)q_out, (bf16 *)kc, (bf16 *)vc, T, NQ, NKV, max_len, eps);
 }
 
 // bcx [B*T, 3H] = (B | C | x) per token. HF prefill: bx = bf16(B*x); conv = bf16(causal depthwise conv3(bx) (+bias));
 // y = bf16(C * conv). The decode state gets the last 3 bx columns (left zero-padded when T < 3).
-__global__ void shortconv_prefill_kernel(const bf16* __restrict__ bcx, bf16* __restrict__ state, const bf16* __restrict__ w,
-                                         const bf16* __restrict__ bias, bf16* __restrict__ y, int T, int H) {
+__global__ void shortconv_prefill_kernel(const bf16 *__restrict__ bcx, bf16 *__restrict__ state, const bf16 *__restrict__ w,
+                                         const bf16 *__restrict__ bias, bf16 *__restrict__ y, int T, int H)
+{
     pdl_trigger();
     pdl_wait();
     constexpr int L = 3;
     const int i = blockIdx.x * blockDim.x + threadIdx.x, t = blockIdx.y, b = blockIdx.z;
-    if (i >= H) return;
-    const bf16* base = bcx + (size_t)b * T * 3 * H;
-    auto bx = [&](int tt) -> float {
-        if (tt < 0) return 0.f;
-        const bf16* r = base + (size_t)tt * 3 * H;
+    if (i >= H)
+        return;
+    const bf16 *base = bcx + (size_t)b * T * 3 * H;
+    auto bx = [&](int tt) -> float
+    {
+        if (tt < 0)
+            return 0.f;
+        const bf16 *r = base + (size_t)tt * 3 * H;
         return rbf(B2F(r[i]) * B2F(r[2 * H + i]));
     };
     const float b0 = bx(t - 2), b1 = bx(t - 1), b2 = bx(t);
     float acc = B2F(w[i * L + 0]) * b0 + B2F(w[i * L + 1]) * b1 + B2F(w[i * L + 2]) * b2;
-    if (bias) acc += B2F(bias[i]);
+    if (bias)
+        acc += B2F(bias[i]);
     y[((size_t)b * T + t) * H + i] = F2B(B2F(base[(size_t)t * 3 * H + H + i]) * rbf(acc));
-    if (t == T - 1) {
-        bf16* st = state + ((size_t)b * H + i) * L;
-        st[0] = F2B(b0); st[1] = F2B(b1); st[2] = F2B(b2);
+    if (t == T - 1)
+    {
+        bf16 *st = state + ((size_t)b * H + i) * L;
+        st[0] = F2B(b0);
+        st[1] = F2B(b1);
+        st[2] = F2B(b2);
     }
 }
 
-void launch_shortconv_prefill(const void* bcx, void* state, const void* w, const void* bias, void* y, int B, int T, int H,
-                              cudaStream_t st) {
+void launch_shortconv_prefill(const void *bcx, void *state, const void *w, const void *bias, void *y, int B, int T, int H,
+                              cudaStream_t st)
+{
     dim3 grid((H + 255) / 256, T, B);
-    launch_k(shortconv_prefill_kernel, grid, 256, 0, st, (const bf16*)bcx, (bf16*)state, (const bf16*)w, (const bf16*)bias,
-             (bf16*)y, T, H);
+    launch_k(shortconv_prefill_kernel, grid, 256, 0, st, (const bf16 *)bcx, (bf16 *)state, (const bf16 *)w, (const bf16 *)bias,
+             (bf16 *)y, T, H);
 }
