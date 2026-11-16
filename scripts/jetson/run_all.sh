@@ -11,6 +11,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 PY=.venv-ref/bin/python
 export PYTHONUNBUFFERED=1 TRANSFORMERS_VERBOSITY=error PYTHONWARNINGS=ignore
+export PATH="$PWD/.venv-ref/bin:/usr/local/cuda/bin:$PATH" CUDA_HOME=/usr/local/cuda   # ninja + nvcc for the JIT extensions
 STEPS="${STEPS:-tests bench demo eval}"
 BENCH="$PY benchmarks/bench.py --workloads text,img_small,img_hd,img_fhd --gen-lens 1,128 --batch-sizes 1 --warmup 2 --repeats 5 --no-phases --idle-seconds 3"
 step() { local name="$1"; shift; echo "[jetson] $(date +%T) $name start"; "$@"; echo "[jetson] $(date +%T) $name rc=$?"; }
