@@ -79,6 +79,8 @@ INT4 is still above its byte floor (~6 ms): x loads and FMAs per weight are the 
 
 **Quality on the board** (5 benchmarks × 200 questions, same prompts, greedy, `results/eval/20261117-025745_Orin_jetson_subset`): HF vs our BF16 stack MMStar 52.5 / 52.5, POPE 86.0 / 86.5, OCRBench 79.0 / 79.0, ChartQA 79.5 / 79.5, TextVQA 78.1 / 78.1. All McNemar p = 1.0; 94–99.5 % identical answers; 1.3–1.5× faster per question. The first try of INT8 everywhere and INT4 in the same process ran out of the 15 GB shared memory (NvMap error 12); they now run one process per variant (`eval_quant` step).
 
+Quantized versions on the same 1000 questions (one process each, `results/eval/20261117-0347*/0358*_Orin_jetson_subset_q`). INT8 everywhere: MMStar 52.0, POPE 86.0, OCRBench 78.5, ChartQA 78.5, TextVQA 78.9. GPTQ INT4: 51.5 / 86.5 / 79.0 / 79.5 / 79.05. Every difference vs HF is within ±1 point, McNemar p ≥ 0.5 (only 200 questions per benchmark, so small differences cannot be resolved here; the L40S full sets are the precise test).
+
 ---
 
 ## 2026-11-15/16: INT4 revisited with GPTQ (no training) and NVFP4, on the L40S  (Claude)
