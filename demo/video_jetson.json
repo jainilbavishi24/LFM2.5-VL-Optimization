@@ -1,5 +1,14 @@
 {
-  "run": "results/demo/20261117-040831_Orin_jetson_demo",
-  "cases": ["handwriting", "chart_bar", "cats", "math_latex", "letter", "graph", "receipt_35mp", "describe_city"],
-  "render": "python demo/render.py results/demo/20261117-040831_Orin_jetson_demo --cases handwriting,chart_bar,cats,math_latex,letter,graph,receipt_35mp,describe_city --out presentations/demo --name LFM2.5-VL_demo_Jetson_OrinNX"
+  "run": "results/demo/20261117-114427_Orin_jetson_maxn_demo",
+  "cases": [
+    "handwriting",
+    "chart_bar",
+    "cats",
+    "math_latex",
+    "letter",
+    "graph",
+    "receipt_35mp",
+    "describe_city"
+  ],
+  "render": "python demo/render.py results/demo/20261117-114427_Orin_jetson_maxn_demo --cases handwriting,chart_bar,cats,math_latex,letter,graph,receipt_35mp,describe_city --out presentations/demo --name LFM2.5-VL_demo_Jetson_OrinNX_MAXN"
 }

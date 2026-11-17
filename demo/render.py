@@ -501,6 +501,8 @@ def main():
     by, env, cfg, imgs = load_run(args.run)
     global GPU, N_RUNS
     GPU, N_RUNS = env.get("jetson_model", env["gpu_name"]).replace(" Engineering Reference Developer Kit", ""), cfg["repeats"]
+    if env.get("nvpmodel"):  # Jetson power mode, e.g. "NV Power Mode: MAXN_SUPER"
+        GPU += " (" + env["nvpmodel"].split(":")[1].split()[0].replace("_", " ") + " mode)"
     cases_cfg = {c["key"]: c for c in cfg["cases"]}
     keys = args.cases.split(",") if args.cases else [c["key"] for c in cfg["cases"]]
     cases = [cases_cfg[k] for k in keys]
