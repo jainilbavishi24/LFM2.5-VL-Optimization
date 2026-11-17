@@ -9,6 +9,9 @@ out GEMM, residual add, LayerNorm, fc1 GEMM, GELU, fc2 GEMM, residual add. Here:
   * GELU (tanh) fused into the fc1 GEMM epilogue (cuBLASLt GELU_BIAS via torch._addmm_activation): the 9216 x 4304
     activation is written once instead of written, read and written again;
   * residual add + next LayerNorm fused into one kernel (kernels/vision_ops.cu, add_layernorm).
+  * CUDA graph of the 27 layers per input signature (tile count, valid patches per tile), captured the second time a
+    signature is seen and replayed afterwards (graphs=True, LFM2_VISION_GRAPH=0 to disable): one launch instead of
+    ~300 per image. On the Jetson's Arm CPU each launch costs ~27 µs. Bit-identical (the same kernels replay).
   * int8=True (extension, changes the weights): every encoder GEMM on INT8 weights through kernels/int8_gemm.cu,
     W8A8 on INT8 tensor cores (activation scales per token and group of 64 channels; lfm2opt.int8), GELU in the fc1
     epilogue, the 4304-wide MLP zero-padded to 4352. The BF16 copies are not kept (drop_bf16 also frees the HF
@@ -29,7 +32,7 @@ from .kernels import vision_ext
 
 class FusedSiglip2Encoder:
     def __init__(self, vt, attn: str = "flash_varlen", gelu_epilogue: bool = True, fuse_ln: bool = True,
-                 int8: bool = False, drop_bf16: bool = False):
+                 int8: bool = False, drop_bf16: bool = False, graphs: bool | None = None):
         """attn: "flash_varlen" (default) / "cudnn_varlen": padding-free runs on the flash / cuDNN kernel without a mask;
         "cudnn_mask": HF semantics (padding mask), for ablation."""
         self.vt = vt
@@ -50,6 +53,10 @@ class FusedSiglip2Encoder:
             ))
         self.ext = vision_ext() if fuse_ln else None
         self.int8 = int8
+        if graphs is None:
+            graphs = os.environ.get("LFM2_VISION_GRAPH", "1") != "0"
+        self.use_graphs = graphs and attn != "cudnn_mask"
+        self.graphs, self.seen, self.max_graphs = {}, {}, 4   # signature -> (graph, static input, output); LRU
         if int8:
             from .int8 import Int8Linear, a16_kinds
             from .kernels import int8_ext
@@ -132,23 +139,12 @@ class FusedSiglip2Encoder:
             else:
                 h.add_(y)
 
-    @torch.no_grad()
-    def __call__(self, pixel_values, pixel_attention_mask, spatial_shapes, **kwargs):
+    def _encode(self, h, runs, T, L, D):
+        """The 27 encoder layers on the embeddings h [T, L, D] (updated in place) -> post-LayerNorm output."""
         vt = self.vt
-        h = vt.embeddings(pixel_values, spatial_shapes).contiguous()
-        T, L, D = h.shape
-        lens = pixel_attention_mask.sum(1).tolist()  # valid patches per tile (padding is at the end)
-        runs, a = [], 0
-        for t in range(1, T + 1):
-            if t == T or lens[t] != lens[a]:
-                runs.append((a, t, int(lens[a])))
-                a = t
-        if self.attn == "cudnn_mask":
-            valid = pixel_attention_mask.bool()
-            self._mask = valid[:, None, None, :]
         if self.int8:
             self._layers_int8(h, runs, T, L, D)
-            return BaseModelOutputWithPooling(last_hidden_state=vt.post_layernorm(h), pooler_output=None)
+            return vt.post_layernorm(h)
         x = torch.empty_like(h)
         self._add_ln(h, None, self.layers[0]["ln1"], x)
         n_layers = len(self.layers)
@@ -165,7 +161,53 @@ class FusedSiglip2Encoder:
                 self._add_ln(h, y, self.layers[i + 1]["ln1"], x)
             else:
                 h.add_(y)
-        return BaseModelOutputWithPooling(last_hidden_state=vt.post_layernorm(h), pooler_output=None)
+        return vt.post_layernorm(h)
+
+    def _graph(self, key, h, runs, T, L, D):
+        """Replay the captured graph of this signature, capturing it on its second use (LRU of max_graphs)."""
+        g = self.graphs.pop(key, None)
+        if g is None:
+            self.seen[key] = self.seen.get(key, 0) + 1
+            if self.seen[key] < 2:
+                return None
+            static = torch.empty_like(h)
+            side = torch.cuda.Stream()
+            side.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(side):  # warm-up off the capture (cuBLAS workspaces, allocator)
+                for _ in range(2):
+                    static.copy_(h)
+                    self._encode(static, runs, T, L, D)
+            torch.cuda.current_stream().wait_stream(side)
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                out = self._encode(static, runs, T, L, D)
+            g = (graph, static, out)
+            if len(self.graphs) >= self.max_graphs:
+                self.graphs.pop(next(iter(self.graphs)))
+        self.graphs[key] = g  # most recently used last
+        graph, static, out = g
+        static.copy_(h)
+        graph.replay()
+        return out
+
+    @torch.no_grad()
+    def __call__(self, pixel_values, pixel_attention_mask, spatial_shapes, **kwargs):
+        vt = self.vt
+        h = vt.embeddings(pixel_values, spatial_shapes).contiguous()
+        T, L, D = h.shape
+        lens = pixel_attention_mask.sum(1).tolist()  # valid patches per tile (padding is at the end)
+        runs, a = [], 0
+        for t in range(1, T + 1):
+            if t == T or lens[t] != lens[a]:
+                runs.append((a, t, int(lens[a])))
+                a = t
+        if self.attn == "cudnn_mask":
+            valid = pixel_attention_mask.bool()
+            self._mask = valid[:, None, None, :]
+        out = self._graph((T, L, tuple(runs)), h, runs, T, L, D) if self.use_graphs else None
+        if out is None:
+            out = self._encode(h, runs, T, L, D)
+        return BaseModelOutputWithPooling(last_hidden_state=out, pooler_output=None)
 
 
 def patch_vision_tower(net, **opts):
