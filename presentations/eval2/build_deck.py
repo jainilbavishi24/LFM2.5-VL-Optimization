@@ -520,6 +520,35 @@ table(sl, 6.9, 3.4, 5.8, rows, [3.6, 2.2], size=14, height=0.52)
 text(sl, 6.9, 5.6, 5.8, 0.6, "* the 4 flips are near-ties between two words", size=12, color=GRAY, italic=True)
 notes(sl, "Preprocessing differs by at most one pixel level: PyTorch's CPU resize takes another code path on Arm.")
 
+# ----------------------------------------------------------------------------------------------- 7b bring-up
+sl = slide("Edge deployment · board bring-up", "Getting the Board to Boot Was the Hardest Part")
+steps = [("1  Boot", "old SSDs: UEFI shell, kernel panic or black screen",
+          "reflash Seeed's J4012 image (JetPack 7.2) onto a 128 GB NVMe"),
+         ("2  Flash host", "no Linux PC available", "Windows 11 + WSL2 Ubuntu, USB passed through with usbipd"),
+         ("3  Recovery mode", "USB write timeout while sending the boot config", "another cable and USB port"),
+         ("4  Flashing OS", "board unreachable after RCM boot: WSL kernel had no USB networking",
+          "Seeed's WSL kernel (checksum-verified) + usbipd auto-attach"),
+         ("5  Network", "no Wi-Fi adapter on this unit", "campus Ethernet, OpenSSH, key login")]
+w, gap = 2.24, 0.225
+for i, (name, prob, fix) in enumerate(steps):
+    x = 0.6 + i * (w + gap)
+    box(sl, x, 1.6, w, 0.6, fill=TEAL)
+    text(sl, x + 0.15, 1.6, w - 0.3, 0.6, name, size=14, bold=True, color=WHITE, anchor=MSO_ANCHOR.MIDDLE)
+    box(sl, x, 2.3, w, 3.2)
+    text(sl, x + 0.15, 2.45, w - 0.3, 0.3, "PROBLEM", size=10, bold=True, color=MUTED)
+    text(sl, x + 0.15, 2.75, w - 0.3, 1.2, prob, size=13)
+    text(sl, x + 0.15, 3.95, w - 0.3, 0.3, "FIX", size=10, bold=True, color=MUTED)
+    text(sl, x + 0.15, 4.25, w - 0.3, 1.2, fix, size=13, bold=True, color=TEAL)
+    if i < 4:
+        arrow(sl, x + w + 0.0, 1.73, 0.22, 0.34)
+box(sl, 0.6, 5.7, 12.1, 0.6, fill="E3F2EC")
+text(sl, 0.8, 5.7, 11.7, 0.6, [[("Flash success → Ubuntu boots from NVMe → SSH over the campus network. ", {"bold": True,
+                                                                                                         "color": GREEN}),
+                               ("Then our stack: no pip / pypi.org on the board → uv + Jetson AI Lab mirror.", {})]],
+     size=13, anchor=MSO_ANCHOR.MIDDLE)
+footnote(sl, "Seeed reComputer Industrial J4012 · L4T 39.2 / JetPack 7.2 · details: "
+             "docs/Jetson_J4012_Bringup_and_Remote_SSH_Project_Report.md")
+
 # ----------------------------------------------------------------------------------------------- 8 jetson per word
 sl = slide("Edge results · Jetson Orin NX", f"Jetson: {HF / BF:.1f}× Faster per Word, Same Weights")
 labels = ["HF", "ours\nBF16", "ours\nINT8", "ours INT8\neverywhere", "ours\nINT4 GPTQ"]
@@ -641,12 +670,13 @@ text(sl, 0.85, 2.25, 5.5, 3.8, ["full prototype on 5 GPUs, incl. the Jetson",
                                 "near each GPU's memory floor",
                                 "same answers on 19,000 questions",
                                 "INT8 / INT4: up to 3.9× on the Jetson",
+                                "vision-encoder CUDA graph: exact, encoder up to 1.07×",
                                 "demo video from the board"], size=17, bullets=True)
 text(sl, 7.1, 1.7, 5.4, 0.4, "Left for the final", size=18, bold=True, color=ORANGE)
-text(sl, 7.1, 2.25, 5.4, 3.8, ["first word on the Jetson (compute-bound vision encoder)",
+text(sl, 7.1, 2.25, 5.4, 3.8, ["Jetson first word: less vision math (the graph removed the launches; the "
+                               "encoder is compute-bound)",
                                "INT4 for vision + prompt, only if quality holds",
-                               "remaining full-size quantized quality runs",
-                               "technical report"], size=17, bullets=True)
+                               "remaining full-size quantized quality runs"], size=17, bullets=True)
 notes(sl, "The approach is validated end to end; the remaining work is the edge first-word path and the report.")
 
 # ----------------------------------------------------------------------------------------------- 14 summary
@@ -691,6 +721,121 @@ rows = [["Attempt", "Result", "Why"],
         ["torch.compile, vision encoder", "97.8 → 118 ms", "loses to cuBLAS + cuDNN"]]
 table(sl, 0.6, 1.6, 12.1, rows, [3.9, 4.2, 4.0], size=13, height=0.6)
 notes(sl, "Negative results are logged like positive ones (docs/experiment_log.md).")
+
+SPEAKER = {
+    "Optimizing a Vision-Language Model":
+        "We are optimizing LiquidAI's LFM2.5-VL-1.6B, a vision-language model, for edge devices. At Eval 1 we showed "
+        "the baseline and where its time goes. Today we show the working prototype: the same CUDA optimizations, "
+        "measured on five GPUs including a Jetson Orin NX, with the answers checked on standard benchmarks. The three "
+        "numbers on the right are the summary: 1.5 to 2.7 times faster per word without changing the weights, 3.9 "
+        "times on the Jetson with 4-bit weights, and accuracy within 0.3 points.",
+    "From Plan to Working Prototype":
+        "Six things are new since Eval 1. One: the model runs on the real edge board, a Jetson Orin NX, 1.6 times "
+        "faster per word. Two: the same code runs on five GPUs, from a datacenter Blackwell down to the Jetson. Three: "
+        "we showed the answers do not change, on 19,000 benchmark questions. Four: with INT8 weights everywhere, peak "
+        "memory drops to 2.1 GB. Five: 4-bit weights with GPTQ, without any retraining. Six: profiling on the board "
+        "found a bottleneck that big GPUs do not have, and we fixed it.",
+    "The Prototype: One Fix per Measured Bottleneck":
+        "This is the model's pipeline from Eval 1: image preprocessing, vision encoder, reading the prompt, then "
+        "writing the answer word by word. For each stage we measured the bottleneck and wrote one targeted fix. "
+        "Preprocessing moved from the CPU to two GPU kernels that give exactly Hugging Face's output. The vision "
+        "encoder no longer computes attention over padding. The prompt runs through fused kernels. Each word is one "
+        "CUDA graph replay of fused kernels with our own matrix-vector kernel: 3.83 down to 2.07 ms. All of it is "
+        "lossless BF16, and every kernel has a unit test.",
+    "Which Step Gives What?":
+        "Here we add one optimization at a time and measure the speed-up per word over Hugging Face on three GPUs. "
+        "The CUDA graph is the biggest single step everywhere, because Hugging Face spends most of each word "
+        "launching small kernels from Python. Fused kernels add more; our own GEMV adds a little on the big GPUs. On "
+        "the Jetson our GEMV is about 4 percent slower than cuBLAS but uses 7 percent less energy, so we kept it. The "
+        "cards on the right are the first word: there the gain comes from the fused vision encoder and GPU "
+        "preprocessing.",
+    "Same Code, Five GPUs":
+        "The same code on five GPUs, from a 2018 T4 to the Jetson. Hugging Face's time follows each machine's CPU; "
+        "ours follows the GPU's memory bandwidth. The last column is the important one: to write a word, every one "
+        "of the 2.34 GB of weights must be read once, so weight bytes divided by memory bandwidth is the best any "
+        "software can do. We are within 1.09 to 1.24 times of that floor on every GPU.",
+    "Same Answers as the Original Model":
+        "Speed only counts if the answers stay the same. We ran five standard benchmarks on their full test sets, "
+        "19,000 questions, plus COCO captions scored against human references and an object-hallucination metric. "
+        "Every difference is a fraction of a point and none is statistically significant: McNemar p is at least 0.09 "
+        "everywhere. On the Jetson we ran a 1,000-question subset of the same benchmarks; scores are within half a "
+        "point.",
+    "The Board: Jetson Orin NX 16GB":
+        "Our edge target: a Jetson Orin NX 16GB. Its GPU has 8 SMs, memory bandwidth of 102 GB/s shared by CPU and "
+        "GPU, and 15 GB of memory. Our unit has no fan, only a passive heatsink: in a long run it reached 85 degrees "
+        "and throttled, so every job now runs under a thermal guard. Our CUDA kernels compiled for this GPU without "
+        "source changes and all 109 kernel tests pass. The next word matches Hugging Face in 377 of 381 steps; the "
+        "four flips are near-ties where two words score almost the same.",
+    "Getting the Board to Boot Was the Hardest Part":
+        "Before any measurement the board had to boot, and this took the longest. On the lab's existing SSDs it only "
+        "reached a UEFI shell, a kernel panic or a black screen, so we flashed the official Seeed image onto a 128 GB "
+        "NVMe drive. With no Linux PC, flashing ran from Windows through WSL2 with the USB device passed through. It "
+        "failed twice: first a USB write timeout in recovery mode, fixed with another cable and port; then a timeout "
+        "after the board boots its temporary flashing system, because WSL's kernel had no USB networking and the "
+        "board reappears as a new USB network device. Seeed's WSL kernel plus automatic re-attaching fixed that. The "
+        "unit has no Wi-Fi, so it runs on campus Ethernet with SSH.",
+    "Jetson:":
+        "Time per output word on the Jetson, every bar from the same session in MAXN mode. Hugging Face takes 40.5 "
+        "ms; ours takes 26.0 ms in BF16, 1.6 times faster with identical weights, and only 1.13 times the memory "
+        "floor of 22.9 ms. With INT8 weights it is 3 times faster, with 4-bit GPTQ 3.9 times. Energy per word drops "
+        "25 percent in BF16 and about two thirds with INT4. In the 40 W mode ours stays at 26 ms while Hugging Face "
+        "slows to 42.4 ms, because it is limited by the Arm CPU.",
+    "First Word: Smaller Gain for Big Images":
+        "The first word is a different story. For a text prompt we are 1.77 times faster. With a photo, most of the "
+        "time is the vision encoder: a 1080p image becomes about 2,300 image tokens through 27 transformer layers. On "
+        "8 SMs those large matrix multiplies are limited by arithmetic, so removing overhead helps less: 1.37 times "
+        "for a VGA photo, 1.26 times at 1080p. The gain here comes from GPU preprocessing and the padding-free "
+        "vision encoder.",
+    "The Edge Has a Different Bottleneck":
+        "Profiling on the board itself. Left, Nsight Systems: Hugging Face issues 22,644 kernel launches for a "
+        "32-word answer, about 19 ms of CPU time per word; we replay one CUDA graph per word. Middle: at first INT4 "
+        "was barely faster than INT8. The int-to-float conversion instruction is slow, and on only 8 SMs it became "
+        "the limit. Two exact fixes, a byte-permute conversion and two weight rows per warp, took INT4 from 13.5 to "
+        "10.4 ms per word with bit-identical output. Right, Nsight Compute inside the real model: BF16 and INT8 "
+        "kernels reach 94 to 100 of the 102 GB/s peak; INT4 only 56 to 58, so it is now compute-bound.",
+    "Quantization: Same Measurements, Every Column":
+        "Quantization changes the weights, so we report it separately from our lossless results, with the same "
+        "measurements in every column. INT8 for decoding halves the time per word. INT8 everywhere also uses INT8 in "
+        "the vision encoder and the prompt, and cuts peak memory to 2.1 GB, below Hugging Face's 3.3. INT4 with "
+        "GPTQ is the fastest: 3.9 times on the Jetson, 8.5 times on the L40S. All four keep the benchmark scores; "
+        "plain INT4 rounding without GPTQ did lose accuracy. Our BF16 peak memory is above Hugging Face's because of "
+        "the static decode buffers and the CUDA graph.",
+    "Demo: Real Images, Measured on the Jetson":
+        "The demo video: eight real images, from a tiny icon to a 35-megapixel photo, answered by Hugging Face, ours "
+        "in BF16 and ours in INT8, side by side. Every word appears at the time it was actually produced on the "
+        "Jetson. In this frame, the function-plot question at 2.1 seconds: INT8 has already finished, with the same "
+        "answer as Hugging Face, while the other two are still writing. Over all eight cases, whole answers are 1.46 "
+        "times faster in BF16 at 80 percent of the energy, and 1.79 times faster in INT8 at 59 percent.",
+    "Does It Work? Yes. What Is Left":
+        "Does it work? Yes. The prototype runs on five GPUs including the Jetson, 1.5 to 2.7 times faster per word "
+        "without changing the weights, close to each GPU's memory floor, with unchanged answers. The vision-encoder "
+        "CUDA graph is done too: exact, up to 7 percent on the encoder, but little end to end, because on the Jetson "
+        "the encoder is limited by arithmetic, not launches. For the final: reduce the vision math for the Jetson's "
+        "first word, try INT4 for the vision encoder and prompt if quality holds, and finish the full-size quality "
+        "runs for the quantized versions.",
+    "Faster VLM Inference on the Edge, Same Answers":
+        "To sum up: on the Jetson we are 1.6 times faster per word with the original weights, at 1.13 times the "
+        "memory floor, with 25 percent less energy per word, and with the same benchmark accuracy. The approach: a "
+        "CUDA graph, fused kernels and our own matrix-vector kernel for every word, plus GPU preprocessing and a "
+        "padding-free vision encoder for the first word. On the edge board, profiling found a bottleneck that big "
+        "GPUs do not have, and fixing it took INT4 from 13.5 to 10.4 ms per word. Thank you.",
+    "Full Ablation Table":
+        "Backup. The full ablation: each row adds one optimization to the row above. Jetson in the 40 W mode; first "
+        "word includes image preprocessing. The Blackwell column comes from our first optimization night, so some "
+        "steps were not measured separately there.",
+    "What Did Not Work (All Measured)":
+        "Backup. What we tried that did not work, each one measured and logged. Plain INT4 rounding lost accuracy, "
+        "so we use GPTQ. NVIDIA's 4-bit NVFP4 format was no more accurate than INT4, so we wrote no kernel for it. "
+        "INT8 for the Jetson's first word was slower: the extra quantize kernels cost more than they save on 8 SMs. "
+        "The vision-encoder CUDA graph is exact but gives at most 7 percent. torch.compile on the vision encoder "
+        "was slower than cuBLAS and cuDNN.",
+}
+for _s in prs.slides:
+    _t = [sh.text_frame.text for sh in _s.shapes if sh.has_text_frame]
+    _title = _t[1] if len(_t) > 1 else ""
+    _hit = [v for k, v in SPEAKER.items() if _title.replace("\n", " ").startswith(k)]
+    assert len(_hit) == 1, (_title, len(_hit))
+    _s.notes_slide.notes_text_frame.text = _hit[0]
 
 prs.save(OUT)
 print("deck ->", OUT, f"({N[0]} slides)")
