@@ -363,7 +363,7 @@ def ncu_summary(label, bytes_per_w):
 NCU = {"BF16": ncu_summary("bf16_vga", 2), "INT8": ncu_summary("int8_vga", 1), "INT4": ncu_summary("int4_vga", 0.5)}
 
 # Vision-encoder CUDA graph, Jetson, eager vs graph replay, interleaved (tests/check_vision_graph.py). None = pending.
-VGRAPH = None   # e.g. {"VGA": 1.0x, "720p": ..., "1080p": ...}
+VGRAPH = "encoder 1.00 / 1.05 / 1.07× (VGA / 720p / 1080p); first word ≈ same"
 
 # ----------------------------------------------------------------------------------------------- 1 title
 sl = prs.slides.add_slide(BLANK)
@@ -687,7 +687,7 @@ rows = [["Attempt", "Result", "Why"],
         ["NVFP4 (Blackwell 4-bit)", "no better than INT4 group 32", "no kernel written"],
         ["INT8 first word on the Jetson", "1080p slower (1.65 vs 1.48 s)", "quantize kernels cost more on 8 SMs"],
         ["our GEMV on the Jetson, BF16", "26.4 vs 25.4 ms (cuBLAS)", "kept: 7 % less energy"],
-        ["vision-encoder CUDA graph", "≈ 1 % (1,411 → 1,410 ms)" if not VGRAPH else VGRAPH, "vision is compute-bound"],
+        ["vision-encoder CUDA graph (Jetson)", "≈ 1 % (1,411 → 1,410 ms)" if not VGRAPH else VGRAPH, "compute-bound; kept, bit-identical"],
         ["torch.compile, vision encoder", "97.8 → 118 ms", "loses to cuBLAS + cuDNN"]]
 table(sl, 0.6, 1.6, 12.1, rows, [3.9, 4.2, 4.0], size=13, height=0.6)
 notes(sl, "Negative results are logged like positive ones (docs/experiment_log.md).")

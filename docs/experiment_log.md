@@ -15,6 +15,45 @@ Entry template:
 
 ---
 
+## 2026-11-17 (afternoon): ablation per GPU, vision-encoder CUDA graph, Nsight Compute on the Jetson, no-fan rules  (Claude)
+**Goal:** the three open points of the Eval 2 "left for the final" list that fit before the evaluation: an ablation table per GPU, a CUDA graph for the vision encoder, Nsight Compute counters on the Jetson.
+
+**Setup:** `scripts/ablation.sh` (one optimization added per run, 5 runs, text / VGA / 1080p, 128 words) on the L40S (`results/raw/20261117-1217*_L40S_l40_ablation*`) and on the Jetson in the 40 W mode (`results/raw/20261117-13*_Orin_jetson_ablation*`); `benchmarks/ablation_table.py` prints the table. Vision graph: `src/lfm2opt/vision.py` captures one CUDA graph per input shape on its second use (LRU of 4, `LFM2_VISION_GRAPH=0` turns it off); `tests/check_vision_graph.py` checks bit-identity and times eager vs replay interleaved. Nsight Compute: `scripts/jetson/ncu_ours.sh` (sudo rule for ncu only).
+
+**Board has no fan.** During the MAXN session the board reached 85 °C with over-current throttling; we stopped everything, went back to the 40 W mode, dropped the full-size quality run on the Jetson (it stays on the L40S) and wrap every GPU job in `scripts/jetson/thermal_guard.sh` (starts below 65 °C, kills at 85 °C). The idle temperature plateaus near 60 °C.
+
+**Result: ablation, time per word (text, 128 words) and first word incl. preprocessing**
+
+| step | L40S per word | L40S 1st word 1080p | Jetson 40 W per word | Jetson 1st word VGA | Jetson 1st word 1080p |
+|---|---|---|---|---|---|
+| HF transformers | 8.84 ms | 145 ms | 42.4 ms | 246 ms | 1,805 ms |
+| + static decode + CUDA graph | 4.22 (2.10×) | 140 | 26.8 (1.58×) | 233 | 1,809 |
+| + fused kernels (cuBLAS GEMV) | 3.45 (2.56×) | 140 | 25.4 (1.67×) | 234 | 1,823 |
+| + our GEMV | 3.28 (2.69×) | 144 | 26.4 (1.61×) | 236 | 1,805 |
+| + fused LM prefill | 3.29 | 139 | 25.9 | 209 | 1,681 |
+| + fused vision encoder | 3.29 | 113 | 26.0 | 177 | 1,454 |
+| + GPU preprocessing (full BF16 stack) | 3.29 (2.68×) | 89.9 | 26.0 (1.63×) | 167 | 1,411 |
+| + vision-encoder CUDA graph | 3.29 | 89.9 | 25.9 | 166 | 1,410 |
+
+- The CUDA graph is the largest single step on every GPU.
+- On the Jetson our GEMV is ~4 % slower than cuBLAS in BF16 (26.4 vs 25.4 ms) but uses 7 % less energy per word (0.60 vs 0.64 J). Kept.
+- The first word gains come from the fused vision encoder and GPU preprocessing.
+- **The vision-encoder CUDA graph gives ≈ 1 %** end to end on both GPUs: the vision encoder is compute-bound (L40S at 1080p, and the Jetson's 8 SMs at every size), so removing launches barely helps. Isolated, interleaved eager / replay (`tests/check_vision_graph.py --repeats 10`, BF16, Jetson 40 W): bit-identical at every size; encoder 96.1 / 96.3 ms at VGA (1.00×), 321 / 307 ms at 720p (1.05×), 987 / 924 ms at 1080p (1.07×). The isolated gain at 1080p does not show up in the end-to-end first word (1,411 → 1,410 ms); not investigated before Eval 2. The graph stays on (default), since it is exact and never slower.
+
+**The HF baseline in the 40 W mode is 42.4 ms today, not the 51.4 ms of the night run.** The night run had a hot, throttled CPU (HF is CPU-bound; ours is not, 26.0–26.2 ms in both). Today's 40 W and MAXN numbers agree (1.6×), so the deck uses 1.6× for the Jetson, not 2.0×.
+
+**Result: Nsight Compute on the Jetson** (`profiling/reports/20261117-1{40321,41950,43903}_Orin_ncu_ours_*_vga`, VGA prompt, 3 words, PDL off). On the Orin's integrated GPU the throughput counters read 0 under ncu and the `dram__` counters do not exist, so we use the kernel times: achieved bandwidth = weight bytes / kernel time, for the two largest GEMVs of the real model.
+
+| weights | lm_head (65536×2048) | w1\|w3 (16384×2048) |
+|---|---|---|
+| BF16 | 2.67 ms → **100 GB/s** | 0.680 ms → 99 GB/s |
+| INT8 | 1.35 ms → 99 GB/s | 0.356 ms → 94 GB/s |
+| INT4 GPTQ | 1.17 ms → **58 GB/s** | 0.299 ms → 56 GB/s |
+
+- BF16 and INT8 are at the memory limit (peak 102 GB/s), inside the model, not only in the microbenchmark.
+- INT4 reads half the bytes of INT8 but at ~55 % of the bandwidth: on 8 SMs the unpacking arithmetic is the limit even after the byte-permute and two-rows changes. The INT4 w1|w3 time (299 µs) matches `profiling/bench_gemv.py`.
+- `scripts/jetson/ncu_ours.sh`: the summary step now tolerates the missing counters.
+
 ## 2026-11-17: Jetson Orin NX 16GB, the edge target  (Claude)
 
 **Board:**
