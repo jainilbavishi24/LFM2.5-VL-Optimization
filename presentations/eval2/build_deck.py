@@ -8,6 +8,7 @@ import csv
 import glob
 import json
 import re
+import sys
 from pathlib import Path
 
 from pptx import Presentation
@@ -508,6 +509,31 @@ table(sl, 8.8, 1.6, 3.9, rows, [1.5, 1.1, 1.3], size=13, height=0.48)
 text(sl, 8.8, 4.75, 3.9, 1.6, "HF's time varies 14× for the same work, limited by each machine's CPU. Ours follows each "
                               "GPU's memory bandwidth: 1.1–1.2× the floor everywhere.", size=13)
 notes(sl, "Floor = weight bytes per word divided by the practical DRAM bandwidth of each GPU.")
+
+# ----------------------------------------------------------------------------------------------- 8b ablation
+sys.path.insert(0, str(ROOT / "benchmarks"))
+import ablation_table as AB  # noqa: E402
+
+sl = slide("Ablation · one optimization at a time", "Every Step Pays, and Each One Is Measured")
+cols = [("L40S", "L40S", "text", 128, "tpot_ms", "per word"), ("L40S", "L40S", "img_fhd", 1, "ttft_ms", "1st word 1080p"),
+        ("Jetson Orin NX (MAXN)", "Orin", "text", 128, "tpot_ms", "per word"),
+        ("Jetson Orin NX (MAXN)", "Orin", "img_small", 1, "ttft_ms", "1st word VGA"),
+        ("RTX PRO 5000 Blackwell", "RTXPRO5000Blackwell", "text", 128, "tpot_ms", "per word")]
+rows = [["Step (all BF16, same weights)", "L40S\nper word", "L40S\n1st word 1080p", "Jetson\nper word",
+         "Jetson\n1st word VGA", "Blackwell\nper word"]]
+for i, step in enumerate(AB.STEPS):
+    row = [step]
+    for gname, gpu, wl, gen, field, _ in cols:
+        run = AB.GPUS[gname][1][i]
+        v = AB.value(gpu, run[0], run[1], wl, gen, field) if run else None
+        row.append("–" if v is None else (f"{v:.2f} ms" if v < 10 else f"{v:.1f} ms" if v < 100 else f"{v:.0f} ms"))
+    rows.append(row)
+table(sl, 0.6, 1.5, 12.1, rows, [4.1, 1.6, 1.6, 1.6, 1.6, 1.6], size=11, height=0.52)
+text(sl, 0.6, 6.3, 12.1, 0.6, "scripts/ablation.sh on each GPU (5 runs, text / VGA / 1080p, 128 words); first word "
+                              "includes image preprocessing. The CUDA graph alone gives 2.1× per word on the L40S; the "
+                              "vision-encoder graph matters where launches are slow (Jetson CPU). Blackwell rows from the "
+                              "first optimization night.", size=11, color=GRAY, italic=True)
+notes(sl, "Read top to bottom: each row adds one optimization to the row above. benchmarks/ablation_table.py prints it.")
 
 # ----------------------------------------------------------------------------------------------- 9 quality
 sl = slide("Quality", "Same Answers: Benchmarks, Captions, Hallucination")
