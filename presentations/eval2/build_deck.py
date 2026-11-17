@@ -692,6 +692,5 @@ rows = [["Attempt", "Result", "Why"],
 table(sl, 0.6, 1.6, 12.1, rows, [3.9, 4.2, 4.0], size=13, height=0.6)
 notes(sl, "Negative results are logged like positive ones (docs/experiment_log.md).")
 
-print("NCU", NCU)
 prs.save(OUT)
 print("deck ->", OUT, f"({N[0]} slides)")
