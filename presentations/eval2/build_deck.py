@@ -50,6 +50,12 @@ def f(r, k):
 
 
 J_BASE, J_OURS, J_BP = summary("jetson_base"), summary("jetson_ours"), summary("jetson_final") or summary("jetson_ours_bp")
+M_BASE, M_OURS = summary("jetson_maxn_base"), summary("jetson_maxn_ours")   # after sudo nvpmodel -m 0 + jetson_clocks
+
+
+def maxn(variant, field="tpot_ms", wl="text", gen=128):
+    r = (M_BASE if variant == "baseline" else M_OURS).get((variant, wl, gen))
+    return f(r, field) if r else None
 
 
 def jet(variant, field, wl="text", gen=128, after=False):
@@ -320,8 +326,8 @@ for i, (n, r) in enumerate([("Jainil Bavishi", "2023102045"), ("Gautam Gandhi", 
          size=14)
 text(sl, 0.6, 6.6, 9, 0.35, [[("Repository ", {"bold": True, "color": ORANGE}),
                               ("github.com/jainilbavishi24/LFM2.5-VL-Optimization", {"color": "C9D6DA"})]], size=12)
-for i, (big, lab) in enumerate([(f"{hf_tpot / bf_tpot:.1f}×" if hf_tpot and bf_tpot else "2.0×", "faster per word on the Jetson (BF16)"),
-                                (f"{hf_tpot / w8_tpot:.1f}×" if hf_tpot and w8_tpot else "3.7×", "with INT8 weights (extension)"),
+for i, (big, lab) in enumerate([("1.6–2.0×", "faster per word on the Jetson (BF16, MAXN / 40 W)"),
+                                ("3–4×", "with INT8 weights (extension)"),
                                 ("±0.3 pts", "benchmark accuracy")]):
     box(sl, 9.75, 1.15 + 1.45 * i, 3.0, 1.25, fill="24323A")
     text(sl, 9.95, 1.25 + 1.45 * i, 2.7, 0.6, big, size=30, bold=True, font=HEAD, color=ORANGE)
@@ -397,19 +403,22 @@ notes(sl, "Preprocessing differs by one pixel level because PyTorch's CPU resize
           "than on x86; our GPU kernels match the x86 HF output exactly.")
 
 # ----------------------------------------------------------------------------------------------- 5 jetson results
-sl = slide("Edge results · Jetson Orin NX 16GB", "Jetson: 2× Faster per Word, Same Weights")
+sl = slide("Edge results · Jetson Orin NX 16GB", "Jetson: 1.6–2× Faster per Word, Same Weights")
 labels = ["HF\ntransformers", "ours BF16", "ours INT8\n(decode)", "ours INT8\neverywhere", "ours INT4\nGPTQ"]
 vals = [hf_tpot, bf_tpot, w8_tpot, w8a_tpot, w4_tpot]
-bars(sl, 0.5, 1.45, 7.4, 4.6, labels, [("ms per word", [v or 0 for v in vals])], [BLUE],
-     title="Time per output word (ms, batch 1)", point_colors=[BLUE, ORANGE, GREEN, PURPLE, GOLD], size=12)
+VARS = ["baseline", "fused_gemv_pf_vfused", "fused_w8_pf_vfused", "fused_w8all_pf_vfused", "fused_w4gptq_pf_vfused"]
+mvals = [maxn(v) for v in VARS]
+series = [("40 W mode", [v or 0 for v in vals])] + ([("MAXN (max clocks)", [v or 0 for v in mvals])] if all(mvals) else [])
+bars(sl, 0.5, 1.45, 7.4, 4.6, labels, series, [ORANGE, TEAL],
+     title="Time per output word (ms, batch 1)", legend=len(series) > 1, size=12)
 y = 1.6
 for big, lab, sub, c in [
-    (f"{hf_tpot / bf_tpot:.2f}×" if hf_tpot and bf_tpot else "–", "faster per word, BF16 (lossless)",
-     f"{fmt_ms(hf_tpot)} → {fmt_ms(bf_tpot)} ms; memory floor 22.9 ms", ORANGE),
-    (f"{hf_tpot / w8_tpot:.1f}×" if hf_tpot and w8_tpot else "–", "with INT8 weights (extension)",
-     f"{fmt_ms(w8_tpot)} ms; INT4 {fmt_ms(w4_tpot)} ms", GREEN),
+    (f"{mvals[0] / mvals[1]:.1f}–{hf_tpot / bf_tpot:.1f}×" if all(mvals) else f"{hf_tpot / bf_tpot:.2f}×",
+     "faster per word, BF16 (lossless)", "MAXN / 40 W: ours 26 ms in both modes, HF 40.5 / 51.4 ms (CPU-bound)", ORANGE),
+    (f"{mvals[0] / mvals[2]:.0f}–{hf_tpot / w8_tpot:.1f}×" if all(mvals) else f"{hf_tpot / w8_tpot:.1f}×",
+     "with INT8 weights (extension)", f"{fmt_ms(w8_tpot)} ms; INT4 {fmt_ms(w4_tpot)} ms ({mvals[0] / w4_tpot:.1f}–{hf_tpot / w4_tpot:.1f}×)" if all(mvals) else "", GREEN),
     (f"−{100 * (1 - bf_j / hf_j):.0f} %" if hf_j and bf_j else "–", "energy per word, whole module",
-     f"{hf_j:.2f} → {bf_j:.2f} J (INT8 {w8_j:.2f} J)" if hf_j and bf_j and w8_j else "", TEAL),
+     f"40 W: {hf_j:.2f} → {bf_j:.2f} J (INT8 {w8_j:.2f} J)" if hf_j and bf_j and w8_j else "", TEAL),
     (f"{mem['fused_w8all_pf_vfused']:.1f} GB" if mem["fused_w8all_pf_vfused"] else "–", "peak memory, INT8 everywhere",
      f"HF {mem['baseline']:.1f} GB · ours BF16 {mem['fused_gemv_pf_vfused']:.1f} GB" if mem["baseline"] else "", PURPLE),
 ]:
@@ -423,7 +432,9 @@ text(sl, 0.6, 6.15, 12.1, 0.75, [
     "Text prompt, 128 new words, median of 5 runs after 2 warm-ups. INT8 / INT4 change the weights and are reported "
     "separately; quality on the next slides."], size=11, color=GRAY, italic=True)
 notes(sl, "Hugging Face spends about half of every word on Python and kernel-launch overhead on the Jetson's Arm CPU. "
-          "Our BF16 runtime is at 1.15x the memory floor: 2.34 GB of weights per word at 102 GB/s = 22.9 ms.")
+          "Our BF16 runtime is at 1.15x the memory floor: 2.34 GB of weights per word at 102 GB/s = 22.9 ms. "
+          "Power modes: our runtime does not depend on the CPU clock (26.0 vs 26.2 ms); HF gets 21 % faster in MAXN, "
+          "so the speed-up is 1.6x in MAXN and 2.0x in the 40 W mode, where battery-limited devices run.")
 
 # ----------------------------------------------------------------------------------------------- 6 jetson profiling
 sl = slide("Profiling on the board", "The Edge Has a Different Bottleneck")
@@ -483,13 +494,13 @@ notes(sl, "Short prompts get 2x; huge images are compute-bound on this small GPU
 
 # ----------------------------------------------------------------------------------------------- 8 five GPUs
 sl = slide("Generalization", "Same Code, Five GPUs: Faster Everywhere")
-gpus = ["RTX PRO 5000\nBlackwell", "L40S\n(Ada)", "T4\n(Turing)", "DGX Spark\n(GB10)", "Jetson Orin NX\n16GB"]
+gpus = ["RTX PRO 5000\nBlackwell", "L40S\n(Ada)", "T4\n(Turing)", "DGX Spark\n(GB10)", "Jetson Orin NX\n(40 W mode)"]
 hf = [3.70, 8.98, 21.6, 15.2, hf_tpot or 51.4]
 ours = [2.07, 3.29, 9.03, 9.88, bf_tpot or 26.2]
 bars(sl, 0.5, 1.45, 8.0, 5.1, gpus, [("HF transformers", hf), ("ours (BF16)", ours)], [BLUE, ORANGE],
      title="Time per output word (ms, batch 1, text prompt)", legend=True, size=12)
 rows = [["GPU", "Speed-up", "vs memory floor"]]
-for g, a, b, fl in zip(["Blackwell", "L40S", "T4", "DGX Spark", "Jetson"], hf, ours, [1.9, 2.7, 7.3, 8.6, 22.9]):
+for g, a, b, fl in zip(["Blackwell", "L40S", "T4", "DGX Spark", "Jetson 40 W"], hf, ours, [1.9, 2.7, 7.3, 8.6, 22.9]):
     rows.append([g, f"{a / b:.1f}×", f"{b / fl:.2f}×"])
 table(sl, 8.8, 1.6, 3.9, rows, [1.5, 1.1, 1.3], size=13, height=0.48)
 text(sl, 8.8, 4.75, 3.9, 1.6, "HF's time varies 14× for the same work, limited by each machine's CPU. Ours follows each "
@@ -593,7 +604,7 @@ notes(sl, "Feasibility: the approach is validated end to end; remaining work is 
 
 # ----------------------------------------------------------------------------------------------- 13 summary
 sl = slide("Summary", "Faster, Leaner VLM Inference on the Edge, Same Answers", dark=True)
-stats = [(f"{hf_tpot / bf_tpot:.1f}×" if hf_tpot and bf_tpot else "2.0×", "faster per word on the Jetson", "lossless BF16"),
+stats = [("1.6–2.0×", "faster per word on the Jetson", "lossless BF16, MAXN / 40 W"),
          ("1.1–1.2×", "of the memory floor", "on every GPU"),
          (f"−{100 * (1 - bf_j / hf_j):.0f} %" if hf_j and bf_j else "−32 %", "energy per word", "Jetson, whole module"),
          ("±0.3 pts", "benchmark accuracy", "19,000 questions, n.s.")]
