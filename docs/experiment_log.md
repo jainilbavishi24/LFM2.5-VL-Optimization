@@ -81,6 +81,20 @@ INT4 is still above its byte floor (~6 ms): x loads and FMAs per weight are the 
 - That was invisible on the L40S (3 ms/step) but costs up to 0.4 s per answer on the Jetson. Now 4: at most 3 wasted steps, one more sync per 4 steps.
 - Fixed-length benchmarks (`bench.py`) never stop at EOS and are unaffected. The ms per question of the Jetson eval subset and of the first demo recording include the waste; the demo was re-recorded.
 
+**Power mode: MAXN_SUPER + `jetson_clocks`** (set by the team; GPU locked at 1173 MHz, CPU 1.98 GHz; `results/raw/20261117-113448_Orin_jetson_maxn_base`, `…113804_Orin_jetson_maxn_ours`, same protocol):
+
+| TPOT text (J/token) | HF | ours BF16 | INT8 | INT8 everywhere | INT4 GPTQ |
+|---|---|---|---|---|---|
+| 40 W mode | 51.4 ms (0.87) | 26.2 (0.59) | 13.5 (0.36) | 13.7 (0.36) | 10.4 (0.27) |
+| MAXN | **40.5** (0.80) | 26.0 (0.60) | 13.4 (0.35) | 13.6 (0.36) | 10.4 (0.27) |
+| speed-up vs HF, MAXN | | 1.56× | 3.0× | 3.0× | 3.9× |
+
+- **Our runtime does not depend on the power mode** (≤ 1 %): it is memory-bandwidth-bound, and MAXN does not raise the bandwidth.
+- **HF is 21 % faster in MAXN**: its per-token time is CPU launch overhead, and MAXN raises the CPU clock.
+- So the Jetson speed-up is 1.6× (MAXN) to 2.0× (40 W) in BF16; the lower power modes, where battery devices run, favour our runtime.
+- First token at 1080p barely changes: HF 1.92 → 1.87 s, ours 1.49 → 1.48 s. The GPU already reached its top clock under load in the 40 W mode.
+- The demo was re-recorded in MAXN (the mode the board is left in) and is now the reference for `demo/live_jetson.sh`.
+
 **Demo on the Jetson** (`results/demo/20261117-040831_Orin_jetson_demo`, `demo/video_jetson.json`; same 8 cases and protocol as the L40S video; recorded after the EOS-check fix).
 - Time to the complete answer: geometric mean **1.67×** faster than HF for our BF16 stack and **2.06×** for INT8 everywhere. Energy per answer 75 % / 56 % of HF (whole module). Peak memory 3.2 / 4.5 / 2.0 GB.
 - Detailed description: HF 8.12 s, ours BF16 4.63 s, INT8 2.45 s. 35 MP scan: 2.89 / 1.93 / 1.77 s.
