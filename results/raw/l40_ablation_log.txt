@@ -1,0 +1,82 @@
+==========================================
+SLURM_JOB_ID = 67508
+SLURM_NODELIST = node13
+SLURM_JOB_GPUS = 2
+==========================================
+/var/spool/slurmd/job67508/slurm_script: 4: module: not found
+[job] node13 Tue Nov 17 12:17:39 PM IST 2026 GPU: NVIDIA L40S, 620.70.06
+[transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[transformers] `causal_conv1d_update` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+[bench] run 20261117-121746_L40S_l40_ablation on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261117-121746_L40S_l40_ablation
+[bench] idle power 32.3 W
+[bench] variant=baseline dtype=bf16 attn=sdpa loaded in 1.8s
+[bench]   baseline      text bs=1   gen=1    tiles=0  img_tok=0     wall=     17.7 ms  E/run=   2.22 J  mem=2.99 GB
+[bench]   baseline      text bs=1   gen=128  tiles=0  img_tok=0     wall=   1140.1 ms  E/run= 182.76 J  mem=3.00 GB
+[bench]   baseline img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     24.6 ms  E/run=   8.14 J  mem=3.02 GB
+[bench]   baseline img_small bs=1   gen=128  tiles=1  img_tok=234   wall=   1153.0 ms  E/run= 190.89 J  mem=3.02 GB
+[bench]   baseline   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    113.7 ms  E/run=  36.40 J  mem=3.26 GB
+[bench]   baseline   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=   1244.3 ms  E/run= 224.96 J  mem=3.26 GB
+[bench] variant=cudagraph dtype=bf16 attn=sdpa loaded in 1.2s
+[bench]  cudagraph      text bs=1   gen=1    tiles=0  img_tok=0     wall=      9.7 ms  E/run=   2.20 J  mem=3.00 GB
+[bench]  cudagraph      text bs=1   gen=128  tiles=0  img_tok=0     wall=    545.1 ms  E/run= 132.67 J  mem=3.01 GB
+[bench]  cudagraph img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     19.5 ms  E/run=   7.64 J  mem=3.04 GB
+[bench]  cudagraph img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    555.9 ms  E/run= 134.67 J  mem=3.06 GB
+[bench]  cudagraph   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    109.9 ms  E/run=  36.29 J  mem=3.30 GB
+[bench]  cudagraph   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    655.5 ms  E/run= 167.19 J  mem=3.34 GB
+[bench] variant=fused dtype=bf16 attn=sdpa loaded in 5.9s
+[bench]      fused      text bs=1   gen=1    tiles=0  img_tok=0     wall=     15.0 ms  E/run=   2.37 J  mem=4.10 GB
+[bench]      fused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    453.4 ms  E/run= 123.01 J  mem=4.11 GB
+[bench]      fused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     19.7 ms  E/run=   8.46 J  mem=4.14 GB
+[bench]      fused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    464.2 ms  E/run= 129.24 J  mem=4.15 GB
+[bench]      fused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    109.7 ms  E/run=  38.58 J  mem=4.39 GB
+[bench]      fused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    559.5 ms  E/run= 161.95 J  mem=4.43 GB
+[bench] variant=fused_gemv dtype=bf16 attn=sdpa loaded in 1.2s
+[bench] fused_gemv      text bs=1   gen=1    tiles=0  img_tok=0     wall=     11.4 ms  E/run=   2.70 J  mem=4.12 GB
+[bench] fused_gemv      text bs=1   gen=128  tiles=0  img_tok=0     wall=    428.1 ms  E/run= 103.56 J  mem=4.12 GB
+[bench] fused_gemv img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     19.5 ms  E/run=   7.63 J  mem=4.15 GB
+[bench] fused_gemv img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    439.2 ms  E/run= 105.02 J  mem=4.16 GB
+[bench] fused_gemv   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    109.9 ms  E/run=  38.25 J  mem=4.40 GB
+[bench] fused_gemv   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    534.2 ms  E/run= 142.73 J  mem=4.43 GB
+[bench] variant=fused_gemv_pf dtype=bf16 attn=sdpa loaded in 1.2s
+[bench] fused_gemv_pf      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.2 ms  E/run=   2.66 J  mem=4.12 GB
+[bench] fused_gemv_pf      text bs=1   gen=128  tiles=0  img_tok=0     wall=    422.6 ms  E/run=  99.89 J  mem=4.12 GB
+[bench] fused_gemv_pf img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     14.8 ms  E/run=   5.44 J  mem=4.16 GB
+[bench] fused_gemv_pf img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    433.7 ms  E/run= 106.03 J  mem=4.16 GB
+[bench] fused_gemv_pf   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=    103.9 ms  E/run=  37.64 J  mem=4.46 GB
+[bench] fused_gemv_pf   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    528.4 ms  E/run= 137.85 J  mem=4.46 GB
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 1.3s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.3 ms  E/run=    nan J  mem=4.33 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    422.6 ms  E/run= 104.36 J  mem=4.33 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     12.6 ms  E/run=   4.49 J  mem=4.36 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    431.5 ms  E/run= 106.52 J  mem=4.36 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=     83.8 ms  E/run=  32.23 J  mem=4.66 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    508.2 ms  E/run= 132.67 J  mem=4.66 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261117-121746_L40S_l40_ablation
+[bench] run 20261117-121935_L40S_l40_ablation_prep on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261117-121935_L40S_l40_ablation_prep
+[bench] idle power 47.4 W
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 2.0s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.3 ms  E/run=   1.93 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    422.5 ms  E/run=  99.50 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     12.7 ms  E/run=   8.16 J  mem=4.30 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    431.5 ms  E/run= 106.03 J  mem=4.31 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=     83.4 ms  E/run=  31.86 J  mem=4.61 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    508.4 ms  E/run= 126.42 J  mem=4.61 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261117-121935_L40S_l40_ablation_prep
+[bench] run 20261117-121956_L40S_l40_ablation_vgraph on NVIDIA L40S (sm_89), torch 2.11.0+cu130, transformers 5.19.0
+[bench] results -> /home/cs3.406-c/PAA_Project/results/raw/20261117-121956_L40S_l40_ablation_vgraph
+[bench] idle power 34.7 W
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[bench] variant=fused_gemv_pf_vfused dtype=bf16 attn=sdpa loaded in 1.7s
+[bench] fused_gemv_pf_vfused      text bs=1   gen=1    tiles=0  img_tok=0     wall=      4.2 ms  E/run=   2.16 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused      text bs=1   gen=128  tiles=0  img_tok=0     wall=    422.6 ms  E/run=  99.42 J  mem=4.27 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=1    tiles=1  img_tok=234   wall=     12.5 ms  E/run=   3.67 J  mem=4.32 GB
+[bench] fused_gemv_pf_vfused img_small bs=1   gen=128  tiles=1  img_tok=234   wall=    431.3 ms  E/run= 105.69 J  mem=4.33 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=1    tiles=9  img_tok=2300  wall=     83.1 ms  E/run=  32.13 J  mem=4.67 GB
+[bench] fused_gemv_pf_vfused   img_fhd bs=1   gen=128  tiles=9  img_tok=2300  wall=    508.1 ms  E/run= 130.70 J  mem=4.67 GB
+[bench] done -> /home/cs3.406-c/PAA_Project/results/raw/20261117-121956_L40S_l40_ablation_vgraph
+ABLATION_DONE
+JOB_EXIT=0
