@@ -5,6 +5,7 @@
 #   bash scripts/jetson/ncu_ours.sh <label> <run_once.py args...>
 #   bash scripts/jetson/ncu_ours.sh bf16_vga --variant fused_gemv_pf_vfused --workload img_small --gen-len 3 --warmup 1
 #
+# On the Orin (iGPU) the throughput counters read 0 and dram__ ones do not exist; kernel times are valid.
 # The profiled Python runs as root but leaves nothing root-owned in the project: no .pyc files, HOME and the JIT kernel
 # builds in /tmp copies. PDL is off so kernel times do not overlap. Writes profiling/reports/<run>/ncu_ours_metrics.csv.
 set -euo pipefail
@@ -35,7 +36,7 @@ to_us = {"ns": 1e-3, "us": 1.0, "usecond": 1.0, "ms": 1e3, "msecond": 1e3}.get(u
 agg = collections.defaultdict(list)
 for r in rows:
     agg[(r["Kernel Name"].split("(")[0].replace("void ", ""), r["launch__grid_size"])].append(r)
-avg = lambda rs, k: sum(float(r[k].replace(",", "")) for r in rs) / len(rs)
+avg = lambda rs, k: sum(float((r.get(k) or "0").replace(",", "")) for r in rs) / len(rs)  # Orin: no dram__ counters
 print(f"{'kernel':<58}{'grid':>8}{'n':>5}{'us':>9}{'DRAM %':>8}{'mem %':>8}{'SM %':>7}{'occ %':>7}")
 for (name, grid), rs in sorted(agg.items(), key=lambda kv: -avg(kv[1], "gpu__time_duration.sum") * len(kv[1])):
     print(f"{name[:57]:<58}{grid:>8}{len(rs):>5}{avg(rs, 'gpu__time_duration.sum') * to_us:>9.2f}"

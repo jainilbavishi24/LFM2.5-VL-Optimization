@@ -339,24 +339,28 @@ def ab(gname, i, wl="text", gen=128, field="tpot_ms"):
     return AB.value(gpu, r[0], r[1], wl, gen, field) if r else None
 
 
-def ncu_summary(label):
-    """Time-weighted DRAM / SM throughput (% of peak) of our GEMV kernels in the latest Jetson ncu run, or None."""
+def ncu_summary(label, bytes_per_w):
+    """Achieved memory bandwidth (GB/s) of the two largest GEMVs (lm_head 65536x2048, w1|w3 16384x2048) in the real
+    model, from the latest Jetson ncu run: weight bytes / kernel time. The Orin's throughput counters read 0 under ncu,
+    so the kernel times are what we use. None while the run is missing."""
     runs = sorted(glob.glob(str(ROOT / "profiling" / "reports" / f"*_Orin_ncu_ours_{label}" / "ncu_ours_metrics.csv")))
     if not runs:
         return None
-    rows = list(csv.DictReader(open(runs[-1])))[1:]
-    num = lambda r, k: float(str(r[k]).replace(",", "") or 0)
-    g = [r for r in rows if r["Kernel Name"].startswith("gemv")]
-    t = sum(num(r, "gpu__time_duration.sum") for r in g)
-    if not t:
+    rows = list(csv.DictReader(open(runs[-1])))
+    to_ms = {"ns": 1e-6, "us": 1e-3, "usecond": 1e-3, "ms": 1.0, "msecond": 1.0}[rows[0]["gpu__time_duration.sum"]]
+    grp = {}
+    for r in rows[1:]:
+        if "gemv" in r["Kernel Name"]:
+            grp.setdefault((r["Kernel Name"], r["launch__grid_size"]), []).append(
+                float(r["gpu__time_duration.sum"].replace(",", "")) * to_ms)
+    t = sorted((sum(v) / len(v) for v in grp.values()), reverse=True)
+    if len(t) < 2:
         return None
-    w = lambda k: sum(num(r, k) * num(r, "gpu__time_duration.sum") for r in g) / t
-    return {"dram": w("dram__throughput.avg.pct_of_peak_sustained_elapsed"),
-            "sm": w("sm__throughput.avg.pct_of_peak_sustained_elapsed"),
-            "n": len(g)}
+    return {"lm_head": 65536 * 2048 * bytes_per_w / t[0] / 1e6, "w1|w3": 16384 * 2048 * bytes_per_w / t[1] / 1e6,
+            "t": t[:2]}
 
 
-NCU = {k: ncu_summary(k) for k in ("bf16_vga", "int8_vga", "int4_vga")}
+NCU = {"BF16": ncu_summary("bf16_vga", 2), "INT8": ncu_summary("int8_vga", 1), "INT4": ncu_summary("int4_vga", 0.5)}
 
 # Vision-encoder CUDA graph, Jetson, eager vs graph replay, interleaved (tests/check_vision_graph.py). None = pending.
 VGRAPH = None   # e.g. {"VGA": 1.0x, "720p": ..., "1080p": ...}
@@ -574,19 +578,20 @@ text(sl, 4.2, yy + 0.8, 4.7, 0.5, [[(f"{W4_BEFORE:.1f} → {W4:.1f} ms", {}),
 
 box(sl, 9.2, 1.55, 3.5, 4.75)
 text(sl, 9.4, 1.7, 3.1, 0.4, "Nsight Compute", size=16, bold=True, color=TEAL)
-text(sl, 9.4, 2.15, 3.1, 0.4, "our GEMVs, % of peak", size=12, color=GRAY)
+text(sl, 9.4, 2.15, 3.1, 0.5, "memory bandwidth reached inside the model (peak 102 GB/s)", size=12, color=GRAY)
 if any(NCU.values()):
-    rows = [["weights", "DRAM", "SM"]]
-    for k, lab in (("bf16_vga", "BF16"), ("int8_vga", "INT8"), ("int4_vga", "INT4")):
-        if NCU[k]:
-            rows.append([lab, f"{NCU[k]['dram']:.0f} %", f"{NCU[k]['sm']:.0f} %"])
-    table(sl, 9.4, 2.6, 3.1, rows, [1.1, 1.0, 1.0], size=13, height=0.45)
-    text(sl, 9.4, 2.75 + 0.45 * len(rows), 3.1, 1.6, "fewer bytes per weight → less memory-bound, more compute-bound",
-         size=12)
+    rows = [["GB/s", "lm_head", "w1|w3"]]
+    for lab, v in NCU.items():
+        if v:
+            rows.append([lab, f"{v['lm_head']:.0f}", f"{v['w1|w3']:.0f}"])
+    table(sl, 9.4, 2.75, 3.1, rows, [1.0, 1.05, 1.05], size=13, height=0.45)
+    text(sl, 9.4, 2.9 + 0.45 * len(rows), 3.1, 1.6, "BF16 / INT8 near the memory limit; INT4 reads fewer bytes but at a "
+                                                    "lower rate: the arithmetic is the limit on 8 SMs", size=12)
 else:
     text(sl, 9.4, 3.2, 3.1, 1.5, "running on the board now; result added before the evaluation", size=13, color=GRAY,
          italic=True)
-footnote(sl, "GEMV = the matrix-vector products that read every weight once per word.")
+footnote(sl, "GEMV = the matrix-vector products that read every weight once per word. Nsight Compute: weight bytes ÷ "
+             "kernel time (the Orin's throughput counters read 0).")
 notes(sl, "On a datacenter GPU INT4 is 1.65x faster than INT8. On the Orin it was barely faster because every weight "
           "went through a quarter-rate I2F instruction on 8 SMs. Both fixes are exact.")
 
@@ -687,5 +692,6 @@ rows = [["Attempt", "Result", "Why"],
 table(sl, 0.6, 1.6, 12.1, rows, [3.9, 4.2, 4.0], size=13, height=0.6)
 notes(sl, "Negative results are logged like positive ones (docs/experiment_log.md).")
 
+print("NCU", NCU)
 prs.save(OUT)
 print("deck ->", OUT, f"({N[0]} slides)")
