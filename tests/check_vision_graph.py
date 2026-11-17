@@ -1,5 +1,6 @@
 """Vision-encoder CUDA graph (lfm2opt.vision, graphs=True) vs the same fused encoder run eagerly: features must be
-bit-identical (the graph replays the same kernels); also wall time per image, eager vs replay (median of N).
+bit-identical (the graph replays the same kernels); also wall time per image, eager vs replay (median of N,
+runs interleaved).
 
     python tests/check_vision_graph.py [--int8] [--repeats 20]
 """
@@ -50,8 +51,11 @@ def main():
         outs = [graph(**args).last_hidden_state.clone() for _ in range(3)]  # eager, capture, replay
         same = all(torch.equal(o, ref) for o in outs)
         fails += not same
-        t_e = wall(lambda: eager(**args), a.repeats)
-        t_g = wall(lambda: graph(**args), a.repeats)
+        te, tg = [], []
+        for _ in range(a.repeats):  # interleaved, so clock / temperature drift hits both alike
+            te.append(wall(lambda: eager(**args), 1))
+            tg.append(wall(lambda: graph(**args), 1))
+        t_e, t_g = statistics.median(te), statistics.median(tg)
         print(f"{'ok  ' if same else 'FAIL'} {wl:9s} tiles={args['pixel_values'].shape[0]}  bit-identical={same}  "
               f"eager {t_e:7.2f} ms  graph {t_g:7.2f} ms  ({t_e / t_g:.2f}x)", flush=True)
     print(f"{fails} failures")
