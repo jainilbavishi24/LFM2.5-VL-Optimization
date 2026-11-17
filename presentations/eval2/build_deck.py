@@ -13,7 +13,7 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
-from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION
+from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.util import Inches, Pt
@@ -220,6 +220,7 @@ def bars(sl, x, y, w, h, cats, series, colors, title=None, fmt='0.0', point_colo
     ch = sl.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(x), Inches(y), Inches(w), Inches(h), cd).chart
     ch.has_legend = legend
     if legend:
+        ch.legend.position = XL_LEGEND_POSITION.TOP
         ch.legend.include_in_layout = False
         ch.legend.font.size = Pt(size)
         ch.legend.font.name = BODY
@@ -288,11 +289,11 @@ ttft = {v: [jet(v, "ttft_ms", wl, 1) for wl in ("text", "img_small", "img_fhd")]
 EV = eval_subset()
 
 
-def demo_summary():
+def demo_summary(run=None):
     """Geometric-mean speed-up and energy share vs HF over the Jetson demo cases (demo/video_jetson.json)."""
     import math
     cfg = json.loads((ROOT / "demo" / "video_jetson.json").read_text())
-    tr = json.loads((ROOT / cfg["run"] / "traces.json").read_text())
+    tr = json.loads((ROOT / (run or cfg["run"]) / "traces.json").read_text())
     by = {(x["variant"], x["key"]): x for x in tr}
     out = {}
     for v in ("fused_gemv_pf_vfused+gpuprep", "fused_w8all_pf_vfused+gpuprep"):
@@ -302,7 +303,8 @@ def demo_summary():
     return out
 
 
-DEMO = demo_summary()
+DEMO = demo_summary()                                                 # MAXN recording (the live reference)
+DEMO40 = demo_summary("results/demo/20261117-040831_Orin_jetson_demo")   # 40 W mode recording
 GEMV = gemv_table()
 
 # ----------------------------------------------------------------------------------------------- 1 title
@@ -404,7 +406,7 @@ notes(sl, "Preprocessing differs by one pixel level because PyTorch's CPU resize
 
 # ----------------------------------------------------------------------------------------------- 5 jetson results
 sl = slide("Edge results · Jetson Orin NX 16GB", "Jetson: 1.6–2× Faster per Word, Same Weights")
-labels = ["HF\ntransformers", "ours BF16", "ours INT8\n(decode)", "ours INT8\neverywhere", "ours INT4\nGPTQ"]
+labels = ["HF", "ours BF16", "ours INT8\n(decode)", "ours INT8\neverywhere", "ours INT4\nGPTQ"]
 vals = [hf_tpot, bf_tpot, w8_tpot, w8a_tpot, w4_tpot]
 VARS = ["baseline", "fused_gemv_pf_vfused", "fused_w8_pf_vfused", "fused_w8all_pf_vfused", "fused_w4gptq_pf_vfused"]
 mvals = [maxn(v) for v in VARS]
@@ -559,7 +561,7 @@ notes(sl, "GPTQ: Frantar et al. 2023; calibration on COCO test2017 images, which
 
 # ----------------------------------------------------------------------------------------------- 11 demo
 sl = slide("Demonstration", "Demo: Measured on the Jetson, Re-runnable Live")
-still = Path(__file__).resolve().parent / "demo_frame.png"   # demo/render.py --still graph:2200 of the Jetson run
+still = Path(__file__).resolve().parent / "demo_frame.png"   # demo/render.py --still graph:2100 of the Jetson MAXN run
 if still.exists():
     sl.shapes.add_picture(str(still), Inches(0.6), Inches(1.55), width=Inches(7.6))
 else:
@@ -569,9 +571,10 @@ text(sl, 8.6, 1.55, 4.1, 0.4, "The video", size=16, bold=True)
 text(sl, 8.6, 2.0, 4.1, 2.9, [
     "8 real images (148×60 px to 35 MP), answered by HF, ours BF16 and ours INT8 side by side",
     "every word at its GPU timestamp measured on the Jetson",
-    "here: function plot at 2.2 s; INT8 done, same answer as HF",
-    "over the 8 cases: BF16 {:.2f}× faster at {:.0f} % of HF's energy, INT8 {:.2f}× at {:.0f} %".format(
-        *DEMO["fused_gemv_pf_vfused+gpuprep"], *DEMO["fused_w8all_pf_vfused+gpuprep"]),
+    "here: function plot at 2.1 s (MAXN mode); INT8 done, same answer as HF",
+    "8 cases, MAXN: BF16 {:.2f}× ({:.0f} % of HF's energy), INT8 {:.2f}× ({:.0f} %); 40 W: {:.2f}× / {:.2f}×".format(
+        *DEMO["fused_gemv_pf_vfused+gpuprep"], *DEMO["fused_w8all_pf_vfused+gpuprep"],
+        DEMO40["fused_gemv_pf_vfused+gpuprep"][0], DEMO40["fused_w8all_pf_vfused+gpuprep"][0]),
 ], size=13, bullets=True)
 text(sl, 8.6, 5.0, 4.1, 0.4, "The live proof", size=16, bold=True)
 text(sl, 8.6, 5.45, 4.1, 1.4, [
