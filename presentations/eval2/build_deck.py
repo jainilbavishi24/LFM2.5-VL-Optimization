@@ -516,8 +516,8 @@ import ablation_table as AB  # noqa: E402
 
 sl = slide("Ablation · one optimization at a time", "Every Step Pays, and Each One Is Measured")
 cols = [("L40S", "L40S", "text", 128, "tpot_ms", "per word"), ("L40S", "L40S", "img_fhd", 1, "ttft_ms", "1st word 1080p"),
-        ("Jetson Orin NX (MAXN)", "Orin", "text", 128, "tpot_ms", "per word"),
-        ("Jetson Orin NX (MAXN)", "Orin", "img_small", 1, "ttft_ms", "1st word VGA"),
+        ("Jetson Orin NX (40 W)", "Orin", "text", 128, "tpot_ms", "per word"),
+        ("Jetson Orin NX (40 W)", "Orin", "img_small", 1, "ttft_ms", "1st word VGA"),
         ("RTX PRO 5000 Blackwell", "RTXPRO5000Blackwell", "text", 128, "tpot_ms", "per word")]
 rows = [["Step (all BF16, same weights)", "L40S per word", "L40S 1st word 1080p", "Jetson per word",
          "Jetson 1st word VGA", "Blackwell per word"]]

@@ -28,7 +28,7 @@ GPUS = {
                                                       ("o2_fused_nohooks_full", "fused"), ("o2g_fused_gemv_nohooks_full", "fused_gemv"),
                                                       None, None, ("final_stack_r*", "fused_gemv_pf_vfused"), None]),
     "L40S": ("L40S", ablation_runs("L40S", "l40")),
-    "Jetson Orin NX (MAXN)": ("Orin", ablation_runs("Orin", "jetson")),
+    "Jetson Orin NX (40 W)": ("Orin", ablation_runs("Orin", "jetson")),
 }
 
 

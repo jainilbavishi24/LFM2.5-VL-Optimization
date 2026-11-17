@@ -1,0 +1,17 @@
+{
+  "preset": null,
+  "model": "LiquidAI/LFM2.5-VL-1.6B",
+  "dtype": "auto",
+  "attn": "sdpa",
+  "variants": "baseline,cudagraph,fused,fused_gemv,fused_gemv_pf,fused_gemv_pf_vfused",
+  "workloads": "text,img_small,img_fhd",
+  "gen_lens": "1,128",
+  "batch_sizes": "1",
+  "warmup": 2,
+  "repeats": 5,
+  "idle_seconds": 2.0,
+  "preprocess": "cpu",
+  "no_phases": true,
+  "tag": "jetson_ablation",
+  "out": "/home/gautam/PAA_Project/results/raw"
+}
