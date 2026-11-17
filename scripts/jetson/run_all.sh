@@ -4,6 +4,7 @@
 #   STEPS="tests bench" bash scripts/jetson/run_all.sh > jobs/run.log 2>&1
 #
 # tests    kernel tests, GPU preprocessing, GPTQ, runtime numerics (BF16 / INT8 / GPTQ INT4, also builds the GPTQ cache)
+# RUN_TAG  prefix of the bench / demo run tags (default jetson; e.g. jetson_maxn after sudo nvpmodel -m 0)
 # bench    speed + energy (INA3221 VDD_IN) for HF, our BF16 stack, INT8, INT8 everywhere, GPTQ INT4
 # demo     demo/record.py on the 8 video cases (HF / ours BF16 / ours INT8 everywhere)
 # eval     5 benchmarks, 200 questions each
@@ -30,10 +31,10 @@ for s in $STEPS; do
             step numerics_w8 $PY tests/check_runtime_numerics.py --fused --gemv int8 --fused-prefill
             step numerics_w4gptq $PY tests/check_runtime_numerics.py --fused --gemv int4 --fused-prefill --gptq --w4-group 128 ;;
         bench)
-            step bench_base $BENCH --variants baseline --tag jetson_base
+            step bench_base $BENCH --variants baseline --tag "${RUN_TAG:-jetson}_base"
             step bench_ours $BENCH --variants fused_gemv_pf_vfused,fused_w8_pf_vfused,fused_w8all_pf_vfused,fused_w4gptq_pf_vfused \
-                --preprocess gpu --tag jetson_ours
-            for d in results/raw/*_jetson_*/; do $PY benchmarks/summarize.py "$d" > /dev/null; done ;;
+                --preprocess gpu --tag "${RUN_TAG:-jetson}_ours"
+            for d in results/raw/*_"${RUN_TAG:-jetson}"_*/; do $PY benchmarks/summarize.py "$d" > /dev/null; done ;;
         gemv)  # GEMV microbenchmark before / after the byte_perm conversion (e5eb2b4), old kernel from a worktree
             rm -rf /tmp/paa_old && git worktree add -f /tmp/paa_old e5eb2b4~1 > /dev/null 2>&1
             step gemv_old env TORCH_EXTENSIONS_DIR=/tmp/paa_old_ext $PY /tmp/paa_old/profiling/bench_gemv.py
@@ -45,7 +46,7 @@ for s in $STEPS; do
             for d in results/raw/*_"${BENCH2_TAG:-jetson_ours_bp}"/; do $PY benchmarks/summarize.py "$d" > /dev/null; done ;;
         demo)
             step demo $PY demo/record.py --only handwriting,chart_bar,cats,math_latex,letter,graph,receipt_35mp,describe_city \
-                --tag jetson_demo ;;
+                --tag "${RUN_TAG:-jetson}_demo" ;;
         eval)
             step eval $PY benchmarks/eval_quality.py --benches mmstar,pope,ocrbench,chartqa,textvqa --limit 200 \
                 --variants baseline,fused_gemv_pf_vfused+gpuprep,fused_w8all_pf_vfused+gpuprep,fused_w4gptq_pf_vfused+gpuprep \
